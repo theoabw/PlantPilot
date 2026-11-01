@@ -23,7 +23,7 @@ MLH 2027 season member event. Opening and closing at EduCity, Joukahaisenkatu 7,
 
 ## Countdown
 
-Today is Sun 1 November. Five days to the opening.
+Written on Sunday 1 November, five days before the opening.
 
 | When | What | Where |
 | --- | --- | --- |
