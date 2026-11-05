@@ -1,6 +1,6 @@
 # SinceAI Hackathon 2026, team workspace
 
-This repo is the team's workspace for SinceAI Hackathon 2026 in Turku, 6 to 8 November 2026. It holds the event notes now and becomes the submission repository when the challenge is chosen. The organiser's platform (`sinceai.app`) and email always win over these notes. `README.md` is the event brief, and `challenge.md` is the challenge card.
+This repo is the team's workspace for SinceAI Hackathon 2026 in Turku, 6 to 8 November 2026. It holds the event notes now and becomes the submission repository when the challenge is chosen. The organiser's platform (`sinceai.app`) and email always win over these notes. `README.md` is the event brief, `challenge.md` is the challenge card, and `docs/challenge-summaries.md` is the verbatim record of the 15 public-safe summaries as published on Thursday.
 
 These instructions apply only inside this repository. They load when a dsh session starts with this directory as its working directory, and they change nothing outside it.
 
