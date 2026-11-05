@@ -20,6 +20,8 @@ If all three briefs disappoint, the vote-friendly fallbacks are DNA and Fonecta,
 
 FORCIT Group is the only challenge that needs a paper NDA signed on site at its Friday briefing (Drill and Blast Cycle Intelligence, €3,000 first prize). Its summary is deliberately content-free, so choosing it is choosing blind. Only put it on the shortlist if someone on the team owns industrial operations, geology or blasting experience.
 
+Timing correction, Thursday evening: the brief cannot inform the choice. Selection closes Friday at 17:30, the company intros run 17:00 to 17:30, and the company briefing is 18:50 to 19:30, after the commitment. Anything in this card that reads like a kill criterion is therefore a scope decision taken at 19:30, not a switch to another company. Plans for all eight candidates named in chat, with a ranked call and a pre-build list, are in [docs/challenge-plans.md](docs/challenge-plans.md).
+
 ## Choice
 
 - Company:
