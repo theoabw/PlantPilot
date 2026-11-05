@@ -161,7 +161,7 @@ Cheap, reversible, and useful whichever challenge is chosen. Anything downloaded
 - [ ] Charge two phones and pack a tape roll, a fan, and a cable for the Business Turku staging.
 - [ ] Dry run `make demo` from a clean clone. A setup that only works on one laptop is a Sunday failure.
 - [ ] Claim the ElevenLabs Creator month through its own Discord process before the event, and test one generation on a script that contains a real number. Disclose the tool in the submission's GenAI field, and check the MLH ElevenLabs category on the same form.
-- [ ] Fix the video method now, because it decides the Saturday schedule: PowerPoint, a screen recording of the real page, ElevenLabs voice. That is the pattern the team won the Kongsberg grand prize with last year, and it costs an evening, not a filming shoot. What it cannot survive is a weak first sentence, so the screen recording has to show the product doing the thing before any slide title.
+- [ ] Fix the video method now, because it decides the Saturday schedule: a Remotion composition built from the existing hackathon demo template, with the real screen capture as footage and the AI voice as an audio track. The proven PowerPoint plus screen recording method stays as the fallback if the pipeline fails on the day, and the budget is an evening either way. What neither method survives is a weak first sentence, so the screen capture has to show the product doing the thing before any title card.
 - [ ] Draft the 90 second script now, with the two numbers left as placeholders. Sunday morning is for editing, not writing.
 
 ### Data leads verified tonight
