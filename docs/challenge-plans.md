@@ -124,6 +124,14 @@ The order above is what the lead should carry into Friday: **Traficom, then Valm
 
 If the lead's own judgement differs, the one thing not to do is open the selection window without an order. The slot allocation is first come, first served, and a ten minute argument at 15:10 is how a team ends up with its fifth choice.
 
+### The seat that is actually scarce
+
+Both halves of the demo can now be generated: agents write the pipeline, and ElevenLabs or similar narrates the video. That moves the scarce work rather than removing it.
+
+What a voiceover cannot do is answer a question. The company evaluates "how well the team understands and explains the system", and the evaluators talk to the team at the Saturday Q&A windows (09:00 to 12:00 and 14:30 to 18:00), then to a finalist for six minutes after the pitch. So one person still owns the claim: they sign off the numbers `make proof` prints, they decide at H+18 that the measured result missed the win bar, and they rewrite the script to match. An agent can generate ten scripts; it cannot decide which one is honest.
+
+The second consequence is ordering. A synthesised voice depends on a finished script, and the script depends on the measured number, which arrives around H+18 to H+21. Narration therefore moves the writing earlier rather than saving the evening. Draft the 90 second script tonight with placeholders for the two numbers, and record the voice last.
+
 ## 6. Friday protocol, by the clock
 
 | Time | Action | Owner |
@@ -152,6 +160,8 @@ Cheap, reversible, and useful whichever challenge is chosen. Anything downloaded
 - [ ] Print a sheet of nameplate stickers if Valmet is the pick: twenty tags, one per photo, plus one damaged tag to test OCR failure.
 - [ ] Charge two phones and pack a tape roll, a fan, and a cable for the Business Turku staging.
 - [ ] Dry run `make demo` from a clean clone. A setup that only works on one laptop is a Sunday failure.
+- [ ] Claim the ElevenLabs Creator month through its own Discord process before the event, and test one generation on a script that contains a real number. Disclose the tool in the submission's GenAI field, and check the MLH ElevenLabs category on the same form.
+- [ ] Draft the 90 second demo script now, with the two numbers left as placeholders. Sunday morning is for editing, not writing.
 
 ### Data leads verified tonight
 
