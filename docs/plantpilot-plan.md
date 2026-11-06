@@ -1,5 +1,9 @@
 # PlantPilot: a scanned boiler room that runs an inspection mission
 
+> Superseded 2026-11-06 by [roadmap.md](roadmap.md) and
+> [scene-pipeline.md](scene-pipeline.md). Kept for history. The FastAPI path
+> described here is not the current plan.
+
 The plan we build against, rewritten Friday evening after the Valmet material arrived. This is the only plan document in the repository. It replaces the synthetic-plant plan from 16:40.
 
 One line: **the supplied Gaussian splat becomes a semantic plant, and the pipeline is scene-agnostic.** Many objects are extracted and 3D-framed, the builder pack's metadata is mapped onto them, an avatar walks a collision-free route to the faulty device, and an evidence-backed diagnosis explains it. The same command is designed to run on any compatible 3D Gaussian splat with the standard PLY properties.
