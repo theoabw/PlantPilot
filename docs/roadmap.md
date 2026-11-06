@@ -1,121 +1,86 @@
-# Roadmap, Friday 16:40 to Sunday 10:00
+# Roadmap, Friday 20:00 to Sunday 10:00
 
-The plan is in [plantpilot-plan.md](plantpilot-plan.md). This page is the execution order: what exists, what gets built when, and what has to be true at each gate before the next thing starts.
+The plan is in [plantpilot-plan.md](plantpilot-plan.md). This page is the execution order: what exists, what gets built when, and what must be true at each gate before the next thing starts. It replaces the 16:40 roadmap, which was built on the synthetic plant.
 
 ## Where we are
 
 | Piece | State | Verified by |
 | --- | --- | --- |
-| Corpus from the real manual | 57 numbered sections, FTS5 index, page anchors | `make corpus`, 14 tests |
-| OCR and field resolver | plate to type, DN, PN, body, serial | `uv run pytest` |
-| Asset register | 48 rows, CMMS shaped | `make register` |
-| Photo capture | depth, guided filter, ArUco scale, cloud | `make scan PHOTO=...`, 3.2 s per photo |
-| Reference plant | 10 assets, 141k points, ground truth, preview | `make plant` |
-| Plates and scale card | 16 tags with ArUco, true scale card | `make plates` |
-| Viewer shell | five states, camera and upload, sample path | `npm run build`, screenshot |
-| Repository | one branch, one commit history, CI green | `make check` |
+| Supplied scene | `Industrial Boiler Room.ply`, 1.5 M gaussians, 502,483 sane, metres, y up, dense core about 9 by 4 m and 2.5 m tall | measured with numpy on Friday evening; projections checked |
+| Supplied pack | 30 assets, 20,160 telemetry records, 1,000 events, 300 work orders, 38 documents, 120 data quality cases | converted to text and read Friday 19:50 |
+| Faulty target | P-005 (ASSET-017), pump, fouling, health 44, high urgency | `Current_State` |
+| Reusable code | `Grid`, `astar`, inflation, clearance in `nav.py`; FastAPI shape in `main.py`; viewer shell in `app/web/` | read Friday 19:55 |
+| Off demo path | printed plates, OCR identity, register, photo capture, public PDF corpus, `fixtures/plant/plant.json` | the new rubric names none of them; the reference plant is kept only as the generality fixture |
+| Stale docs | `README.md`, `docs/submission-copy.md`, `docs/video-script.md` still describe the synthetic-plant product | rewrite on Saturday, before the video |
 
-Not built yet: the mission layer. No asset store with positions, no route, no blockage, no evidence panel wired to the viewer.
+Contracts freeze at 21:00: scene frame (metres, the up axis reported in the scene metadata, y for the supplied scene), artifact names, module boundaries.
 
-## The weekend at a glance
+## Seats
 
-| Phase | Window | Goal | Hard output |
+| Seat | Owns | First output | Rubric weight |
 | --- | --- | --- | --- |
-| Prep | now to 18:45 | print tags and scale card, measure the card, test the laptop camera, settle the data question | a photographed area or the reference plant loaded |
-| Brief | 18:50 to 19:30 | the company's criteria, in their words, plus the dataset answer | criteria and data branch written down |
-| M0 | 19:50 to 22:30 | cloud, assets and viewer in one page | the scan on screen from the real API |
-| M1 | 22:30 to 02:00 | five confirmed assets, a route to each, fly-to | gate G1 |
-| Night | 02:00 to 02:40 | commit, clean clone, capture a raw run | a state the morning can trust |
-| Sleep | 02:45 to 07:45 | nobody on call, no half-merges | clean clone still runs |
-| M2 | 08:30 to 12:30 | blockage, reroute, evidence panel, follow the route | gates G2 and G3 |
-| M3 | 12:30 to 16:00 | numbers, evaluation, three clean runs, script locked | gate G4 |
-| Video | 16:00 to 19:30 | screen recording, voice, render, upload to YouTube unlisted, README, submission text | the video is live on YouTube and the link works |
-| Buffer | 19:30 to 22:00 | fix what the demo exposes, final runs | features frozen |
-| Submit | Sunday 07:00 to 09:30 | entry saved, links checked logged out, YouTube link pasted, IP terms accepted by every member | submitted before 10:00 |
+| A | Ingest, segment, objects. Owns the scene-agnostic CLI | `data/scene/scene.npz`, `objects.json` | 30 percent extraction, part of 15 percent backend |
+| B | Floor, occupancy grid, A*, route, proximity | `route.json` with path, length, clearance | 25 percent navigation |
+| C | Viewer: points, boxes, arrows, avatar, panels | the room on screen with boxes | 10 percent clarity, display of the other 25 |
+| D | Pack, mapping, diagnosis, evidence, API glue | `pack.json`, `mapped.json`, `diagnosis.json` | 20 percent diagnostics, part of 30 mapping, 15 backend |
+
+Rules: A, B and D write disjoint modules. C owns `app/web/`. Nobody edits another seat's file without saying so. `make pipeline` is the integration point, owned by D. Seat A keeps every constant from this room out of the ingest: bounds, up axis, floor height and point count are outputs, never defaults.
+
+## Tonight, 20:00 to 02:00
+
+| Window | A | B | C | D |
+| --- | --- | --- | --- | --- |
+| 20:00 to 21:00 | filter and decimate the splat, scene.npz, screenshot | floor fit and grid prototype on the sane prefix | viewer loads the scene points from the API | pack.json from the xlsx, 30 assets and states |
+| 21:00 to 22:30 | plane removal, voxel clustering, split oversized components, boxes | occupancy from points above the floor, inflation | boxes render, selection works | mapping 30 records to 30 objects, faulty target chosen |
+| 22:30 to 00:30 | class proposals, object counts, tests | A* to the target waypoint, smoothing, length and clearance | path arrows, avatar marker, follow camera | diagnosis template, evidence IDs, confidence |
+| 00:30 to 02:00 | integration fixes, numbers | proximity query along the path | nearby-asset labels, diagnosis panel | end-to-end wiring, `make pipeline` green |
+
+Gate G1 at 01:00: `make pipeline` produces all six artifacts from the supplied files, and the viewer shows the room, the boxes and a route to P-005. If the boxes are missing at 01:00, ship the route and the diagnosis on the raw points and keep extraction as a second layer for Saturday morning.
+
+02:00: commit, clean run, no half-merged state. Sleep.
+
+## Saturday
+
+| Time | Work | Gate |
+| --- | --- | --- |
+| 08:30 to 10:00 | integration bugs, the faulty target must be reachable and visible | the avatar walks to P-005 |
+| 09:00 | ask Valmet in the channel for a clean .ply export, quote the 502,483 sane vertices, and ask whether a second small capture exists. Timebox: one message, no waiting | sent |
+| 10:00 to 12:30 | proximity display, evidence panel, confidence from data quality cases, isolate view | G2 at 12:30: the 120 s runs three times in a row, offline, unplugged |
+| 12:30 to 16:00 | numbers, README, submission copy, video script locked. If G2 is green, the second-scene run gets 90 minutes, no more | G3 at 16:00 |
+| 16:00 to 19:30 | record at real speed, voice, render, upload to YouTube unlisted | the link works logged out |
+| 19:30 to 22:00 | fix what the recording exposes, then freeze | G4 at 22:00: no code changes after this |
+
+Sunday: wake 07:00, clean clone, `make test`, `make demo`, submission saved by 07:30, links checked logged out by 08:00, every member accepts the IP terms by 09:00, done by 09:30. Deadline 10:00.
 
 ## Gates
 
 | Gate | Time | Must be true | If it fails |
 | --- | --- | --- | --- |
-| G0 | 19:50 | data branch chosen, one area loads, WebGL confirmed on the demo laptop | choose the fallback renderer now, not at midnight |
-| G1 | 02:00 | five assets confirmed with waypoints, a route to each from the door, the camera flies to the selected asset | ship the mission without fly-to, keep the route list |
-| G2 | 12:30 | a blocked aisle reroutes or reports unreachable, with the reason; the evidence panel cites the manual | drop the follow camera and the judge-chosen destination, keep the blockade |
-| G3 | 12:30 | the 120 second sequence runs three times in a row offline | rehearse only the five beats that work, cut the sixth |
-| G4 | 16:00 | the numbers in the claims table are measured and on screen | print the two strongest and label the rest as future work |
-| Freeze | 22:00 | no code changes after this | only README, video, submission text |
+| G0 | 21:00 | contracts frozen, scene.npz on screen, pack.json parsed with 30 assets and a chosen faulty target | fix the loader, not the plan. No seat starts on a different scene |
+| G1 | 01:00 | six artifacts produced, boxes and route visible | cut proximity to nearest object only, keep frames and route |
+| G2 | 12:30 | 120 s sequence runs three times offline | cut the follow camera, then the avatar animation; keep frames, route, diagnosis |
+| G3 | 16:00 | every printed number measured and on screen | print the strongest three and label the rest as future work |
+| G4 | 22:00 | video uploaded unlisted, README and submission text final | README and submission first, then sleep |
 
-## Lanes
+## Numbers and checks
 
-| Seat | Until 22:30 | Until 02:00 | Saturday morning |
-| --- | --- | --- | --- |
-| A | serve the cloud and the asset spec over the API | plate to asset identity, five assets confirmed | semantic proposals against the reference truth, recall number |
-| B | floor polygon and occupancy grid from the cloud or spec | A* to five waypoints, response times | blocker insertion, reroute, clearance, unreachable case |
-| C | viewer loads the cloud, orbit, select | highlight, asset card, fly-to camera | blockage interaction, evidence panel, six states |
-| D | asset store schema, coordinates frozen, integration | plumb order to asset end to end | evaluation harness, numbers, video script |
-
-The asset record and the coordinate convention are frozen at 19:50. After that a contract change is a commit that says which side changed and why.
-
-## The demo, as a checklist
-
-| Beat | Must show | Owner |
-| --- | --- | --- |
-| 1 | scan on screen, unlabelled, rotating | C |
-| 2 | equipment highlights, select P-204, evidence visible | A, C |
-| 3 | pick the inspection request, route appears with distance and clearance | B, D |
-| 4 | click a blocker, route recomputes, longer or unreachable with a reason | B |
-| 5 | follow to the waypoint, reason panel cites section, page and interval | D |
-| 6 | a judge picks one of three prepared destinations | C, D |
-
-## Numbers we must be able to print
-
-- Capture: points, seconds per photo, scale error against a ruler on the card.
-- Semantics: class and instance recall against the reference plant truth.
-- Mission: assets with waypoints, routes found, response time in ms, clearance in cm.
-- Blockage: reroutes succeeded, added distance, unreachable verdicts with reason.
-- Preparation: objects confirmed by hand, metres of floor drawn by hand, documents attached by hand.
-
-Every one of these comes from a command or from the app, not from a slide.
+- Ingest counts: total, sane, rendered gaussians. `make scene` prints them.
+- Objects framed, median points per object, extraction seconds. `make objects` prints them.
+- Mapping: 30 mapped, confidence, target id. `make map` prints them.
+- Route: length, minimum clearance, A* milliseconds. `make route` prints them.
+- Diagnosis: evidence items, telemetry records behind the finding, documents cited. `make diagnose` prints them.
+- Generality: objects framed on the reference plant against its 10-asset ground truth, and the same commands run on both scenes.
 
 ## Risks and triggers
 
 | Risk | Trigger | Response |
 | --- | --- | --- |
-| No industrial environment | venue rooms are halls and chairs | load the reference plant, label it synthetic, keep the photo path as the second mode |
-| Depth quality | walls and glass are blobby | use the reference plant for the mission, photos for the capture proof |
-| WebGL on the laptop | G0 fails | canvas 2D projection, then isometric SVG |
-| Semantics too vague | CLIP labels contradict geometry | cut CLIP, ship geometry plus tags, say so |
-| Time | G1 slips past 01:00 | cut the fly-to and the follow camera, keep route and blockage |
-| Half-merged state overnight | last commit does not run | fix before sleeping or revert; nothing is left for the morning |
-
-## Saturday night, in order
-
-1. Freeze features at 22:00. The repository is the deliverable from here.
-2. Write the 90 second script with two number placeholders, then fill them from the app.
-3. Record the screen at real speed, no mockups: the scan, the selection, the route, the blockage, the citation.
-4. Synthesise the voice and attach it as an audio track in the video project.
-5. Re-cut the video after any late fix rather than after midnight.
-6. README numbers, limitations, and the submission text before the video render finishes.
-7. Upload the cut to YouTube as unlisted and paste that link into the submission. There are no video file uploads; YouTube is the only accepted format.
-
-## Sunday
-
-| Time | Action |
-| --- | --- |
-| 07:00 | wake, clean clone, `make test`, `make check`, `make demo` |
-| 07:30 | submission entry saved: name, tagline, About under 5,000 characters, Built with (first five become chips), repo link, YouTube link |
-| 08:00 | repo and YouTube link open logged out, deck uploaded only if it earns its place |
-| 09:00 | every member has accepted the IP terms |
-| 09:30 | done, with 30 minutes of slack |
-| 10:00 | deadline, vote window opens |
-| 12:00 | if finalist, rehearse the four minute pitch |
+| Segmentation collapses the room | measured Friday evening: 74 percent of points in one component at 3 cm; fewer than 15 objects after splitting | split every component over 20 k points with k-means, lower the frame target to 25, and say the real count. Never ship 5 boxes and call it density |
+| The floor plane is wrong | the occupancy grid blocks the whole room | fall back to a hand-checked floor polygon drawn once, and disclose it as manual preparation |
+| The target is unreachable | A* returns no path | remap P-005 to the pump-like object with the best clearance |
+| The viewer drops frames | under 20 fps on the demo laptop | render a 400 k point subset for the demo and say the number honestly |
+| Valmet never sends a clean export | no reply by Saturday 12:30 | ship what the sane prefix shows, and say it on screen and in the limitations |
 
 ## What we are not doing
 
-Robot simulation, predictive maintenance, pipe connectivity, whole plant understanding, multi-room twins, VR, LiDAR capture, a login, a cloud service, an LLM on the answer path.
-
-## Open decisions at 19:30
-
-1. Data branch: supplied scan, venue photos, or the reference plant.
-2. Which machines are the five confirmed assets, and which one is P-204 for the demo.
-3. Who sits in each of the four seats, by name.
-4. The blocker location, chosen so the reroute is visibly longer rather than barely different.
+Android, an emulator, AR, a 3DGS rasteriser, SAM or CLIP, an LLM on the answer path, mesh reconstruction, interactive rerouting, robot dynamics, physics, multi-user, cloud services, invented multi-room geometry. One extra supplied-style scene is allowed, as the generality proof, and only after G2.

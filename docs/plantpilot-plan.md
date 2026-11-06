@@ -1,179 +1,104 @@
-# PlantPilot: a scanned plant that runs an inspection mission
+# PlantPilot: a scanned boiler room that runs an inspection mission
 
-The plan we build against, written Friday 16:40, and the only plan document in the repository.
+The plan we build against, rewritten Friday evening after the Valmet material arrived. This is the only plan document in the repository. It replaces the synthetic-plant plan from 16:40.
 
-One line: **a work order becomes a mission.** Pick the order, the plant identifies the machine, explains why it needs attention, computes a route to its inspection position, and reroutes when an aisle is blocked.
+One line: **the supplied Gaussian splat becomes a semantic plant, and the pipeline is scene-agnostic.** Many objects are extracted and 3D-framed, the builder pack's metadata is mapped onto them, an avatar walks a collision-free route to the faulty device, and an evidence-backed diagnosis explains it. The same command runs on any 3D Gaussian splat with the standard PLY properties.
 
-## 0. The brief, in four words
+## 1. What changed when the material arrived
 
-Locate, identify, navigate, explain. The description's own premise is that a scan is "visually extraordinary" but lacks "the meaning needed for intelligent action", and it asks for a plant that knows where machines are, what they are, how people or robots move between them, and which equipment needs attention. PlantPilot is that sentence as a product.
-
-## 1. Review of the supplied plan
-
-Verdict: the product shape is better than our previous draft and we are taking it. Three assumptions do not survive our data and our clock, and each has a concrete replacement.
-
-**Taking, unchanged.**
-
-- The mission as the unit of the demo: work order, asset, route, blocked aisle, reroute, evidence. This is stronger than "look at our labels".
-- The four missing pieces, as the spine of the pitch and of the build: meaning, identity, accessibility, context.
-- The blocked aisle as the reveal. Spatial reasoning is obvious in a second and impossible to fake.
-- A route to a **reviewed service position beside the machine**, never the machine centre.
-- Evidence states: "AI proposal" and "operator confirmed" are different things and the UI says which.
-- An occupancy grid on the floor plane, obstacles inflated by agent width, unobserved areas never treated as free, A* to the waypoint.
-- The evaluation list: correct asset selection, routes found, blocked handling, response time, and how much of it was prepared by hand.
-- Out of scope: robot simulation, predictive maintenance, pipe connectivity, whole plant understanding.
-
-**Rejecting or replacing.**
-
-| The supplied plan says | What we do instead | Why |
+| We assumed at 16:40 | What arrived | Consequence |
 | --- | --- | --- |
-| Assume a supplied scan, mesh or Gaussian splat | Build a data adapter and decide at 19:30. If Valmet supplies a scan, load it; if not, our depth pipeline turns venue photos into a cloud | We have not seen any dataset. Architecting around one is how a night is lost |
-| 36 to 48 hours | 26 hours to the freeze, 4 people, one sleep block, about 86 person-hours | The event clock, not an estimate |
-| SAM 3, with SAM 2 as fallback | Geometry proposals, CLIP zero-shot labels, plate OCR for identity, one-click operator confirmation | SAM 3 checkpoints are gated and SAM 2 is heavy on CPU. The evidence states survive without SAM |
-| Render views from the scan, then associate pixels to 3D | Segment the photo directly: every pixel already owns the point it generated, so a mask lifts to a 3D object for free | Fewer moving parts, and it is honest about where the geometry came from |
-| A language model API for explanations | Retrieval plus template with citations; the LLM is optional, cached, and off the demo path | No network in the demo, and a citation beats a paraphrase |
-| "An impressive industrial scan" | Say which source is on screen: a supplied scan or a captured room standing in for a plant | The one claim a Valmet 3D person will test first |
+| A scan or mesh we might get, else the generated reference plant | `Industrial Boiler Room.ply` is a 3D Gaussian Splatting file, 1.5 M gaussians, 59 float properties, no triangles | The splat is the scene. Point rendering with size and alpha, not a mesh, not a 3DGS rasteriser. The synthetic plant, the photogrammetry path and `fixtures/plant/plant.json` leave the demo path |
+| Identity from a printed tag and OCR against our register | The builder pack uses procedural mapping; no tags in the scene; mapping may be random or rule-based | Identity is a mapping decision, recorded with method and confidence. The OCR, ArUco and register modules leave the demo path |
+| Grounding from the two public Valmet PDFs | The pack carries 38 knowledge documents, telemetry, alarms, events, service history and data quality cases | Diagnostics cite the pack's own evidence IDs, not the public manual |
+| A curated five confirmed assets | The challenge scores extraction density: "the more assets extracted, framed and mapped, the better" | Extraction targets tens of framed objects, not five. The count is a measured number |
+| Select an asset, pick a work order, block an aisle | The rubric asks for navigation to a pre-determined faulty device plus proximity display, not interactive rerouting | The faulty device is designated from the pack. The interactive blocker leaves the demo path |
+| A tablet or Android client was hinted | The brief says the opposite: "rather than spending time building a mobile or Android frontend" | Web viewer on the demo laptop. No Android, no emulator |
 
-## 2. The product
+## 2. The supplied data, as measured
 
-| Missing information | What PlantPilot establishes | Where it comes from |
+The two supplied inputs are not committed. Place them in `data/supplied/` (gitignored) before running the pipeline; derived artifacts stay in `data/` (gitignored). A clean clone can run the code, not the demo, until those two files are in place.
+
+| File | Fact | Consequence for us |
 | --- | --- | --- |
-| Meaning | this cluster of geometry is a pump, a tank, a valve | geometry classes plus CLIP labels, marked as proposals |
-| Identity | this particular pump is P-204 | the printed tag and OCR, confirmed by an operator; the plate is the evidence |
-| Accessibility | a person reaches the inspection position through these passages | floor plane, occupancy grid, A*, agent radius |
-| Context | this work order and these documents explain the visit | the asset record, the manual corpus, the VMR003 intervals |
+| `Industrial Boiler Room (1).ply` | 1,506,136 vertices, 59 float properties, row major. 502,483 vertices are sane; the rest of the file is uninitialised memory (NaN and values around 1e26) | The loader filters every vertex. Use the sane prefix. Report the defect to Valmet and ask for a clean export; do not block on it |
+| Same | x in -6.1 to 6.0, y in -4.5 to 3.9 (98 percent between -1.4 and 1.1), z in -7.6 to -0.7; y is up; gaussians about 7 mm; alpha median 0.12; colour in the SH DC coefficient | Metres, y up. The dense core is about 9 by 4 m and 2.5 m tall; a few sparse outliers reach further. Render colour from `0.5 + 0.282 * f_dc` |
+| `..._Builder_Pack.xlsx` | 30 assets (12 control valves, 6 pumps, 6 motors, 3 pressure transmitters, 3 vibration sensors), 20,160 telemetry records, 1,000 events, 300 work orders, 38 documents, 120 data quality cases | The diagnostic layer is a lookup and a computation over these tables, not an LLM guess |
+| Same, `Scene_Anchors` | 30 anchor rows on a synthetic 30 by 16 m grid, `mapping_status = placeholder_until_valmet_scene_received` | The anchors cannot be used as scene positions. Our extracted boxes are the positions; the mapping is procedural and says so |
+| Same, `Current_State` | Faulty candidates with high urgency: P-002 cavitation risk (health 45), P-005 fouling (44), M-006 overheating (45), CV-003 position deviation (52) | We designate **P-005 (ASSET-017, PROCESS_PUMP, fouling, health 44)** as the pre-determined faulty device and map it to a pump-like object that is reachable |
+| `semantic extraction demo 1.mp4` | 5.1 s, refinery scene, objects pulled out of the scene, framed and labelled | The expected output is per-object instances with frames, not a segmentation mask overlay |
+| `semantic extraction demo 2.mp4` | 9.7 s, warehouse with racking, IBC tanks, a wall of valves, a forklift | Same idea at room scale. Objects stay in place; frames and labels identify them |
+| `Industrial Boiler Room (1).mp4` | 111.8 s, 1080p walkthrough of the real room | Reference footage for the pitch and for sanity-checking the splat. Not part of the demo path |
 
-The contribution is the join: one asset record that binds a 3D selection, its evidence, its inspection point, its documents and its work order, so a route and an explanation can both be computed from the same object.
+The challenge brief also states that mapping may be random or procedural, that an easy UI is preferred over a polished mobile app, and that the evaluation is 30 percent extraction density, 25 percent navigation and proximity, 20 percent diagnostics and grounding, 15 percent backend, 10 percent demo clarity.
 
-## 3. The 120 second demo
+## 3. The product
+
+Four verbs, in the order the rubric scores them:
+
+1. **Extract.** Turn 502 k gaussians into objects. Remove the floor and the dominant wall planes, voxelise at 3 cm, cluster with a connected-component pass, then split every oversized component (the measured failure mode: 74 percent of points in one blob) and fit an oriented box per piece. A pipe run, a valve stack, a pump, a door, a pallet, a drum and a fire extinguisher should each become a frame.
+2. **Frame and map.** Every object gets a box, a class proposal and a size. The 30 package records are assigned to 30 of those objects by class and size prior, with a recorded method and confidence. Every other object stays framed and unlabelled.
+3. **Navigate.** Fit the floor, build a 10 cm occupancy grid from everything standing above it, inflate by the agent radius, run A* from a derived start position at the edge of the captured area to a service position 0.9 m beside P-005. The avatar walks the smoothed path; the camera follows; floor arrows mark the route.
+4. **Explain.** At each path sample, list the objects within 2.5 m and show their mapped metadata. On arrival, diagnose P-005 from the pack: condition, health, issue, telemetry deviation, alarms, cited knowledge documents, a confidence and a safe next check.
+
+## 4. Pipeline and contracts
+
+Package: `app/server/src/plantpilot/`. Stages run as commands and as `make pipeline`. The coordinate frame is the splat frame, metres; the up axis is reported in the scene metadata (y for the supplied scene). Frozen at 21:00.
+
+| Stage | Module | Output |
+| --- | --- | --- |
+| pack | `pack.py` | `data/scene/pack.json`: 30 assets, states, telemetry summaries, alarms, documents. Reads the xlsx; nothing derived is committed |
+| ingest | `splat.py` | `data/scene/scene.npz`: filtered and decimated cloud (xyz, rgb, size, alpha) plus metadata. Reports total, sane and rendered counts |
+| objects | `segment.py` | `data/scene/objects.json`: objects with id, centre, oriented box, extents, class proposal, point count, confidence |
+| mapping | `map.py` | `data/scene/mapped.json`: 30 records on 30 objects, mapping method and confidence, the faulty target, unmapped frames listed |
+| route | `nav.py` | `data/scene/route.json`: floor height, grid summary, path polyline, length, minimum clearance, start, target waypoint, nearby objects along the path |
+| diagnosis | `diagnose.py` | `data/scene/diagnosis.json`: findings, evidence IDs, citations, confidence, next safe check |
+| serve | `main.py` | `/api/scene`, `/api/points`, `/api/objects`, `/api/mapped`, `/api/route`, `/api/diagnosis`, `/api/assets/{id}` |
+| view | `app/web/` | three.js scene: points, boxes, arrows, avatar, panels |
+
+Reuse from the 16:40 code: the `Grid`, `astar`, inflation and clearance code in `nav.py` behind a new constructor that takes a blocked mask instead of a plant spec; the FastAPI shape in `main.py`; the viewer shell. Everything built on `fixtures/plant/plant.json`, the printed plates, OCR identity and the PDF corpus comes off the demo path and is not claimed in the README; the reference plant is kept only as the generality fixture for the second-scene run.
+
+**Scene-agnostic is the keyword.** The answer to "one room is not impressive" is not a bigger fake plant, it is a pipeline that takes any plant. Every stage takes a path to a Gaussian splat and derives the rest: bounds, up axis, floor, occupancy, objects, waypoints. No constant from this boiler room lives in the code. The command is `make pipeline PLY=path/to/scene.ply PACK=path/to/pack.xlsx`. The loader accepts the standard 3DGS PLY property set (position, scale, rotation, SH DC, opacity, optional SH rest); a file with a different schema fails loudly instead of silently.
+
+The generality is proven, not asserted: after G2, convert the old reference plant (`scripts/make_plant.py`, 10 assets, 141 k points, per-object ground truth) to a `.ply` with the same gaussian schema and run the same command on it. That run gives one honest number nobody else will have: objects framed against known ground truth. It is a 90 minute item and a 5 second clip in the video, not a second product.
+
+## 5. The 120 second demo
 
 | Time | What the judge sees | What it proves |
 | --- | --- | --- |
-| 0 to 15 s | The scan, unlabelled, rotating. | the starting material |
-| 15 to 35 s | Equipment highlights. Select P-204, see its evidence: tag photo, confidence, "operator confirmed". | meaning and identity |
-| 35 to 60 s | Pick the inspection request. P-204 lights up, a route appears, distance and clearance shown. | records, equipment and space joined |
-| 60 to 80 s | Block an aisle with a click. The route vanishes and a new one appears, longer, around the obstruction. | the reveal: spatial reasoning |
-| 80 to 100 s | Follow the route to the waypoint, open the reason and the manual page. | the mission is useful, not just pretty |
-| 100 to 120 s | A judge picks another destination or blocks another aisle. | it generalises live |
+| 0 to 12 s | The boiler room, points alive, orbit. A quiet line names the source and the number of gaussians rendered | We processed their scene, not ours |
+| 12 to 30 s | Boxes appear across the room: pipes, valves, pumps, door, drums, pallet. Sweep the count | Extraction density, 30 percent |
+| 30 to 45 s | Select the faulty pump P-005. It turns red. The route appears as floor arrows with length and clearance | Metadata mapped to space, and navigation under way |
+| 45 to 80 s | The avatar walks. Nearby objects light up with tag, class and state as it passes. The camera follows | Proximity display, 25 percent |
+| 80 to 100 s | Arrival. The diagnosis panel: condition, health, issue, telemetry evidence, alarms, cited documents, confidence, next safe check | Diagnostics and grounding, 20 percent |
+| 100 to 115 s | Select a framed object, lift it out of the room, show what the mapping knows and what it does not | Per-object framing in the spirit of demo 1, and honest confidence |
+| 115 to 120 s | End card: repository, stack, offline | Clarity, 10 percent |
 
-If the area has only one approach, the blocked case becomes "no route available" with the reason shown, and the demo says so. That is a real result, not a failure.
+No interactive blocker, no printed tag, no photo capture, no second screen.
 
-## 4. What each beat costs
+## 6. Numbers we must be able to print
 
-| Beat | Needs | Cost | Risk | Fallback |
-| --- | --- | --- | --- | --- |
-| scan on screen | cloud or mesh + viewer | 3 h | WebGL on the demo laptop | canvas 2D projection, then isometric SVG |
-| labels + identity | proposals, plate OCR, confirm click, asset store | 5 h | proposals are wrong for a machine | ship only operator-confirmed assets and label the rest unconfirmed |
-| route | floor plane, grid, inflate, A*, waypoint | 4 h | noisy floor from a photo cloud | reviewed floor polygon drawn once by hand, disclosed |
-| blocked aisle | obstacle insert + recompute | 1 h | none, it is the same solver | none needed |
-| evidence | corpus retrieval, asset record | 2 h | citation does not match the asset | one static cited card |
-| route following | camera path + marker | 2 h | camera work eats Saturday | a cut and a highlighted waypoint |
+Every number comes from a command or from the app, never typed by hand.
 
-## 5. The data decision at 19:30
+- Ingest: total gaussians, sane gaussians, rendered gaussians, ingest seconds.
+- Extraction: objects framed, median points per object, extraction seconds, how many were removed as floor and wall planes.
+- Mapping: records mapped, mapping confidence, faulty target id.
+- Route: length in metres, minimum clearance in centimetres, A* milliseconds, grid cells blocked and free.
+- Proximity: objects within 2.5 m at the busiest point on the path.
+- Diagnosis: evidence items cited, telemetry records behind the finding, documents cited.
+- Generality: objects framed on the second scene against its ground truth, from the same command.
 
-Three branches, one adapter.
+## 7. Not building
 
-1. **Valmet supplies geometry** (scan, mesh, splat, or images with poses). Inspect it in the first hour: format, units, axes, one room, scale sanity. Crop it with Open3D or CloudCompare, convert to the app format, and keep the source file out of the repo.
-2. **Valmet supplies nothing.** Photograph the most machine-like room in the venue with the laptop or a phone, and run `make scan`. The room is a stand-in for a plant and every screen that shows it says so.
-3. **Valmet supplies nothing and the room has nothing industrial in it.** Load the generated reference plant: `make plant` builds 141k points from a 16 by 12 metre hall with ten tagged assets, two tanks, an overhead pipe run, a doorway, four aisles and a blocker, with noise, dropout and per-point ground truth. It exists so the mission demo cannot be blocked by the venue, and its ground truth lets the semantic pipeline be scored rather than asserted. Every screen labels it synthetic.
+No Android app, no emulator, no AR. No 3D Gaussian rasteriser: points with size and opacity. No SAM or CLIP: geometric proposals, and the challenge evaluation does not score label accuracy against a labelled reference. No LLM on the answer path: retrieval plus template, so every sentence has an evidence ID. No robot dynamics, no physics, no multiplayer, no login, no cloud. No interactive rerouting. No mesh reconstruction. No invented multi-room geometry: one captured bay is the demo, and the plant layer is the pack's metadata, not rendered. The scene-agnostic pipeline plus the second-scene run is how we answer "one room is not a plant", without fabricating a plant.
 
-The app contract does not change: a cloud of points with colours and, where available, triangles; a set of asset records with positions; a walkable floor; waypoints. The source is a field in the metadata, printed on screen.
+## 8. Risks and responses
 
-## 6. Architecture
-
-```
-photos or supplied scan
-   |
-   v
-[ingest]  depth + ArUco scale (ours) or file import (theirs)
-   |
-   v
-[geometry]  floor plane, occupancy grid, obstacle inflation
-   |
-   v
-[semantics]  geometry classes -> proposals -> CLIP labels -> plate OCR identity -> operator confirm
-   |                                                        |
-   v                                                        v
-[asset store]  id -> 3D selection, evidence, waypoint, documents, work orders
-   |                                   |
-   v                                   v
-[mission]  pick order -> asset -> route (A*) -> blocks -> reroute
-   |                                   |
-   v                                   v
-[viewer]  three.js            [answer]  retrieval + citations, template, optional cached LLM
-```
-
-Key choices: the asset store is JSON on disk (small, inspectable, no migration); the walkable layer is explicit and can be hand-corrected; the planner is pure Python with a deterministic seed; the viewer never computes a route.
-
-## 7. The re-cut schedule, 26 hours
-
-| Gate | Time | Must be true |
+| Risk | Trigger | Response |
 | --- | --- | --- |
-| G0 | 19:45 | data decision made, one area loads on the demo laptop, WebGL verified |
-| G1 | 02:00 | 5 confirmed assets with waypoints, a route to each from one start, viewer flies to the asset |
-| G2 | 07:45 | blocked aisle reroutes or reports unreachable, evidence panel cites the manual, all offline |
-| G3 | 12:30 | the 120 seconds runs three times in a row, with a judge-chosen destination |
-| G4 | 16:00 | evaluation numbers measured, video script locked |
-| Freeze | 22:00 | no code changes after this |
-
-Their stage plan of 2h inspect, 6h wire, 12h segmentation, 10h obstructions, rest present maps onto this as: inspect in G0, wire in G1, proposal-to-asset in G2, obstructions and evidence in G2, presentation from G3. The difference is that the stages run in parallel across four people, not one.
-
-Cut order: CLIP labels at 02:00 if they are vague, keeping geometry plus tags; the follow-the-route camera at 12:00, keeping the waypoint highlight; the judge-chosen destination at 12:30 if the UI is not ready; point density down to 50k at any stutter. Never cut: the blocked aisle, the waypoint beside the machine, the evidence citation.
-
-## 8. The four seats
-
-| Seat | Owns | First handover |
-| --- | --- | --- |
-| A | ingest, depth or import, segmentation proposals, plate identity | one area loads with 5 assets by 22:30 |
-| B | floor, grid, A*, obstruction and reroute, waypoints | a route to one asset by 22:30, blockage by 07:45 |
-| C | viewer, selection, highlights, camera, the mission UI | scan on screen by 22:30, mission flow by 07:45 |
-| D | integration, asset store, evidence panel, evaluation, video, submission | plumbed order to asset by 22:30 |
-
-One writer per file. The lead merges. No automerge.
-
-## 9. What we claim, and how we measure it
-
-- **Correct asset selection** on 5 to 8 destinations from a work order: n correct out of n tried, with the mistakes shown, not hidden.
-- **Routes found**: how many of those destinations have a route, and the response time in milliseconds.
-- **Blocked handling**: for each aisle blocked, either a new route (and how much longer) or a clear unreachable verdict.
-- **Manual preparation**, stated as a number: how many objects were confirmed by hand, how many metres of floor were drawn by hand, how many documents were attached by hand.
-- **The demo itself**: three clean runs in a row on the demo laptop.
-
-No claim about predictive maintenance. The alert is simulated and labelled simulated, because a scan cannot establish that a bearing is failing.
-
-## 10. Risks
-
-1. **No supplied data and a boring room.** Mitigation: scout the venue for pipes, cabinets and plant; bring three tagged objects to stage the area; say "stand-in" on screen.
-2. **Depth quality on flat walls and glass.** Mitigation: textured views, guided filter, plate tags on the assets that matter.
-3. **Semantics confidently wrong.** Mitigation: proposals versus confirmed, visible in the UI, and the demo shows one object going through confirmation rather than a hundred unexplained labels.
-4. **WebGL on the demo laptop.** Tested at 19:45, two fallbacks.
-5. **One night.** G1 is a working mission without obstructions, so a bad night still ships on-brief.
-
-## 11. Not building
-
-Robot simulation, predictive maintenance, automatic pipe connectivity, whole-plant understanding, VR or AR, LiDAR or photogrammetry capture, a login, a cloud service, an LLM on the answer path.
-
-## 11b. How the submission is actually read
-
-The vote card is not the repository. Voters see a name, a tagline, the first lines of the About text, the demo video playing on the card, the pitch deck if we upload one, and the first five Built with chips. Judges read all of the About text, up to 5,000 characters.
-
-So three pieces of copy are as load bearing as the demo:
-
-1. **Tagline**: one line, the 20 second pitch in miniature.
-2. **First two sentences of About**: they are what a scanning voter reads.
-3. **Built with order**: the first five become chips, so list the stack in the order we want it read.
-
-The demo video must be a **YouTube link, public or unlisted**. There are no MP4 uploads, so the render goes to YouTube and the link goes in the form. A pitch deck is optional, one PDF or PPTX, and voters can open it from the card.
-
-The repository link can be private, in which case judges use a source-code zip. That is a worse experience than a public repo and it adds a step on Sunday morning, so make the repo public before submission unless the challenge forbids it.
-
-Every member must accept the challenge IP terms in sinceai.app, and any member can submit. One entry per team.
-
-## 12. Checklist at 19:30
-
-1. Read the full brief in the app. Check it against section 0 and name anything scored that we do not cover.
-2. Get the dataset answer: what Valmet provides, in what format, when. If nothing, start the venue capture immediately.
-3. Confirm the 120 second sequence out loud, once, with the room.
-4. Assign the four seats by name.
-5. Freeze contracts: cloud buffer, asset record, route request and response, obstruction event.
-6. WebGL test on the demo laptop. Fallback chosen at 19:45.
+| Splat coverage is thinner than the video suggests | the sane prefix covers only part of the room | Frame what is there, disclose the coverage, ask Valmet for a clean export Saturday morning |
+| Clustering merges the boiler room into one blob | floor and walls connect everything | Measured Friday evening: after 8 planes removed, connected components at 3 cm still leave 74 percent of points in one component (87 percent at 4 cm). Splitting large components is mandatory: k-means per oversized component, or patch segmentation. The loader is the easy half |
+| Floor is poorly captured | the camera rarely looks down | Estimate the floor from the lowest dense band and disclose it; the occupancy grid only needs obstacles, not floor texture |
+| The faulty target lands on an unreachable object | A* returns no path | Choose the pump-like object with the best clearance as the mapping for P-005, and record the choice |
+| The tail of the .ply crashes the viewer | NaN or 1e26 in the buffer | The filter is mandatory, and the loader asserts finite bounds |
+| Time | nothing end to end by 01:00 | Cut the proximity labels to the nearest object only, then the follow camera, then the avatar animation. Never cut the frames or the route |
