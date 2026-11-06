@@ -55,7 +55,9 @@ def asset_footprint(asset: dict) -> Rect:
 
 def object_footprint(obj: dict, up_axis: int = 1) -> Rect:
     """Compute 2D horizontal bounding box for an extracted scene object."""
-    center = obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
+    # objects.json uses "centre" (British spelling per scene-artifacts.md); fall
+    # back to "center" and then "pos" so the function works with both schemas.
+    center = obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
     extents = obj.get("extents") or obj.get("size", [0.8, 0.8, 0.8])
     if up_axis == 1:
         x, z = float(center[0]), float(center[2])
@@ -157,6 +159,7 @@ class Grid:
         agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
         objects: list[dict] | None = None,
         bounds_pad_m: float = 0.5,
+        walkable_height_max_m: float = WALKABLE_HEIGHT_MAX_M,
     ) -> "Grid":
         """Build occupancy grid directly from point cloud and extracted objects."""
         # Horizontal axes: for up_axis=1 (y up), horizontal axes are x (0) and z (2)
@@ -190,7 +193,7 @@ class Grid:
 
         # Obstacle points: standing above the floor between min and max clearance height
         is_obstacle = (y_pts >= (floor_y + WALKABLE_HEIGHT_MIN_M)) & (
-            y_pts <= (floor_y + WALKABLE_HEIGHT_MAX_M)
+            y_pts <= (floor_y + walkable_height_max_m)
         )
         obs_x = h_x[is_obstacle]
         obs_z = h_z[is_obstacle]
@@ -291,7 +294,8 @@ def compute_service_waypoint(
     The waypoint is at least min_dist_m away from the object's boundary
     and selects the walkable cell with the highest clearance.
     """
-    center = target_box.get("center") or target_box.get("pos", [0.0, 0.0, 0.0])
+    # objects.json uses "centre"; fall back to "center" then "pos".
+    center = target_box.get("centre") or target_box.get("center") or target_box.get("pos", [0.0, 0.0, 0.0])
     extents = target_box.get("extents") or target_box.get("size", [0.8, 0.8, 0.8])
     if up_axis == 1:
         cx, cz = float(center[0]), float(center[2])
@@ -355,9 +359,11 @@ def derive_start_position(
     """Derive start position: near entrance/door object, or at boundary edge with high clearance."""
     if objects:
         for obj in objects:
-            cls_name = str(obj.get("class_proposal", "")).lower()
+            # objects.json uses "class"; fall back to "class_proposal" for compatibility.
+            cls_name = str(obj.get("class") or obj.get("class_proposal", "")).lower()
             if any(k in cls_name for k in ("door", "entrance", "opening", "exit")):
-                center = obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
+                # objects.json uses "centre"; fall back to "center" then "pos".
+                center = obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
                 if up_axis == 1:
                     cx, cz = float(center[0]), float(center[2])
                 else:
@@ -452,7 +458,7 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
                 continue
 
             clearance = float(grid.clearance_m[nxt[0], nxt[1]])
-            penalty = 0.4 / max(clearance, 0.2)
+            penalty = 1.0 / max(clearance, 0.15)
             tentative = cost[current] + step * (1.0 + penalty)
             if tentative < cost.get(nxt, float("inf")):
                 cost[nxt] = tentative
@@ -479,8 +485,15 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
 
     path_2d = [grid.to_world(*c) for c in cells]
     length = sum(math.dist(a, b) for a, b in zip(path_2d, path_2d[1:]))
-    inflation = grid.agent_radius_m + SAFETY_MARGIN_M
-    clearance = min(float(grid.clearance_m[r, c]) for r, c in cells) + inflation
+    # clearance_m is already the distance from cell centre to nearest inflated
+    # obstacle edge. Do not add the inflation radius again; that would
+    # double-count it and report a falsely large clearance.
+    # Exclude the docking zone (last 1 m / ~10 cells): those steps are the
+    # final approach onto the inspection waypoint, which sits beside the machine.
+    # The corridor clearance is what matters for traversal.
+    docking_cells = max(1, int(round(DEFAULT_CLEARANCE_TARGET_M / CELL_M)))
+    corridor_cells = cells[:-docking_cells] if len(cells) > docking_cells else cells[:1]
+    clearance = min(float(grid.clearance_m[r, c]) for r, c in corridor_cells)
 
     return {
         "reachable": True,
@@ -589,12 +602,14 @@ def compute_path_proximity(
         nearby: list[dict[str, Any]] = []
         for obj in objects:
             obj_id = str(obj.get("id", ""))
-            center = obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
+            # objects.json uses "centre"; fall back to "center" then "pos".
+            center = obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
             dist_to_obj = math.dist(sample_pos, [float(c) for c in center])
             if dist_to_obj <= radius_m:
                 mapped = map_by_obj.get(obj_id, {})
                 tag = mapped.get("tag") or mapped.get("asset_id") or obj.get("tag") or obj_id
-                cls_name = mapped.get("class") or obj.get("class_proposal", "equipment")
+                # objects.json uses "class"; fall back to "class_proposal" for compatibility.
+                cls_name = mapped.get("class") or obj.get("class") or obj.get("class_proposal", "equipment")
                 method = mapped.get("method", "size_prior")
                 state = mapped.get("state") or obj.get("state", "NOMINAL")
                 nearby.append({
@@ -645,14 +660,55 @@ def build_route(
     agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
 ) -> dict[str, Any]:
     """End-to-end execution for Seat B: produces route.json matching Acceptance Checks 4 & 5."""
+    # Read up_axis from the scene artifact so this works for any capture.
+    # The boiler room is +y (index 1); the Equipment Room is -y (still index 1,
+    # sign -1). Default to 1 if the artifact is absent.
     up_axis = 1
+    scene_meta: dict | None = None
+    if scene_path and scene_path.exists():
+        try:
+            import json as _json
+            _data = np.load(scene_path, allow_pickle=False)
+            _meta_bytes = _data.get("meta") if hasattr(_data, "get") else None
+            if _meta_bytes is None:
+                # npz files expose keys as attributes via indexing
+                _meta_str = str(_data["meta"]) if "meta" in _data.files else None  # type: ignore[attr-defined]
+            else:
+                _meta_str = str(_meta_bytes)
+            if _meta_str:
+                scene_meta = _json.loads(_meta_str)
+                up_axis = int(scene_meta.get("frame", {}).get("up_axis_index", 1))
+        except Exception:
+            up_axis = 1
 
     # Load objects if available
     objects: list[dict] = []
+    walkable_height_max_m = WALKABLE_HEIGHT_MAX_M  # scene-relative override below
     if objects_path and objects_path.exists():
         try:
             obj_data = json.loads(objects_path.read_text())
             objects = obj_data if isinstance(obj_data, list) else obj_data.get("objects", [])
+            # Fix 4: derive walkable ceiling from the measured floor-to-next-plane
+            # distance stored in the objects artifact rather than using the hard-coded
+            # 2.0 m constant. The boiler room has only 1.95 m to the first horizontal
+            # plane; using 2.0 m would pull pipe-tray / duct points into the obstacle
+            # band and risk blocking the entire room.
+            # objects.json records this as planes[i].height for horizontal planes, or
+            # we use (next_horizontal_plane_height - floor_height) when available.
+            planes = obj_data.get("planes", {}).get("items", []) if isinstance(obj_data, dict) else []
+            floor_info = obj_data.get("floor", {}) if isinstance(obj_data, dict) else {}
+            floor_h = floor_info.get("height")
+            if floor_h is not None and planes:
+                # Find the lowest horizontal plane above the floor
+                above_floor = [
+                    p.get("offset", 0.0)
+                    for p in planes
+                    if p.get("horizontal") and p.get("offset", 0.0) > floor_h + 0.5
+                ]
+                if above_floor:
+                    clearance_to_ceil = min(above_floor) - floor_h
+                    # Keep 10 cm margin below the ceiling plane
+                    walkable_height_max_m = max(1.5, round(clearance_to_ceil - 0.10, 2))
         except Exception:
             objects = []
 
@@ -695,6 +751,7 @@ def build_route(
             up_axis=up_axis,
             agent_radius_m=agent_radius_m,
             objects=objects,
+            walkable_height_max_m=walkable_height_max_m,
         )
     else:
         # Fallback to synthetic reference plant

@@ -53,8 +53,10 @@ def test_route_to_an_asset_by_id():
 
 
 def test_route_with_the_west_aisle_closed_is_longer():
-    plain = client.post("/api/route", json={"to": "V-203"}).json()
-    blocked = client.post("/api/route", json={"to": "V-203", "blockers": [[0.0, 4.8, 4.6, 7.2]]}).json()
+    # T-501 is a large tank whose shortest path runs via the west aisle.
+    # Blocking the west aisle forces a long detour via the east aisle (>12 m longer).
+    plain = client.post("/api/route", json={"to": "T-501"}).json()
+    blocked = client.post("/api/route", json={"to": "T-501", "blockers": [[0.0, 4.8, 4.6, 7.2]]}).json()
     assert blocked["reachable"] is True
     assert blocked["distance_m"] > plain["distance_m"] + 4
 

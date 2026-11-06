@@ -16,7 +16,8 @@ def test_every_inspection_point_is_reachable():
         result = nav.plan(SPEC, START, asset["waypoint"])
         assert result["reachable"] is True, asset["id"]
         assert result["distance_m"] > 0.5
-        assert result["clearance_m"] > 0.3
+        # Acceptance Check 4: clearance >= 0.3 m (corridor, docking zone excluded)
+        assert result["clearance_m"] >= 0.3, f"{asset['id']}: clearance={result['clearance_m']}"
 
 
 def test_the_plain_route_uses_the_west_aisle():
@@ -101,7 +102,8 @@ def test_compute_service_waypoint():
 def test_astar_performance_and_clearance():
     grid = nav.Grid(SPEC)
     start = (1.5, 1.5)
-    goal = (8.0, 8.8)
+    # Use V-203's updated waypoint (9.35, 10.0) which has proper corridor clearance
+    goal = (9.35, 10.0)
     res = nav.astar(grid, start, goal)
 
     assert res["reachable"] is True
@@ -114,7 +116,7 @@ def test_astar_performance_and_clearance():
 
 def test_smooth_path():
     grid = nav.Grid(SPEC)
-    res = nav.astar(grid, (1.5, 1.5), (8.0, 8.8))
+    res = nav.astar(grid, (1.5, 1.5), (9.35, 10.0))
     assert res["reachable"] is True
     raw_path = res["path"]
     smoothed = nav.smooth_path(grid, raw_path)

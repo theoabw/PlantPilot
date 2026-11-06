@@ -87,7 +87,7 @@
       ],
       "waypoint": [
         5.2,
-        4.4
+        4.3
       ],
       "tag": "P-201",
       "interval": "1 year",
@@ -165,7 +165,7 @@
       ],
       "waypoint": [
         2.6,
-        4.6
+        6.7
       ],
       "tag": "V-102",
       "interval": "1 year",
@@ -192,7 +192,7 @@
       "shape": "cylinder",
       "waypoint": [
         6.0,
-        4.6
+        9.3
       ],
       "tag": "T-501",
       "interval": "4 years",
@@ -218,8 +218,8 @@
       ],
       "shape": "cylinder",
       "waypoint": [
-        10.0,
-        4.6
+        12.3,
+        7.0
       ],
       "tag": "T-502",
       "interval": "4 years",
@@ -245,7 +245,7 @@
       ],
       "waypoint": [
         8.0,
-        5.4
+        5.8
       ],
       "tag": "S-410",
       "interval": "1 year",
@@ -270,8 +270,8 @@
         0.6
       ],
       "waypoint": [
-        12.9,
-        4.2
+        14.0,
+        5.4
       ],
       "tag": "C-701",
       "interval": "4 years",
@@ -296,8 +296,8 @@
         0.8
       ],
       "waypoint": [
-        12.4,
-        8.6
+        13.6,
+        9.9
       ],
       "tag": "HX-450",
       "interval": "1 year",
@@ -322,8 +322,8 @@
         0.9
       ],
       "waypoint": [
-        8.0,
-        8.8
+        9.35,
+        10.0
       ],
       "tag": "V-203",
       "interval": "1 year",
