@@ -88,3 +88,20 @@ export function inspections(assets: Asset[]): Inspection[] {
     })
     .sort((a, b) => a.dueInDays - b.dueInDays)
 }
+
+
+export type Explain = {
+  asset: Asset | null
+  reason?: string
+  request?: { interval: string; last_service: string; due: string; due_in_days: number; symptom: string }
+  sections: { id: string; title: string; page: number; quote: string; anchor: string }[]
+  action: { part: string; action: string; interval: string; source: string } | null
+}
+
+export function fetchExplain(assetId: string): Promise<Explain> {
+  return json<Explain>('/api/explain', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ asset_id: assetId }),
+  })
+}
