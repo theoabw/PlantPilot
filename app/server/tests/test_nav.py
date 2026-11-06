@@ -73,11 +73,11 @@ def test_grid_from_cloud_and_clearance():
 
     # Center cell should be blocked
     center_r, center_c = grid.to_cell((0.0, 0.0))
-    assert grid.walkable(center_r, center_c) is False
+    assert not grid.walkable(center_r, center_c)
 
     # Outer corner should be walkable
     corner_r, corner_c = grid.to_cell((3.0, 3.0))
-    assert grid.walkable(corner_r, corner_c) is True
+    assert grid.walkable(corner_r, corner_c)
     assert grid.clearance_m[corner_r, corner_c] > 0.0
 
 
@@ -95,7 +95,7 @@ def test_compute_service_waypoint():
     dist_to_center = math.dist(wp, (4.0, 5.0))
     assert dist_to_center >= 1.0
     r, c = grid.to_cell(wp)
-    assert grid.walkable(r, c) is True
+    assert grid.walkable(r, c)
 
 
 def test_astar_performance_and_clearance():
