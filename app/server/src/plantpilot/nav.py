@@ -658,8 +658,16 @@ def build_route(
     output_path: Path | None = None,
     manual_floor_y: float | None = None,
     agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
+    blockers: list[list[float]] | None = None,
 ) -> dict[str, Any]:
-    """End-to-end execution for Seat B: produces route.json matching Acceptance Checks 4 & 5."""
+    """End-to-end execution for Seat B: produces route.json matching Acceptance Checks 4 & 5.
+
+    ``blockers`` is a list of ``[x0, z0, x1, z1]`` rectangles (in metres, splat
+    frame) that are added on top of the permanent occupancy grid before A* runs.
+    They model a blocked aisle, a parked forklift, or any transient obstacle the
+    viewer lets the judge place.  Passing an empty list or None leaves the grid
+    unchanged.
+    """
     # Read up_axis from the scene artifact so this works for any capture.
     # The boiler room is +y (index 1); the Equipment Room is -y (still index 1,
     # sign -1). Default to 1 if the artifact is absent.
@@ -779,6 +787,10 @@ def build_route(
     else:
         goal_2d = (grid.x0 + grid.width_m * 0.7, grid.z0 + grid.depth_m * 0.7)
 
+    # Apply transient blockers (parked forklift, closed aisle, etc.)
+    if blockers:
+        grid = grid.with_blockers(blockers)
+
     # Compute A* path
     plan_result = astar(grid, start_2d, goal_2d)
 
@@ -817,6 +829,7 @@ def build_route(
         "astar_ms": plan_result.get("astar_ms", 0.0),
         "path": path_3d,
         "path_samples": samples,
+        "active_blockers": blockers or [],
         "grid_stats": {
             "cols": grid.cols,
             "rows": grid.rows,
