@@ -77,7 +77,7 @@ Sunday: wake 07:00, clean clone, `make test`, `make demo`, submission saved by 0
 
 | Risk | Trigger | Response |
 | --- | --- | --- |
-| Segmentation collapses the room | measured Friday evening: 74 percent of points in one component at 3 cm; fewer than 15 objects after splitting | split every component over 20 k points with k-means. Set a disclosed fallback of 30 framed objects, the mapping count, and never go below 30; below 30 the mapping is incomplete and the check fails |
+| Segmentation collapses the room | retired Friday 21:10: with the 4 cm plane band the largest object holds 3.7 percent of the points and 130 objects are framed, so the split never has to rescue the room | if a later capture does collapse, split every component over 20 k points and disclose a fallback of 30 framed objects; below 30 the mapping is incomplete and the check fails |
 | The floor plane is wrong | the occupancy grid blocks the whole room | a disclosed per-scene override: a hand-checked floor polygon, with the run labelled assisted. An assisted run does not count toward the scene-agnostic check |
 | The target is unreachable | A* returns no path | remap P-005 to the pump-like object with the best clearance |
 | The viewer drops frames | under 20 fps on the demo laptop | render a 400 k point subset for the demo and say the number honestly |
