@@ -4,8 +4,6 @@ Inspection missions in a scanned plant.
 
 Built for the **SinceAI Hackathon 2026**, Valmet challenge: a digital plant that "understands where machines are, what they are, how people or robots could move between them and which equipment needs attention".
 
-This is the working tree at the start of the build. The capture, OCR, corpus and register layers work and are tested; the mission flow (work order, route, blocked aisle, reroute) is being built during the event.
-
 ## The problem
 
 A work order names a machine, not a place. A technician has to find P-204 inside a plant, work out how to reach the inspection point, and then explain why the visit is needed. A 3D scan of the plant looks impressive and answers none of that on its own. The description says it plainly: today's captures "lack the meaning needed for intelligent action".
@@ -59,7 +57,7 @@ All open source, all local, nothing on the network at demo time.
 | Geometry and planning | numpy, scipy, A* on an occupancy grid | BSD |
 | Viewer | React, Vite, three.js | MIT |
 
-Data: the Valmet *Flow control manual* (6th edition) and *VMR003* service recommendation, both public PDFs. Pre-existing before the event and declared in the submission: the two document fetches, the scaffold, the table of contents parser probe and the capture module.
+Data: the Valmet *Flow control manual* (6th edition) and *VMR003* service recommendation, both public PDFs.
 
 ## Data and licences
 
