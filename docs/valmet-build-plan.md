@@ -33,7 +33,7 @@ Working name: **Fieldplate** (the plate is the interface, the record is the payl
 
 ## 2. The demo path, step by step
 
-One laptop projecting, one phone on the venue network running the same page. Three printed plates on three real objects on the table.
+One laptop projecting, with its own webcam as the live camera. A phone can open the same page and upload a photo it took, but it cannot use the live camera: getUserMedia needs a secure context, and a LAN http address is not one. Three printed plates on three real objects on the table.
 
 | # | Time | What the judge sees | Live or replay |
 | --- | --- | --- | --- |
@@ -134,6 +134,7 @@ Five states, one page: camera, asset, document, action, graph. Plain SVG for the
 - The bundle, fonts, icons and the whole corpus index are local.
 - `make demo` starts both processes, opens the browser, prints the LAN URL and a QR code for the phone.
 - The demo runs with the network cable out, tested at M0 and again at freeze.
+- The phone path is upload, not live capture: getUserMedia needs a secure context, and http on a LAN address is not one. The laptop on 127.0.0.1 is. Do not promise a judge a live phone camera unless we serve HTTPS.
 
 ## 5. The proof
 
@@ -158,7 +159,7 @@ Five states, one page: camera, asset, document, action, graph. Plain SVG for the
 
 | Mark | Clock | Work | Done when | Owner |
 | --- | --- | --- | --- | --- |
-| pre | now to 18:45 | Scaffold, corpus fetch, TOC parser probe, plates printed, camera test on the real laptop and both phones | `make demo` serves `/health` with the real section count, and one plate reads in the room's light | lead |
+| pre | now to 18:45 | Scaffold, corpus fetch, TOC parser probe, plates printed, webcam test on the real laptop and the phone photo-upload path over the LAN | `make demo` serves `/health` with the real section count, and one plate reads in the room's light | lead |
 | briefing | 18:50 to 19:30 | Write the criteria verbatim, ask the 8 questions, decide the three contingencies in section 10 | `challenge.md` Choice and criteria filled | whoever is not driving |
 | H+0 to H+1.5 | 19:30 to 21:00 | Read the brief, freeze scope and the API contract, assign the four seats | one page of scope, no open interface questions | lead |
 | M0 | 22:30 | One page served, `/scan` returns a fixture card, phone opens the page over LAN, 8 plates printed | network-off run shows a card | A capture |
