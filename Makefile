@@ -4,6 +4,7 @@ PY := uv run
 # it itself, so the counts it prints are the counts in the delivered file. A
 # second capture is `make scene PLY=path/to/other.ply`.
 PLY ?= data/supplied/Industrial Boiler Room (1).ply
+PACK_XLSX ?= data/supplied/builder_pack.xlsx
 SCENE ?= data/scene/scene.npz
 OBJECTS ?= data/scene/objects.json
 PREVIEW ?= data/scene/preview.png
@@ -16,7 +17,7 @@ PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects generality proof route test check clean
+.PHONY: demo web web-build corpus models register plates plant scan scene objects pack generality proof route test check clean
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -28,6 +29,10 @@ objects:
 	$(PY) python -m plantpilot.segment --scene $(SCENE) --out $(OBJECTS)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out $(OBJECTS_TOP)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW)
+
+## pack: convert the supplied builder workbook into data/scene/pack.json
+pack:
+	$(PY) python -m plantpilot.pack --xlsx "$(PACK_XLSX)" --out data/scene/pack.json
 
 ## generality: run the same stages on the reference plant, score the boxes
 generality: plant

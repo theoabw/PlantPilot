@@ -1,9 +1,10 @@
 # Scene artifacts
 
-Two files, both generated into `data/` and never committed:
+Generated artifacts are written into `data/` and never committed:
 
 | File | Written by | Read by |
 | --- | --- | --- |
+| `data/scene/pack.json` | `make pack` (`plantpilot.pack`) | mapping, diagnosis, API |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer, preview renderer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
 
@@ -14,11 +15,17 @@ parallel and a silent change to a key breaks another seat's work.
 ## Regenerate
 
 ```
+make pack                           # convert the supplied builder workbook
 make scene                          # ingest the capture as delivered
 make objects                        # extract the framed objects
 make scene PLY=path/to/other.ply    # the same code on another capture
 make generality                     # the same stages on the reference plant, scored
 ```
+
+`make pack` reads `data/supplied/builder_pack.xlsx` and writes
+`data/scene/pack.json`. It preserves the tables needed by mapping and
+diagnosis, merges the asset master, scene anchors and current state into
+`assets`, and records P-005 (`ASSET-017`) as the fixed demo target.
 
 `make scene` reads the file it is given and filters it itself, so the counts it
 prints are the counts in the delivered file. The supplied capture declares
