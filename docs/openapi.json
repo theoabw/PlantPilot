@@ -1643,6 +1643,50 @@
         "summary": "Explain"
       }
     },
+    "/api/filter/{name}": {
+      "get": {
+        "description": "One baked information channel as a gaussian PLY for the viewer.",
+        "operationId": "filter_asset_api_filter__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Filter Asset"
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "health_api_health_get",
@@ -1771,6 +1815,68 @@
         "summary": "Scan"
       }
     },
+    "/api/scene/anchors": {
+      "get": {
+        "description": "The reviewed anchor layer of the capture, from make anchors.",
+        "operationId": "scene_anchors_api_scene_anchors_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Anchors Api Scene Anchors Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Anchors"
+      }
+    },
     "/api/scene/assets": {
       "get": {
         "description": "The coherent equipment assets of the capture, from make assets.",
@@ -1831,6 +1937,68 @@
           }
         },
         "summary": "Scene Assets"
+      }
+    },
+    "/api/scene/filters": {
+      "get": {
+        "description": "The baked information channels of the capture, from make filter-assets.",
+        "operationId": "scene_filters_api_scene_filters_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Filters Api Scene Filters Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Filters"
       }
     },
     "/api/scene/mapped": {

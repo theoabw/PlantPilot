@@ -25,6 +25,9 @@ PACK ?= $(CAPTURE_DIR)/pack.json
 SCENE ?= $(CAPTURE_DIR)/scene.npz
 OBJECTS ?= $(CAPTURE_DIR)/objects.json
 ASSETS ?= $(CAPTURE_DIR)/assets.json
+ANCHORS ?= $(CAPTURE_DIR)/anchors.json
+FILTERS ?= data/viewer/filters/$(CAPTURE)
+ANCHORS_FIXTURE ?= fixtures/scene/anchors_$(CAPTURE).json
 MAPPED ?= $(CAPTURE_DIR)/mapped.json
 ROUTE ?= $(CAPTURE_DIR)/route.json
 DIAGNOSIS ?= $(CAPTURE_DIR)/diagnosis.json
@@ -48,7 +51,7 @@ PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects splat-asset pack map diagnose pipeline generality proof route openapi test check clean assets
+.PHONY: demo web web-build corpus models register plates plant scan scene objects anchors filter-assets splat-asset pack map diagnose pipeline generality proof route openapi test check clean assets
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -62,6 +65,18 @@ objects:
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out $(OBJECTS_TOP)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW) \
 	  --mode splats --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT) --no-labels
+
+## anchors: build the reviewed demo layer from the committed fixture
+anchors: scene
+	@if [ -f "$(ANCHORS_FIXTURE)" ]; then \
+	  $(PY) python scripts/make_anchors.py --scene $(SCENE) --fixture $(ANCHORS_FIXTURE) --out $(ANCHORS); \
+	else \
+	  echo "no reviewed anchors for $(CAPTURE), the viewer falls back to the proposal layer"; \
+	fi
+
+## filter-assets: bake the height, normals, edges and semantics PLYs for the viewer
+filter-assets: scene objects assets
+	$(PY) python scripts/make_filter_assets.py --scene $(SCENE) --objects $(OBJECTS) --assets $(ASSETS) --out $(FILTERS)
 
 ## assets: merge the raw boxes into coherent, labelled equipment instances
 assets: scene objects
@@ -84,7 +99,7 @@ diagnose: pack
 	$(PY) python -m plantpilot.diagnose --pack $(PACK) --out $(DIAGNOSIS)
 
 ## pipeline: build every artifact the room view needs for CAPTURE
-pipeline: scene objects assets map diagnose route splat-asset
+pipeline: scene objects anchors assets map diagnose route splat-asset
 
 ## generality: run the same stages on the reference plant, score the boxes
 generality: plant
@@ -94,7 +109,7 @@ generality: plant
 	$(PY) python scripts/plant_generality.py --objects $(PLANT_OBJECTS)
 
 ## demo: build CAPTURE's artifacts and the web page, then serve both
-demo: pipeline web-build register
+demo: pipeline filter-assets web-build register
 	PLANTPILOT_SCENE=$(CAPTURE_DIR) PLANTPILOT_SPLAT=$(VIEWER_PLY) \
 	  $(PY) uvicorn plantpilot.main:app --host 127.0.0.1 --port 8000 --app-dir app/server/src
 

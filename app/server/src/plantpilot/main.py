@@ -43,10 +43,13 @@ ROUTE_FILE = DATA / "scene" / "route.json"
 SCENE_DIR = Path(os.environ.get("PLANTPILOT_SCENE", DATA / "scene"))
 OBJECTS_FILE = SCENE_DIR / "objects.json"
 ASSETS_FILE = SCENE_DIR / "assets.json"
+ANCHORS_FILE = SCENE_DIR / "anchors.json"
 MAPPED_FILE = SCENE_DIR / "mapped.json"
 ROUTE_ARTIFACT = SCENE_DIR / "route.json"
 DIAGNOSIS_FILE = SCENE_DIR / "diagnosis.json"
 SPLAT_ASSET = Path(os.environ.get("PLANTPILOT_SPLAT", DATA / "viewer" / "room.ply"))
+FILTER_DIR = Path(os.environ.get("PLANTPILOT_FILTERS", DATA / "viewer" / "filters" / SCENE_DIR.name))
+FILTER_NAMES = ("height", "normals", "edges", "semantics")
 
 app = FastAPI(title="PlantPilot", version=__version__)
 
@@ -306,6 +309,14 @@ def scene_objects() -> dict:
     return json.loads(OBJECTS_FILE.read_text())
 
 
+@app.get("/api/scene/anchors", responses=_ARTIFACT_RESPONSES)
+def scene_anchors() -> dict:
+    """The reviewed anchor layer of the capture, from make anchors."""
+    if not ANCHORS_FILE.exists():
+        raise HTTPException(status_code=404, detail="no anchors artifact, run make anchors")
+    return json.loads(ANCHORS_FILE.read_text())
+
+
 @app.get("/api/scene/assets", responses=_ARTIFACT_RESPONSES)
 def scene_assets() -> dict:
     """The coherent equipment assets of the capture, from make assets."""
@@ -328,6 +339,29 @@ def scene_route() -> dict:
     if not ROUTE_ARTIFACT.exists():
         raise HTTPException(status_code=404, detail="no route artifact, run make route")
     return json.loads(ROUTE_ARTIFACT.read_text())
+
+
+@app.get("/api/scene/filters", responses=_ARTIFACT_RESPONSES)
+def scene_filters() -> dict:
+    """The baked information channels of the capture, from make filter-assets."""
+    path = FILTER_DIR / "filters.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no filter assets, run make filter-assets")
+    return json.loads(path.read_text())
+
+
+@app.get(
+    "/api/filter/{name}",
+    responses={200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def filter_asset(name: str) -> FileResponse:
+    """One baked information channel as a gaussian PLY for the viewer."""
+    if name not in FILTER_NAMES:
+        raise HTTPException(status_code=404, detail=f"unknown filter {name}")
+    path = FILTER_DIR / f"{name}.ply"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no filter asset, run make filter-assets")
+    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
 
 
 @app.get(

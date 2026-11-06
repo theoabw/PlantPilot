@@ -1,0 +1,287 @@
+{
+  "artifact": "anchors",
+  "version": 1,
+  "capture": "Equipment Room.ply",
+  "reviewed_by": "box audit 2026-11-07",
+  "note": "Seven boxes from the automatic proposal layer that survived a visual audit, with labels corrected to what the box actually contains.",
+  "anchors": [
+    {
+      "id": "AN-0238fdab",
+      "asset_id": "AS-0238fdab",
+      "class": "pipework",
+      "label": "red-painted pipe run",
+      "reviewed": true,
+      "verdict": "B",
+      "note": "Box wraps a rising red pipe run and some wall behind it; label kept as a pipe run.",
+      "centre": [
+        -1.0219,
+        0.0018,
+        0.13
+      ],
+      "axes": [
+        [
+          0.07943,
+          0.99678,
+          -0.01086
+        ],
+        [
+          0.99377,
+          -0.07833,
+          0.07926
+        ],
+        [
+          -0.07815,
+          0.01709,
+          0.9968
+        ]
+      ],
+      "extents": [
+        1.6379,
+        0.4516,
+        0.1155
+      ],
+      "source_object_ids": [
+        "OBJ-063",
+        "OBJ-066"
+      ],
+      "rgb": null
+    },
+    {
+      "id": "AN-7b2029e0",
+      "asset_id": "AS-7b2029e0",
+      "class": "equipment",
+      "label": "red-painted equipment",
+      "reviewed": true,
+      "verdict": "B",
+      "note": "Box around red paint and hose on the floor with some floor included; label kept generic.",
+      "centre": [
+        1.4704,
+        1.0425,
+        -2.7228
+      ],
+      "axes": [
+        [
+          0.98517,
+          -0.12883,
+          -0.11335
+        ],
+        [
+          0.12284,
+          0.06832,
+          0.99007
+        ],
+        [
+          0.1198,
+          0.98931,
+          -0.08313
+        ]
+      ],
+      "extents": [
+        1.1783,
+        0.7337,
+        0.2927
+      ],
+      "source_object_ids": [],
+      "rgb": null
+    },
+    {
+      "id": "AN-51c6f8ce",
+      "asset_id": "AS-51c6f8ce",
+      "class": "motor",
+      "label": "motor assembly",
+      "reviewed": true,
+      "verdict": "B",
+      "note": "Box holds a motor-sized body with some surroundings; label plausible in the audit.",
+      "centre": [
+        -0.7891,
+        0.6442,
+        2.0766
+      ],
+      "axes": [
+        [
+          0.92255,
+          -0.25627,
+          -0.28849
+        ],
+        [
+          0.20214,
+          -0.31588,
+          0.92702
+        ],
+        [
+          0.32869,
+          0.91353,
+          0.23962
+        ]
+      ],
+      "extents": [
+        1.0163,
+        0.8107,
+        0.4831
+      ],
+      "source_object_ids": [
+        "OBJ-070"
+      ],
+      "rgb": null
+    },
+    {
+      "id": "AN-b3544c88",
+      "asset_id": "AS-b3544c88",
+      "class": "cabinet",
+      "label": "red cabinet",
+      "reviewed": true,
+      "verdict": "A",
+      "note": "Tight box on one red rectangular body; the automatic pipework label was wrong.",
+      "centre": [
+        -2.7564,
+        0.3816,
+        2.7912
+      ],
+      "axes": [
+        [
+          0.13501,
+          0.99081,
+          -0.00848
+        ],
+        [
+          0.9788,
+          -0.13469,
+          -0.1543
+        ],
+        [
+          0.15402,
+          -0.01253,
+          0.98799
+        ]
+      ],
+      "extents": [
+        1.1864,
+        0.6189,
+        0.357
+      ],
+      "source_object_ids": [],
+      "rgb": null
+    },
+    {
+      "id": "AN-5dbcb330",
+      "asset_id": "AS-5dbcb330",
+      "class": "equipment",
+      "label": "blue painted equipment",
+      "reviewed": true,
+      "verdict": "A",
+      "note": "Tight box on one blue body; the audit could not confirm tank versus enclosure.",
+      "centre": [
+        -2.5094,
+        0.3953,
+        0.9932
+      ],
+      "axes": [
+        [
+          0.04361,
+          0.99849,
+          0.03329
+        ],
+        [
+          0.90498,
+          -0.02537,
+          -0.4247
+        ],
+        [
+          0.42321,
+          -0.04864,
+          0.90472
+        ]
+      ],
+      "extents": [
+        1.1367,
+        0.6382,
+        0.6043
+      ],
+      "source_object_ids": [
+        "OBJ-031",
+        "OBJ-034"
+      ],
+      "rgb": null
+    },
+    {
+      "id": "AN-2368abf6",
+      "asset_id": "AS-2368abf6",
+      "class": "equipment",
+      "label": "equipment",
+      "reviewed": true,
+      "verdict": "A",
+      "note": "Tight box on one white machine body; the automatic motor label was wrong.",
+      "centre": [
+        -3.4559,
+        0.6253,
+        2.9864
+      ],
+      "axes": [
+        [
+          -0.19426,
+          -0.58958,
+          0.784
+        ],
+        [
+          0.93079,
+          -0.36307,
+          -0.04241
+        ],
+        [
+          0.30965,
+          0.72151,
+          0.61931
+        ]
+      ],
+      "extents": [
+        0.9105,
+        0.6096,
+        0.441
+      ],
+      "source_object_ids": [
+        "OBJ-019"
+      ],
+      "rgb": null
+    },
+    {
+      "id": "AN-3f29eeb0",
+      "asset_id": "AS-3f29eeb0",
+      "class": "equipment",
+      "label": "equipment",
+      "reviewed": true,
+      "verdict": "A",
+      "note": "Tight box on one dark machine body; the audit called the motor label unclear.",
+      "centre": [
+        -0.8519,
+        0.4547,
+        -0.5517
+      ],
+      "axes": [
+        [
+          0.0711,
+          -0.06941,
+          0.99505
+        ],
+        [
+          0.99697,
+          0.03641,
+          -0.0687
+        ],
+        [
+          -0.03147,
+          0.99692,
+          0.07179
+        ]
+      ],
+      "extents": [
+        0.769,
+        0.5941,
+        0.3303
+      ],
+      "source_object_ids": [
+        "OBJ-069"
+      ],
+      "rgb": null
+    }
+  ]
+}

@@ -14,7 +14,8 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer, preview renderer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
-| `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (the default object layer) |
+| `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
+| `data/scene/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
 | `data/viewer/room.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
@@ -132,14 +133,15 @@ the `scene lab` button.
 - `make splat-asset` writes `data/viewer/room.ply`: the sane prefix with the 14
   core properties only, 28 MB for the supplied capture instead of 355 MB, so the
   browser loads it in seconds.
-- `GET /api/splat` serves that file, `GET /api/scene/assets` serves the
-  refined object layer, `GET /api/scene/objects` serves the raw extraction and
+- `GET /api/splat` serves that file, `GET /api/scene/anchors` serves the
+  reviewed demo layer, `GET /api/scene/assets` serves the automatic proposal
+  layer, `GET /api/scene/objects` serves the raw extraction and
   `GET /api/scene/mapped` serves the mapping when `make map` has run. Everything
   is local, so the demo makes no network calls.
-- The room view draws the refined assets by default, as thin outlines, and
-  shows labels, class and confidence only on selection. The raw extraction stays
-  one toggle away in the Objects panel, which is where a reviewer should look
-  when judging a selection rather than the room.
+- The room view draws the reviewed anchors by default, as thin outlines, and
+  shows labels and provenance only on selection. If a capture has no reviewed
+  fixture it falls back to the automatic proposal layer, and the raw extraction
+  stays one toggle away in the Objects panel.
 - `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` point the room view at another
   capture, for example `PLANTPILOT_SCENE=data/equipment
   PLANTPILOT_SPLAT=data/viewer/equipment.ply`. The supplied boiler-room delivery
@@ -333,6 +335,27 @@ voxel grid, which is what turns the painted vessels into single objects. The
 rest come from compact geometric boxes. Overlaps are resolved with a 3D
 oriented-box IoU rule, and a box whose centre falls inside a kept instance is
 suppressed. `assets.json` is additive: `objects.json` keeps every raw detection.
+
+## `anchors.json`
+
+The reviewed demo layer. An audit of the proposal layer found that of the 20
+boxes it drew by default, 4 matched one object, 5 were partial, 7 wrapped
+several things and 4 sat on empty space, and 14 of 20 labels did not fit the
+content. The anchors are the boxes that survived that audit, with labels
+corrected to what the box actually contains.
+
+The input is a small committed fixture, `fixtures/scene/anchors_<capture>.json`,
+which also records the audit verdict and a note per anchor. `make anchors` fits
+nothing; it validates each fixture box against the capture, adds the number of
+gaussians inside and the mean colour, and writes `anchors.json`. A capture with
+no fixture is skipped and the viewer falls back to the proposal layer.
+
+Each anchor: `id` (`AN-` plus the proposal id suffix), `asset_id`, `class`,
+`label`, `reviewed`, `verdict` (A or B from the audit), `note`, `centre`,
+`axes`, `extents`, `points` and the `source_object_ids` it came from. Labels are
+deliberately generic where the geometry cannot prove a machine class
+(`equipment`, `red painted equipment`), because the audit found the shape rules
+were being used as class rules.
 
 ## Numbers from the supplied capture
 
