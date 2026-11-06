@@ -70,6 +70,18 @@ An object box is `centre`, `axes` and `extents`:
 - `extents[i]` is the full length along `axes[i]`, not the half length.
 - The eight corners are `centre + sum_i (sign_i * extents[i] / 2) * axes[i]`
   for every `sign_i` in `{-1, +1}`.
+- The extents are the 2nd to 98th percentile of the object's points along each
+  axis, so they fit the shape rather than one stray gaussian. A few points of
+  the object therefore sit just outside its own box; select points with a small
+  margin (5 cm, or 5 percent of the largest extent) when isolating an object.
+
+## Isolating an object
+
+`objects.json` does not carry point indices, on purpose: the artifact stays
+small and the point set stays one array. To isolate an object, take the points
+of `scene.npz` inside its box (transform into the box frame with `axes`, compare
+against `extents / 2` plus the margin above). That is also what the boxes draw,
+so the two views cannot disagree.
 
 ## `scene.npz`
 
