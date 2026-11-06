@@ -33,9 +33,11 @@ type Props = {
   selectedId: string | null
   mappedIds: string[]
   targetId: string | null
+  targetPoint: [number, number, number] | null
   cameraPose: RoomCamera | null
   maxSplats: number
   splatUrl: string
+  filterUrl: string | null
   route: RoomRoute | null
   tripToken: number
   follow: boolean
@@ -91,7 +93,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, cameraPose, maxSplats, splatUrl, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -107,10 +109,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     controls: OrbitControls
     world: THREE.Group
     splat: SplatMesh | null
+    splatUrl: string
     boxGroup: THREE.Group
     pickGroup: THREE.Group
     boxes: BoxView[]
     routeGroup: THREE.Group
+    beaconGroup: THREE.Group
     motion: Motion
     follow: boolean
     centre: THREE.Vector3
@@ -118,6 +122,14 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   } | null>(null)
   const selectedRef = useRef(selectedId)
   selectedRef.current = selectedId
+  const objectsRef = useRef(objects)
+  objectsRef.current = objects
+  const mappedRef = useRef(mappedIds)
+  mappedRef.current = mappedIds
+  const targetRef = useRef(targetId)
+  targetRef.current = targetId
+  const focusRef = useRef(focus)
+  focusRef.current = focus
   const selectRef = useRef(onSelect)
   selectRef.current = onSelect
   const tripRef = useRef(onTrip)
@@ -132,6 +144,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   // it must not move the camera, so the last framed capture is remembered.
   const framedKeyRef = useRef<string>('')
   const labelRef = useRef<HTMLDivElement | null>(null)
+  const beaconWorldRef = useRef<THREE.Vector3 | null>(null)
 
   // One effect owns the canvas and the render loop; the others only add content.
   useEffect(() => {
@@ -249,6 +262,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     world.add(pickGroup)
     const routeGroup = new THREE.Group()
     scene.add(routeGroup)
+    const beaconGroup = new THREE.Group()
+    scene.add(beaconGroup)
 
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
@@ -303,7 +318,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       if (!motion || !motion.active || !motion.robot || motion.points.length < 2) {
         return
       }
-      motion.travelled = Math.min(motion.total, motion.travelled + 1.15 * dt)
+      // slow enough to watch the proximity highlights change during the demo
+      motion.travelled = Math.min(motion.total, motion.travelled + 0.5 * dt)
       placeRobot()
       if (motion.travelled >= motion.total) {
         motion.active = false
@@ -312,6 +328,25 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         renderRef.current()
         if (!motion.reached) {
           motion.reached = true
+          // arrival camera: step back from the target so its frame and the
+          // diagnosis card read together instead of leaving the camera trailing
+          const targetBox = objectsRef.current.find((object) => object.id === targetRef.current)
+          const live = stateRef.current
+          const beacon = beaconWorldRef.current
+          const worldCentre = targetBox
+            ? new THREE.Vector3(...targetBox.centre).applyQuaternion(live ? live.world.quaternion : new THREE.Quaternion())
+            : beacon
+          if (worldCentre) {
+            const radius = targetBox ? Math.max(1.4, Math.max(...targetBox.extents) * 1.7) : 2.4
+            const direction = camera.position.clone().sub(worldCentre)
+            if (direction.lengthSq() < 0.01) {
+              direction.set(0, 0.4, 1)
+            }
+            direction.normalize()
+            camera.position.copy(worldCentre).addScaledVector(direction, radius).add(new THREE.Vector3(0, 0.5, 0))
+            controls.target.copy(worldCentre)
+            controls.update()
+          }
           tripRef.current({ mode: 'arrived', travelled: motion.total, total: motion.total })
         }
       }
@@ -334,12 +369,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           updateFollow()
         }
         const liveState = stateRef.current
-        if (liveState?.motion.robot && objects.length > 0 && now - lastNearby > 500) {
+        const liveObjects = objectsRef.current
+        if (liveState?.motion.robot && liveObjects.length > 0 && now - lastNearby > 500) {
           lastNearby = now
           const robot = liveState.motion.robot
           const sceneRobot = robot.position.clone().applyQuaternion(liveState.world.quaternion.clone().invert())
           const nearby: string[] = []
-          for (const object of objects) {
+          for (const object of liveObjects) {
             if (distanceToBox(sceneRobot, object) <= NEARBY_RADIUS_M) {
               nearby.push(object.id)
             }
@@ -348,9 +384,34 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           const nearbyKey = nearby.join(',')
           if (nearbyKey !== lastNearbyKey) {
             lastNearbyKey = nearbyKey
+            const nearbySet = new Set(nearby)
+            const mapped = new Set(mappedRef.current)
             for (const box of liveState.boxes) {
-              if (nearby.includes(box.id)) {
+              if (nearbySet.has(box.id)) {
                 box.material.opacity = 1
+              } else {
+                // boxes that leave the radius have to go back to their quiet
+                // state, otherwise every visited asset stays lit for the rest
+                // of the drive
+                const object = liveObjects.find((candidate) => candidate.id === box.id)
+                if (!object) {
+                  continue
+                }
+                const isTarget = targetRef.current === box.id
+                const isSelected = selectedRef.current === box.id
+                box.material.opacity = isSelected
+                  ? 1
+                  : isTarget
+                    ? 1
+                    : focusRef.current
+                      ? mapped.has(box.id)
+                        ? 0.45
+                        : 0.08
+                      : QUIET_CLASSES.has(object.class) && !mapped.has(box.id)
+                        ? 0.16
+                        : subtle
+                          ? 0.5
+                          : 0.9
               }
             }
             requestRender()
@@ -432,10 +493,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       controls,
       world,
       splat,
+      splatUrl,
       boxGroup,
       pickGroup,
       boxes: [],
       routeGroup,
+      beaconGroup,
       motion: {
         active: false,
         travelled: 0,
@@ -467,6 +530,17 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         ;(mesh.material as THREE.Material).dispose()
       })
       state?.pickGroup.clear()
+      state?.beaconGroup.children.forEach((child) => {
+        const mesh = child as THREE.Mesh
+        mesh.geometry?.dispose()
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(material)) {
+          material.forEach((entry) => entry.dispose())
+        } else {
+          material?.dispose()
+        }
+      })
+      state?.beaconGroup.clear()
       state?.routeGroup.children.forEach((child) => {
         const mesh = child as THREE.Mesh
         mesh.geometry?.dispose()
@@ -497,6 +571,62 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.world.quaternion.setFromUnitVectors(up, target)
     renderRef.current()
   }, [upAxis])
+
+  // Swapping the baked information channel: same geometry, different colours,
+  // so the camera, boxes and robot stay exactly where they were.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    const wanted = filterUrl ?? splatUrl
+    if (state.splatUrl === wanted) {
+      return
+    }
+    const previous = state.splat
+    if (previous) {
+      state.world.remove(previous)
+      previous.dispose()
+    }
+    setLoaded(false)
+    setProgress(0)
+    const mesh = new SplatMesh({
+      url: wanted,
+      fileType: SplatFileType.PLY,
+      onProgress: (event: ProgressEvent) => {
+        if (event.lengthComputable && event.total > 0) {
+          setProgress(Math.round((event.loaded / event.total) * 100))
+        }
+      },
+      onLoad: () => setLoaded(true),
+    })
+    mesh.rotation.set(0, 0, 0)
+    mesh.initialized
+      .then(() => {
+        state.splat = mesh
+        state.splatUrl = wanted
+        setLoaded(true)
+        renderRef.current()
+        // the animation loop is throttled in a background tab, so paint a few
+        // frames explicitly after a channel swap just as the first load does
+        let tries = 0
+        const paint = () => {
+          state.renderer.render(state.scene, state.camera)
+          tries += 1
+          if (tries < 5) {
+            window.setTimeout(paint, 400)
+          }
+        }
+        paint()
+      })
+      .catch((problem: unknown) => {
+        setGlError(problem instanceof Error ? problem.message : String(problem))
+      })
+    state.splat = mesh
+    state.splatUrl = wanted
+    state.world.add(mesh)
+    renderRef.current()
+  }, [filterUrl, splatUrl])
 
   // Frame the room from the extracted objects, then add their boxes.
   useEffect(() => {
@@ -750,6 +880,64 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     renderRef.current()
   }, [selectedId, objects, mappedIds, targetId, focus, subtle])
+
+  // The mapped target is a proposal, so its box may not be in the reviewed
+  // layer. A floor beacon marks the place it maps onto, and the arrival camera
+  // can frame it.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    for (const child of [...state.beaconGroup.children]) {
+      state.beaconGroup.remove(child)
+      const mesh = child as THREE.Mesh
+      mesh.geometry?.dispose()
+      const material = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(material)) {
+        material.forEach((entry) => entry.dispose())
+      } else {
+        material?.dispose()
+      }
+    }
+    beaconWorldRef.current = null
+    if (!targetPoint) {
+      renderRef.current()
+      return
+    }
+    const up = new THREE.Vector3(...upVector(upAxis)).normalize()
+    const scenePoint = new THREE.Vector3(...targetPoint)
+    const height = scenePoint.dot(up)
+    const floor = floorHeight ?? height
+    scenePoint.addScaledVector(up, floor + 0.03 - height)
+    const worldPoint = scenePoint.applyQuaternion(state.world.quaternion)
+    beaconWorldRef.current = worldPoint.clone()
+    const group = new THREE.Group()
+    group.position.copy(worldPoint)
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.32, 0.48, 40),
+      new THREE.MeshBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+    )
+    ring.rotation.x = -Math.PI / 2
+    ring.renderOrder = 4
+    group.add(ring)
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.018, 1.7, 8),
+      new THREE.MeshBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity: 0.75 }),
+    )
+    pole.position.y = 0.85
+    pole.renderOrder = 4
+    group.add(pole)
+    const cap = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 12, 10),
+      new THREE.MeshBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity: 0.95 }),
+    )
+    cap.position.y = 1.7
+    cap.renderOrder = 4
+    group.add(cap)
+    state.beaconGroup.add(group)
+    renderRef.current()
+  }, [targetPoint, upAxis, floorHeight])
 
   // The route artifact is in scene coordinates and its heights are in the up
   // axis, so the viewer puts the path on the detected floor instead of trusting

@@ -3,6 +3,8 @@ import {
   CLASS_COLOURS,
   STATE_COLOURS,
   STATE_LABEL,
+  fetchRoomAnchors,
+  fetchRoomFilters,
   fetchRoomAssets,
   fetchRoomMapped,
   fetchDiagnosis,
@@ -10,7 +12,7 @@ import {
   fetchRoomRoute,
   splatAssetUrl,
 } from './api'
-import type { Diagnosis, MappedAsset, RoomAsset, RoomAssets, RoomMapped, RoomObjects, RoomObject, RoomRoute } from './api'
+import type { Diagnosis, MappedAsset, RoomAnchor, RoomAnchors, RoomAsset, RoomAssets, RoomFilters, RoomMapped, RoomObjects, RoomObject, RoomRoute } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
 import ViewToolbar from '../components/ViewToolbar'
 
@@ -20,6 +22,9 @@ type Props = {
 
 export default function RoomLab({ onLeave }: Props) {
   const [data, setData] = useState<RoomObjects | null>(null)
+  const [anchors, setAnchors] = useState<RoomAnchors | null>(null)
+  const [filters, setFilters] = useState<RoomFilters | null>(null)
+  const [filterName, setFilterName] = useState(() => new URLSearchParams(window.location.search).get('filter') ?? 'photo')
   const [assets, setAssets] = useState<RoomAssets | null>(null)
   const [showRaw, setShowRaw] = useState(false)
   const [minConfidence, setMinConfidence] = useState(0.5)
@@ -54,8 +59,14 @@ export default function RoomLab({ onLeave }: Props) {
     fetchRoomRoute()
       .then((value) => alive && setRoute(value))
       .catch(() => undefined)
-    // The refined assets are additive: without make assets the room falls back
-    // to the raw extraction rather than breaking.
+    // The reviewed anchors are the demo layer; the automatic proposal layer is
+    // the fallback, and the raw extraction is the last resort.
+    fetchRoomAnchors()
+      .then((value) => alive && setAnchors(value))
+      .catch(() => undefined)
+    fetchRoomFilters()
+      .then((value) => alive && setFilters(value))
+      .catch(() => undefined)
     fetchRoomAssets()
       .then((value) => alive && setAssets(value))
       .catch(() => undefined)
@@ -76,7 +87,29 @@ export default function RoomLab({ onLeave }: Props) {
 
   const mappedIds = useMemo(() => [...mappedByObject.keys()], [mappedByObject])
 
+  const anchorsPresent = (anchors?.anchors.length ?? 0) > 0
   const visibleAssets = useMemo<RoomObject[]>(() => {
+    if (anchorsPresent) {
+      return (anchors?.anchors ?? []).map((anchor: RoomAnchor): RoomObject => ({
+        id: anchor.id,
+        centre: anchor.centre,
+        axes: anchor.axes,
+        extents: anchor.extents,
+        points: anchor.points,
+        class: anchor.class,
+        class_confidence: 1,
+        class_reason: anchor.note,
+        height_above_floor: 0,
+        volume_m3: anchor.extents[0] * anchor.extents[1] * anchor.extents[2],
+        planarity: 0,
+        label: anchor.label,
+        verified: true,
+        confidence: 1,
+        source_object_ids: anchor.source_object_ids,
+        method: 'reviewed_anchor',
+        reviewed: true,
+      }))
+    }
     const list = assets?.assets ?? []
     return list
       .filter((asset) => asset.verified && asset.confidence >= minConfidence)
@@ -98,24 +131,24 @@ export default function RoomLab({ onLeave }: Props) {
         source_object_ids: asset.source_object_ids,
         method: asset.method,
       }))
-  }, [assets, minConfidence])
+  }, [anchors, anchorsPresent, assets, minConfidence])
 
-  const assetsActive = assets !== null && visibleAssets.length > 0 && !showRaw
+  const assetsActive = (anchors !== null || assets !== null) && visibleAssets.length > 0 && !showRaw
   const displayObjects = assetsActive ? visibleAssets : (data?.objects ?? [])
 
   const mappedByAsset = useMemo(() => {
     const byAsset = new Map<string, MappedAsset>()
-    for (const asset of assets?.assets ?? []) {
-      for (const source of asset.source_object_ids) {
+    for (const record of visibleAssets) {
+      for (const source of record.source_object_ids ?? []) {
         const mapping = mappedByObject.get(source)
         if (mapping) {
-          byAsset.set(asset.id, mapping)
+          byAsset.set(record.id, mapping)
           break
         }
       }
     }
     return byAsset
-  }, [assets, mappedByObject])
+  }, [visibleAssets, mappedByObject])
 
   const displayMappedIds = assetsActive
     ? visibleAssets.filter((asset) => mappedByAsset.has(asset.id)).map((asset) => asset.id)
@@ -123,6 +156,15 @@ export default function RoomLab({ onLeave }: Props) {
   const displayTargetId = assetsActive
     ? visibleAssets.find((asset) => (asset.source_object_ids ?? []).includes(mapped?.target_object_id ?? ''))?.id ?? null
     : (mapped?.target_object_id ?? null)
+
+  const targetPoint = useMemo<[number, number, number] | null>(() => {
+    const targetObject = mapped?.target_object_id
+    if (!targetObject || displayTargetId) {
+      return null
+    }
+    const object = data?.objects.find((candidate) => candidate.id === targetObject)
+    return object ? object.centre : null
+  }, [mapped, displayTargetId, data])
 
   const assetBySource = useMemo(() => {
     const bySource = new Map<string, RoomObject>()
@@ -287,9 +329,11 @@ export default function RoomLab({ onLeave }: Props) {
                   resetToken={resetToken}
                   mappedIds={displayMappedIds}
                   targetId={displayTargetId}
+                  targetPoint={targetPoint}
                   cameraPose={data.camera ?? null}
                   maxSplats={data.source.points + 20_000}
                   splatUrl={splatAssetUrl(data.source.points)}
+                  filterUrl={filterName === 'photo' ? null : `/api/filter/${filterName}`}
                   route={route}
                   tripToken={tripToken}
                   follow={follow}
@@ -317,7 +361,9 @@ export default function RoomLab({ onLeave }: Props) {
                 {data
                   ? `${data.source.points.toLocaleString()} gaussians · ${
                       assetsActive
-                        ? `${visibleAssets.length} validated of ${data.counts.objects} objects`
+                        ? anchorsPresent
+                          ? `${visibleAssets.length} reviewed of ${data.counts.objects} objects`
+                          : `${visibleAssets.length} validated of ${data.counts.objects} objects`
                         : `${data.counts.objects} raw objects`
                     }`
                   : 'loading'}
@@ -345,6 +391,26 @@ export default function RoomLab({ onLeave }: Props) {
             >
               scene lab
             </button>
+
+            {filters && filters.filters.applied.length > 0 ? (
+              <div className="absolute left-3 top-[6.2rem] z-20 flex flex-wrap gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 p-1 backdrop-blur">
+                {['photo', ...filters.filters.applied].map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setFilterName(name)}
+                    className={`rounded px-1.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                      filterName === name
+                        ? 'bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-400'
+                        : 'text-slate-300 hover:bg-slate-800/80'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
 
             <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[62%] rounded-lg border border-slate-700/80 bg-slate-950/80 px-3 py-2 backdrop-blur">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Robot</p>
@@ -399,18 +465,66 @@ export default function RoomLab({ onLeave }: Props) {
             {panelOpen ? (
               <aside
                 aria-label="Capture details"
-                className="absolute inset-x-0 bottom-0 top-auto z-30 max-h-[64%] overflow-y-auto rounded-t-2xl border-t border-slate-700 bg-slate-950/95 p-4 shadow-2xl backdrop-blur-md lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[390px] lg:max-h-none lg:rounded-none lg:border-l lg:border-t-0"
+                className="absolute inset-x-0 bottom-0 top-auto z-30 flex max-h-[64%] flex-col overflow-y-auto rounded-t-2xl border-t border-slate-700 bg-slate-950/95 p-4 shadow-2xl backdrop-blur-md lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[390px] lg:max-h-none lg:rounded-none lg:border-l lg:border-t-0"
               >
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Supplied scene</p>
                 <h2 className="text-xl font-black leading-tight text-white">
                   {selected ? selected.id : roomName}
                 </h2>
 
-                <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                <section className="order-1 mt-3 rounded-xl border border-red-500/50 bg-red-500/5 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-red-300">Mission</span>
+                    <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      {routeReady ? `${(route?.distance_m ?? 0).toFixed(1)} m route` : 'no route'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm font-semibold text-slate-300">
+                    Drive to the faulty device, highlight the equipment it passes and inspect what the pack says.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (mapped?.target_object_id) {
+                        selectObjectId(mapped.target_object_id)
+                      }
+                    }}
+                    className="mt-2 flex w-full items-center justify-between rounded-lg border border-red-500/60 bg-red-500/10 px-2.5 py-1.5 text-left hover:border-red-400"
+                  >
+                    <span className="text-sm font-black text-white">
+                      {mapped?.target_tag ?? 'P-005'}{' '}
+                      <span className="font-semibold text-red-300">FOULING</span>
+                    </span>
+                    <span className="text-[10px] font-black uppercase tracking-wide text-red-300">
+                      {displayTargetId ?? mapped?.target_object_id ?? 'target'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendRobot}
+                    disabled={!routeReady}
+                    className={`mt-2 w-full rounded-lg px-3 py-2 text-sm font-black ${
+                      routeReady
+                        ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
+                        : 'cursor-not-allowed border border-slate-700 bg-slate-900 text-slate-500'
+                    }`}
+                  >
+                    {routeReady ? `Send robot to ${mapped?.target_tag ?? 'the target'}` : 'Route not planned yet'}
+                  </button>
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    mapping is a proposal, not a confirmed identification
+                  </p>
+                </section>
+
+                <section className="order-4 mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Objects</span>
                     <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                      {assets ? `${assets.counts.assets} clean · ${data?.counts.objects ?? 0} raw` : 'raw extraction'}
+                      {anchorsPresent
+                        ? `${anchors?.counts.anchors ?? 0} reviewed · ${data?.counts.objects ?? 0} raw`
+                        : assets
+                          ? `${assets.counts.assets} clean · ${data?.counts.objects ?? 0} raw`
+                          : 'raw extraction'}
                     </span>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1">
@@ -424,7 +538,7 @@ export default function RoomLab({ onLeave }: Props) {
                           : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'
                       } ${!assets ? 'cursor-not-allowed opacity-40' : ''}`}
                     >
-                      Validated
+                      {anchorsPresent ? 'Reviewed' : 'Validated'}
                     </button>
                     <button
                       type="button"
@@ -438,7 +552,7 @@ export default function RoomLab({ onLeave }: Props) {
                       Raw detections
                     </button>
                   </div>
-                  {assets ? (
+                  {assets && !anchorsPresent ? (
                     <label className="mt-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
                       Minimum confidence {Math.round(minConfidence * 100)} %
                       <input
@@ -454,19 +568,25 @@ export default function RoomLab({ onLeave }: Props) {
                   ) : null}
                   <p className="mt-2 text-[11px] font-semibold leading-snug text-slate-400">
                     {showRaw
-                      ? 'Raw geometric boxes, shown for debugging. Switch to Validated for the demo layer.'
+                      ? 'All extracted geometric boxes, shown for debugging. Switch to Reviewed for the demo layer.'
                       : assetsActive
-                        ? 'Validated equipment instances only. Raw geometric boxes stay available for debugging.'
-                        : assets
-                          ? 'No instance passes the confidence filter, showing the raw extraction.'
-                          : 'Showing the raw extraction because no refined asset artifact exists yet.'}
+                        ? anchorsPresent
+                          ? 'Seven boxes survived a visual audit. Their labels say what the box contains, not what a shape rule guessed.'
+                          : 'Validated equipment instances only. Raw geometric boxes stay available for debugging.'
+                        : anchorsPresent
+                          ? 'Loading the reviewed layer, showing the raw extraction meanwhile.'
+                          : assets
+                            ? 'No instance passes the confidence filter, showing the raw extraction.'
+                            : 'Showing the raw extraction because no reviewed or proposal layer exists yet.'}
                   </p>
                 </section>
 
                 {assetsActive ? (
-                  <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                  <section className="order-3 mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Validated objects</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                        {anchorsPresent ? 'Reviewed objects' : 'Validated objects'}
+                      </p>
                       <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
                         {visibleAssets.length}
                       </span>
@@ -495,7 +615,7 @@ export default function RoomLab({ onLeave }: Props) {
                   </section>
                 ) : null}
 
-                <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                <section className="order-7 mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Capture</span>
                     <span className="rounded-full border border-slate-600 bg-slate-950 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">
@@ -539,7 +659,7 @@ export default function RoomLab({ onLeave }: Props) {
                 </section>
 
                 {mapped ? (
-                  <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                  <section className="order-6 mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Builder assets</p>
                       <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
@@ -550,34 +670,6 @@ export default function RoomLab({ onLeave }: Props) {
                       {attention.length} of {mapped.counts.mapped} proposed need attention
                       {faults.length > 0 ? `, ${faults.length} attention required` : ''}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (mapped.target_object_id) {
-                          selectObjectId(mapped.target_object_id)
-                        }
-                      }}
-                      className="mt-2 flex w-full items-center justify-between rounded-lg border border-red-500/60 bg-red-500/10 px-2.5 py-1.5 text-left hover:border-red-400"
-                    >
-                      <span className="text-sm font-black text-white">
-                        {mapped.target_tag} <span className="font-semibold text-red-300">FOULING</span>
-                      </span>
-                      <span className="text-[10px] font-black uppercase tracking-wide text-red-300">
-                        {mapped.target_object_id}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={sendRobot}
-                      disabled={!routeReady}
-                      className={`mt-2 w-full rounded-lg px-3 py-2 text-sm font-black ${
-                        routeReady
-                          ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
-                          : 'cursor-not-allowed border border-slate-700 bg-slate-900 text-slate-500'
-                      }`}
-                    >
-                      {routeReady ? `Send robot to ${mapped.target_tag}` : 'Route not planned yet'}
-                    </button>
                     <div className="mt-2 max-h-36 space-y-0.5 overflow-y-auto pr-1">
                       {mapped.mappings
                         .filter((mapping) => mapping.state !== 'healthy')
@@ -606,7 +698,7 @@ export default function RoomLab({ onLeave }: Props) {
                 ) : null}
 
                 {diagnosis ? (
-                  <section className="mt-3 rounded-xl border border-red-500/50 bg-red-500/5 p-3">
+                  <section className="order-2 mt-3 rounded-xl border border-red-500/50 bg-red-500/5 p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-red-300">Diagnosis on arrival</p>
                       <span className="text-[10px] font-black uppercase tracking-wide text-red-200">
@@ -617,28 +709,84 @@ export default function RoomLab({ onLeave }: Props) {
                     <p className="text-xs font-semibold text-slate-300">
                       {diagnosis.issue?.summary} · condition {diagnosis.condition} · health {diagnosis.health_score}
                     </p>
+                    {diagnosis.trend?.available && (diagnosis.trend.points ?? []).length >= 5 ? (
+                      <div className="mt-2 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                            {diagnosis.trend.metric} ({diagnosis.trend.unit})
+                          </span>
+                          <span className="text-[10px] font-black text-red-300">
+                            {diagnosis.trend.summary ? `${diagnosis.trend.summary.change_percent > 0 ? '+' : ''}${diagnosis.trend.summary.change_percent.toFixed(1)} %` : ''}
+                          </span>
+                        </div>
+                        <svg viewBox="0 0 100 28" className="mt-1 h-8 w-full" role="img" aria-label={`${diagnosis.trend.metric} trend`}>
+                          <polyline
+                            fill="none"
+                            stroke="#f87171"
+                            strokeWidth="1.6"
+                            points={(() => {
+                              const values = diagnosis.trend.points.map((point) => point.value)
+                              const min = Math.min(...values)
+                              const max = Math.max(...values)
+                              const span = max - min || 1
+                              return values
+                                .map((value, index) => {
+                                  const x = (index / Math.max(1, values.length - 1)) * 100
+                                  const y = 26 - ((value - min) / span) * 24
+                                  return `${x.toFixed(1)},${y.toFixed(1)}`
+                                })
+                                .join(' ')
+                            })()}
+                          />
+                        </svg>
+                        <p className="text-[10px] font-semibold leading-snug text-slate-400">{diagnosis.trend.why}</p>
+                      </div>
+                    ) : null}
                     {(diagnosis.findings ?? []).map((finding) => (
-                      <p key={finding.finding_id} className="mt-1 text-xs font-semibold text-slate-300">
-                        {finding.statement}{' '}
-                        <span className="text-slate-500">({finding.evidence_ids.length} evidence refs)</span>
-                      </p>
+                      <div key={finding.finding_id} className="mt-2">
+                        <p className="text-xs font-semibold text-slate-300">
+                          {finding.statement}{' '}
+                          <span className="text-slate-500">
+                            ({Math.round(finding.confidence * 100)} % confidence, {finding.evidence_ids.length} evidence refs)
+                          </span>
+                        </p>
+                        {(finding.evidence ?? []).slice(0, 5).map((item) => (
+                          <p key={item.ref} className="mt-1 text-[11px] leading-snug text-slate-400">
+                            <span className="mr-1 rounded border border-slate-600 bg-slate-950/70 px-1 py-0.5 text-[9px] font-black uppercase tracking-wide text-cyan-300">
+                              {item.kind}
+                            </span>
+                            <span className="font-bold text-slate-200">{item.ref}</span> {item.detail ?? item.label}
+                          </p>
+                        ))}
+                      </div>
                     ))}
+                    {diagnosis.data_quality?.confidence_effect ? (
+                      <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-[11px] font-semibold leading-snug text-amber-200">
+                        {diagnosis.data_quality.confidence_effect}
+                      </p>
+                    ) : null}
                     {diagnosis.next_safe_check ? (
                       <p className="mt-2 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1.5 text-xs font-semibold text-slate-200">
                         Next safe check: {diagnosis.next_safe_check.action}
                         <span className="block text-slate-400">{diagnosis.next_safe_check.reason}</span>
                       </p>
                     ) : null}
-                    {(diagnosis.citations ?? []).slice(0, 1).map((citation) => (
-                      <p key={citation.doc_id} className="mt-1 text-[11px] font-semibold text-slate-400">
-                        Grounded in {citation.doc_id}: {citation.title}
+                    {(diagnosis.citations ?? []).slice(0, 2).map((citation) => (
+                      <p key={citation.doc_id} className="mt-1.5 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1.5 text-[11px] font-semibold leading-snug text-slate-400">
+                        <span className="font-black text-slate-300">{citation.doc_id}</span> {citation.title}
+                        {citation.excerpt ? <span className="mt-0.5 block italic text-slate-300">"{citation.excerpt}"</span> : null}
+                        {citation.synthetic_record ? (
+                          <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                            synthetic record
+                          </span>
+                        ) : null}
                       </p>
                     ))}
                   </section>
                 ) : null}
 
                 {selected ? (
-                  <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                  <section className="order-5 mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Framed object</p>
                     <p className="mt-1 text-lg font-black text-white">
                       {selected.id}{' '}
@@ -647,9 +795,11 @@ export default function RoomLab({ onLeave }: Props) {
                       </span>
                     </p>
                     <p className="text-xs font-semibold text-slate-400">
-                      {selected.method === 'colour_instance'
-                        ? 'Colour-seeded instance, one box around the gaussian cluster.'
-                        : selected.class_reason}
+                      {selected.reviewed
+                        ? 'Reviewed box from the audit; generic label because the geometry does not prove a machine class.'
+                        : selected.method === 'colour_instance'
+                          ? 'Colour-seeded instance, one box around the gaussian cluster.'
+                          : selected.class_reason}
                     </p>
                     {selectedMapping ? (
                       <div className="mt-2 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1.5">
@@ -705,7 +855,7 @@ export default function RoomLab({ onLeave }: Props) {
                     ) : null}
                   </section>
                 ) : (
-                  <p className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm font-semibold text-slate-400">
+                  <p className="order-5 mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm font-semibold text-slate-400">
                     Click an object in the room. Validated assets show one box per physical object; raw detections
                     are available in the Objects panel and exist for debugging, not for the demo.
                   </p>
