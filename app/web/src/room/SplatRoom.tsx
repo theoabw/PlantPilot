@@ -454,8 +454,8 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     }
   }, [])
 
-  // The capture's own up axis decides how the room is turned upright: the boiler
-  // room is +y and the equipment room is -y, and the metadata carries that.
+  // The capture's own up axis decides how the room is turned upright. Both
+  // supplied captures are -y, but the viewer reads it from the metadata.
   useEffect(() => {
     const state = stateRef.current
     if (!state) {
