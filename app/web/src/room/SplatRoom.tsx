@@ -538,10 +538,13 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     if (cameraPose) {
       const eye = new THREE.Vector3(...cameraPose.eye).applyQuaternion(state.world.quaternion)
       const target = new THREE.Vector3(...cameraPose.target).applyQuaternion(state.world.quaternion)
-      const viewUp = new THREE.Vector3(...cameraPose.up).applyQuaternion(state.world.quaternion).normalize()
       frameRef.current = { eye: eye.clone(), target: target.clone() }
       state.camera.position.copy(eye)
-      state.camera.up.copy(viewUp)
+      // The artifact's up is the camera's pitched-up vector, not world up. Using
+      // it as the orbit pole tilts OrbitControls and renders the room rolled.
+      // The pose already carries the pitch in eye and target, so world up is
+      // correct here.
+      state.camera.up.set(0, 1, 0)
       state.controls.target.copy(target)
       state.controls.minDistance = 0.4
       state.controls.maxDistance = Math.max(10, eye.distanceTo(target) * 4)
