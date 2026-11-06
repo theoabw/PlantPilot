@@ -16,6 +16,16 @@ def test_health_reports_counts():
     assert body["version"] == "0.1.0"
 
 
+def test_diagnosis_endpoint_reports_the_local_artifact():
+    body = client.get("/api/diagnosis").json()
+    if body["available"]:
+        assert body["artifact"] == "diagnosis"
+        assert body["target"]["tag"] == "P-005"
+        assert body["citations"]
+    else:
+        assert "make diagnose" in body["reason"]
+
+
 def test_asset_endpoint_includes_neighbours():
     body = client.get("/api/assets/K-102").json()
     assert body["asset"]["tag"] == "K-102"
