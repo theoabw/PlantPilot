@@ -1,8 +1,9 @@
 # Scene artifacts
 
-> Superseded 2026-11-06 by [scene-pipeline.md](scene-pipeline.md). Kept for
-> history. The artifact names and the API below belong to the old FastAPI
-> pipeline.
+> This is the contract for the artifacts the pipeline writes and the API the
+> room view reads today. [scene-pipeline.md](scene-pipeline.md) describes a
+> different, unbuilt pipeline; where the two disagree, this page and the code
+> are correct.
 
 Generated artifacts are written into `data/` and never committed:
 
