@@ -13,6 +13,44 @@ export type RoomObject = {
   height_above_floor: number
   volume_m3: number
   planarity: number
+  // Present when the record comes from the refined assets artifact rather
+  // than the raw extraction.
+  label?: string
+  verified?: boolean
+  confidence?: number
+  source_object_ids?: string[]
+  method?: string
+}
+
+export type RoomAsset = {
+  id: string
+  class: string
+  label: string
+  confidence: number
+  verified: boolean
+  centre: [number, number, number]
+  axes: [number, number, number][]
+  extents: [number, number, number]
+  points: number
+  rgb?: [number, number, number] | null
+  source_object_ids: string[]
+  method: string
+  reason: string
+}
+
+export type RoomAssets = {
+  artifact: string
+  version: number
+  source: { scene: string; capture?: string | null; objects?: string }
+  counts: {
+    raw_objects: number
+    colour_instances: number
+    geometry_candidates: number
+    suppressed: number
+    assets: number
+    verified: number
+  }
+  assets: RoomAsset[]
 }
 
 export type RoomRoute = {
@@ -100,6 +138,18 @@ export type RoomMapped = {
 }
 
 export const SPLAT_URL = '/api/splat'
+
+export async function fetchRoomAssets(): Promise<RoomAssets> {
+  const response = await fetch('/api/scene/assets')
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'no assets artifact on the server, run make assets'
+        : `/api/scene/assets answered ${response.status}`,
+    )
+  }
+  return (await response.json()) as RoomAssets
+}
 
 export async function fetchRoomObjects(): Promise<RoomObjects> {
   const response = await fetch('/api/scene/objects')

@@ -42,6 +42,7 @@ ROUTE_FILE = DATA / "scene" / "route.json"
 # PLANTPILOT_SCENE=data/equipment PLANTPILOT_SPLAT=data/viewer/equipment.ply.
 SCENE_DIR = Path(os.environ.get("PLANTPILOT_SCENE", DATA / "scene"))
 OBJECTS_FILE = SCENE_DIR / "objects.json"
+ASSETS_FILE = SCENE_DIR / "assets.json"
 MAPPED_FILE = SCENE_DIR / "mapped.json"
 ROUTE_ARTIFACT = SCENE_DIR / "route.json"
 DIAGNOSIS_FILE = SCENE_DIR / "diagnosis.json"
@@ -303,6 +304,14 @@ def scene_objects() -> dict:
     if not OBJECTS_FILE.exists():
         raise HTTPException(status_code=404, detail="no objects artifact, run make objects")
     return json.loads(OBJECTS_FILE.read_text())
+
+
+@app.get("/api/scene/assets", responses=_ARTIFACT_RESPONSES)
+def scene_assets() -> dict:
+    """The coherent equipment assets of the capture, from make assets."""
+    if not ASSETS_FILE.exists():
+        raise HTTPException(status_code=404, detail="no assets artifact, run make assets")
+    return json.loads(ASSETS_FILE.read_text())
 
 
 @app.get("/api/scene/mapped", responses=_ARTIFACT_RESPONSES)

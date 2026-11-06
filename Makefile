@@ -24,6 +24,7 @@ PACK_XLSX ?= data/supplied/builder_pack.xlsx
 PACK ?= $(CAPTURE_DIR)/pack.json
 SCENE ?= $(CAPTURE_DIR)/scene.npz
 OBJECTS ?= $(CAPTURE_DIR)/objects.json
+ASSETS ?= $(CAPTURE_DIR)/assets.json
 MAPPED ?= $(CAPTURE_DIR)/mapped.json
 ROUTE ?= $(CAPTURE_DIR)/route.json
 DIAGNOSIS ?= $(CAPTURE_DIR)/diagnosis.json
@@ -47,7 +48,7 @@ PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects splat-asset pack map diagnose pipeline generality proof route openapi test check clean
+.PHONY: demo web web-build corpus models register plates plant scan scene objects splat-asset pack map diagnose pipeline generality proof route openapi test check clean assets
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -61,6 +62,10 @@ objects:
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out $(OBJECTS_TOP)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW) \
 	  --mode splats --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT) --no-labels
+
+## assets: merge the raw boxes into coherent, labelled equipment instances
+assets: scene objects
+	$(PY) python -m plantpilot.assets --scene $(SCENE) --objects $(OBJECTS) --out $(ASSETS)
 
 ## splat-asset: write the sanitised capture as a PLY for the browser viewer
 splat-asset:
@@ -79,7 +84,7 @@ diagnose: pack
 	$(PY) python -m plantpilot.diagnose --pack $(PACK) --out $(DIAGNOSIS)
 
 ## pipeline: build every artifact the room view needs for CAPTURE
-pipeline: scene objects map diagnose route splat-asset
+pipeline: scene objects assets map diagnose route splat-asset
 
 ## generality: run the same stages on the reference plant, score the boxes
 generality: plant
