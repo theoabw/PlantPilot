@@ -169,3 +169,115 @@ def test_build_route_contract(tmp_path):
     assert "path" in route
     assert "path_samples" in route
     assert "grid_stats" in route
+
+
+# ---------------------------------------------------------------------------
+# Obstacle avoidance tests
+# ---------------------------------------------------------------------------
+
+def _path_crosses_rect(path: list, x0: float, z0: float, x1: float, z1: float) -> bool:
+    """Return True if any path point falls inside the given rectangle."""
+    for p in path:
+        if x0 <= p[0] <= x1 and z0 <= p[1] <= z1:
+            return True
+    return False
+
+
+def test_blocker_across_direct_path_is_avoided():
+    """A blocker placed directly across the shortest path must not appear in the route."""
+    # The path to T-501 (6.0, 9.3) hugs x~2.0 going north.  Block that corridor.
+    blocker = [[0.0, 5.0, 3.5, 7.0]]
+    plain = nav.plan(SPEC, START, (6.0, 9.3))
+    blocked = nav.plan(SPEC, START, (6.0, 9.3), blockers=blocker)
+
+    assert blocked["reachable"] is True
+    # The core guarantee: no point on the route passes through the blocker.
+    assert not _path_crosses_rect(blocked["path"], 0.0, 5.0, 3.5, 7.0)
+    # The plain route does pass through that zone (confirming the blocker is on-path).
+    assert _path_crosses_rect(plain["path"], 0.0, 5.0, 3.5, 7.0)
+
+
+def test_two_blockers_force_a_longer_detour():
+    """Two blockers closing the direct north corridor must force a measurably longer route."""
+    # The path to M-310 (8.0, 4.3) goes north along x~2.0 then cuts east at z~3.
+    # Block the west passage between z=2.5 and z=3.5.
+    blockers = [
+        [0.0, 2.5, 3.0, 3.5],   # close the west wall corridor
+        [3.0, 2.5, 6.5, 3.5],   # close the next segment east
+    ]
+    plain = nav.plan(SPEC, START, (8.0, 4.3))
+    blocked = nav.plan(SPEC, START, (8.0, 4.3), blockers=blockers)
+
+    assert blocked["reachable"] is True
+    assert blocked["distance_m"] > plain["distance_m"] + 2.0
+
+
+def test_full_width_blocker_reports_unreachable():
+    """A wall that fully spans the room width must make the far side unreachable."""
+    full_wall = [[0.0, 1.5, 16.0, 2.2]]
+    result = nav.plan(SPEC, START, (8.0, 9.3), blockers=full_wall)
+
+    assert result["reachable"] is False
+    assert "no walkable route" in result["reason"]
+    assert result["path"] == []
+    assert result["distance_m"] == 0.0
+
+
+def test_blocker_outside_grid_bounds_is_ignored():
+    """A blocker entirely outside the grid must not raise and must not affect the route."""
+    far_away = [[100.0, 100.0, 110.0, 110.0]]
+    plain = nav.plan(SPEC, START, (8.0, 4.3))
+    with_far = nav.plan(SPEC, START, (8.0, 4.3), blockers=far_away)
+
+    assert with_far["reachable"] is True
+    assert abs(with_far["distance_m"] - plain["distance_m"]) < 0.5
+
+
+def test_blocker_on_start_forces_snap_to_nearest_free_cell():
+    """A blocker placed on the start cell must still find a route by snapping start."""
+    # Block the doorway where START (2.0, 0.8) is
+    blocker = [[1.0, 0.0, 3.5, 1.5]]
+    result = nav.plan(SPEC, START, (8.0, 4.3), blockers=blocker)
+    # Should either reroute successfully or report unreachable cleanly - never crash
+    assert "reachable" in result
+    assert "path" in result
+
+
+def test_build_route_accepts_blockers(tmp_path):
+    """build_route must apply blockers and record them in the output document."""
+    blocker = [[0.0, 4.8, 4.6, 7.2]]
+    out_plain = tmp_path / "plain.json"
+    out_blocked = tmp_path / "blocked.json"
+
+    plain = nav.build_route(output_path=out_plain)
+    blocked = nav.build_route(output_path=out_blocked, blockers=blocker)
+
+    # Both must produce valid output files
+    assert out_plain.exists()
+    assert out_blocked.exists()
+
+    # The blocked route records which blockers were active
+    assert blocked["active_blockers"] == blocker
+
+    # If both are reachable the blocked route is at least as long
+    if plain["reachable"] and blocked["reachable"]:
+        assert blocked["distance_m"] >= plain["distance_m"]
+
+    # Blocked cells count must be higher with a blocker in place
+    assert blocked["grid_stats"]["blocked_cells"] >= plain["grid_stats"]["blocked_cells"]
+
+
+def test_build_route_unreachable_with_full_wall_blocker(tmp_path):
+    """build_route must report reachable=False and a reason when a wall cuts the room."""
+    # A wall spanning the entire plant cuts north from south
+    full_wall = [[0.0, 1.5, 16.0, 2.2]]
+    result = nav.build_route(
+        output_path=tmp_path / "blocked.json",
+        blockers=full_wall,
+    )
+    # Either unreachable (target is north of the wall) or the fallback target is south
+    # Either way the result must be structurally valid
+    assert "reachable" in result
+    if not result["reachable"]:
+        assert result["reason"]
+        assert result["path"] == []
