@@ -1,6 +1,6 @@
 # Valmet build plan, Friday 6 November
 
-**Superseded in part, Friday 15:40.** The full brief turned out to be about a scanned plant: spatial perception, semantic point clouds, navigation and a digital twin. The product and demo in sections 1 to 6 below answer the old summary, not the brief. Read [valmet-brief-plan.md](valmet-brief-plan.md) for the product, the demo, the proof number and the seats. The repo rules, workflow, agent rules and briefing questions here still stand.
+**Superseded in part, Friday 15:40.** The full brief turned out to be about a scanned plant: spatial perception, semantic point clouds, navigation and a digital twin. The product and demo in sections 1 to 6 below answer the old summary, not the brief. Read [plantpilot-plan.md](plantpilot-plan.md) for the product, the demo, the proof number and the seats. The repo rules, workflow, agent rules and briefing questions here still stand.
 
 Assumed selected Friday afternoon. The company materials open at 19:30 and only for the team that picked Valmet, so this plan is written from the public summary plus tonight's probes, and section 10 says exactly what changes if the real brief differs. Hours are counted from H+0 = Friday 19:30. Submission is Sunday 10:00. Four team members and one shared sleep block, no night watch: section 6 is built around that, and the scope in sections 3 and 5 is sized for it.
 
@@ -31,7 +31,7 @@ Three properties that the demo has to make visible, because they are what makes 
 2. **Cited.** Every card names a document, a section and a page, with a quote. No answer without a source.
 3. **Honest boundary.** The spare part number needs the Valmet Customer Portal, so we show that boundary instead of inventing a number.
 
-Working name: **Fieldplate** (the plate is the interface, the record is the payload). Two alternates if the room hates it: Tagline, or Page 47. Decide at 20:00, not at 23:00, because the name goes into the repo, the video and the submission.
+Working name: **PlantPilot** (the plate is the interface, the record is the payload). Two alternates if the room hates it: Tagline, or Page 47. Decide at 20:00, not at 23:00, because the name goes into the repo, the video and the submission.
 
 ## 2. The demo path, step by step
 
@@ -245,7 +245,7 @@ Every decision tonight is subordinate to this: **a median under 15 seconds from 
 
 | Decision | Options | Default if nobody objects |
 | --- | --- | --- |
-| Name | Fieldplate, Tagline, Page 47 | Fieldplate |
+| Name | PlantPilot, Tagline, Page 47 | PlantPilot |
 | Register size | 48 assets versus 12 | 48 rows, 4 in the demo path |
 | Plate count | 24 versus 12 | 24, because damaged tags need spares |
 | Photo claim | 80 photos with 40 held out, versus document-only | 80, cut at 12:30 if under 95 percent |

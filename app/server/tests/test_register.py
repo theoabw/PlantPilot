@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fieldplate import register
+from plantpilot import register
 
 ROOT = Path(__file__).resolve().parents[3]
 CSV = ROOT / "fixtures" / "register" / "assets.csv"

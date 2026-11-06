@@ -1,92 +1,96 @@
-# Fieldplate
+# PlantPilot
 
-Photograph a valve nameplate, get the cited manual page and the next service action, offline.
+Inspection missions in a scanned plant.
 
-Built for the **SinceAI Hackathon 2026**, Valmet challenge: *Connecting the physical and digital worlds at industrial sites*. This branch is the bootstrap: the corpus, the OCR path, the register and the API work and are tested; the web UI is a shell that will grow during the event.
+Built for the **SinceAI Hackathon 2026**, Valmet challenge: a digital plant that "understands where machines are, what they are, how people or robots could move between them and which equipment needs attention".
+
+This is the working tree at the start of the build. The capture, OCR, corpus and register layers work and are tested; the mission flow (work order, route, blocked aisle, reroute) is being built during the event.
 
 ## The problem
 
-A field technician standing at a valve carries three different worlds: a physical asset with a dirty nameplate, an asset record in a CMMS, and a 170 page flow control manual. Finding the section that matters takes minutes, the site network is unreliable, and a plausible but wrong answer is worse than no answer.
+A work order names a machine, not a place. A technician has to find P-204 inside a plant, work out how to reach the inspection point, and then explain why the visit is needed. A 3D scan of the plant looks impressive and answers none of that on its own. The description says it plainly: today's captures "lack the meaning needed for intelligent action".
 
 ## Solution
 
-Point a phone at the nameplate. Fieldplate reads the plate, matches it to the asset register, and shows three things on one screen: what the asset is, the manual section that answers the complaint with a page anchor and a short quote, and the next service action with its interval from Valmet's VMR003 recommendation.
+PlantPilot turns a capture into four things a mission needs:
 
-Three properties make it useful on a real site rather than a demo:
-
-- **Offline.** The corpus, the register and the OCR all run on one laptop. Nothing on the demo path calls the network.
-- **Cited.** Every card names a document, a section and a page, with a quote. There is no answer without a source.
-- **Honest boundary.** Spare part numbers need the Valmet Customer Portal, so the app shows that boundary instead of inventing a number.
-
-A quality gate refuses a frame whose characters are under 20 px, and shows the measured number. The refusal is a feature: a wrong asset record is worse than "move closer".
+- **Meaning**: geometry becomes equipment. Points are classified as floor, wall, pipe, pump, tank or valve, by geometric rules and image labels, and every label is marked as a proposal until a person confirms it.
+- **Identity**: a printed tag on the machine is read by OCR and matched to the asset register. A tagged machine is certain; an untagged one is a hypothesis, and the interface says which.
+- **Accessibility**: the floor becomes an occupancy grid, obstacles are inflated by the width of the person or cart, and A* computes a route to a reviewed inspection position beside the machine, never to its centre. Block an aisle and the route is recomputed or reported unreachable.
+- **Context**: the asset record joins the work order, the manual section with its page anchor, and the service interval, so the answer to "why this visit" is cited rather than asserted.
 
 ## Demo path
 
-1. Camera view of a printed plate taped to a real object in the room, network off. Click Scan.
-2. The app refuses the frame: it measured 9 px characters and asks for 20. The person moves closer.
-3. Rescan passes. OCR fills the fields: type, DN, PN, body material, serial.
-4. The asset card appears: tag, line, criticality, last service.
-5. The manual card appears: section title, page number, two quoted lines, page anchor.
-6. The action card appears: the VMR003 row, part, action and interval.
-7. One tap opens the line graph: two neighbours, one of them overdue.
-8. A plate that is not in the register returns no match, and three closest types.
-
-Every plate is synthetic and says `SYNTHETIC DEMO ASSET`. The register is synthetic. The manual and VMR003 are real public documents, fetched by script.
+1. A scan of the area, unlabelled, rotating.
+2. Equipment highlights. Select P-204 and see its evidence: the tag, the OCR, the confirmation.
+3. Pick the inspection request. The machine lights, a route appears with distance and clearance.
+4. Block an aisle with a click. The route disappears and a new one is computed around it.
+5. Follow the route to the inspection position, then open the reason and the manual page.
+6. A judge picks another destination or blocks another aisle.
 
 ## Setup
 
-Requirements: Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Node 20 or newer, `poppler-utils` for `pdftotext`, and Tesseract 5.
+Requirements: Python 3.12 or newer, [uv](https://docs.astral.sh/uv/), Node 20 or newer, `poppler-utils`, Tesseract 5.
 
 ```bash
-uv sync                 # Python environment and dependencies
-make corpus             # fetch the two public Valmet PDFs into data/ and build the local index
-make register           # regenerate the 48 row synthetic register
-make demo               # serve the API and the built web page on http://127.0.0.1:8000
+uv sync                 # Python environment
+make models             # monocular depth model, 27 MB, once
+make corpus             # the two public Valmet PDFs into data/ and the local index
+make register           # the synthetic asset register
+make scan PHOTO=path/to/room.jpg   # photo to metric point cloud
+make demo               # http://127.0.0.1:8000
 ```
 
-Front end development: `make web` runs Vite on port 5173 and proxies `/api` to port 8000. `make web-build` writes `app/web/dist`, which `make demo` serves.
+Front end development: `make web` runs Vite on 5173 and proxies `/api` to 8000. `make web-build` writes `app/web/dist`, which `make demo` serves. Tests: `make test`. Submission hygiene: `make check`. Printable tags and a scale card: `make plates`.
 
-Tests: `make test`. Submission hygiene: `make check`. Printable plates: `make plates` writes an A4 PDF into `data/plates/`.
-
-Environment variables: none are required. See `.env.example`. The optional `FIELDPLATE_DATA` moves the local data directory; the optional `GEMINI_API_KEY` is a stretch feature that is not on the demo path.
+No API keys are required. `.env.example` documents the one optional override.
 
 ## Technology
 
-- Python 3.12+, FastAPI on localhost, SQLite FTS5 for section search, Tesseract 5.5 for OCR, Pillow for the capture gate and the plate sheets, uv for the environment.
-- React, Vite, TypeScript and Tailwind for the single page UI, plain SVG for the graph.
-- Data: the Valmet *Flow control manual* (6th edition, 170 pages) and *VMR003* application based service recommendation, both public PDFs.
-- Pre-existing before the event, and declared in the submission: the two document fetches, this scaffold, and the table of contents parser probe. Everything in the app, the index, the register, the proof and the video is built at the event.
+All open source, all local, nothing on the network at demo time.
+
+| Layer | Tool | Licence |
+| --- | --- | --- |
+| Monocular depth | Depth Anything V2 Small, int8 ONNX | Apache-2.0 |
+| Image processing | OpenCV (ArUco, guided filter, calibration) | Apache-2.0 |
+| Inference | ONNX Runtime | MIT |
+| Backend | Python, FastAPI, SQLite FTS5 | MIT, Apache-2.0, public domain |
+| Geometry and planning | numpy, scipy, A* on an occupancy grid | BSD |
+| Viewer | React, Vite, three.js | MIT |
+
+Data: the Valmet *Flow control manual* (6th edition) and *VMR003* service recommendation, both public PDFs. Pre-existing before the event and declared in the submission: the two document fetches, the scaffold, the table of contents parser probe and the capture module.
 
 ## Data and licences
 
-- The two Valmet documents are public but copyright Valmet, all rights reserved. `make corpus` downloads them into `data/`, which is gitignored. They are never committed. The repository ships section ids, titles, pages and quotes of one to two lines only.
-- The asset register, the tags and the printed plates are synthetic, generated by `scripts/make_register.py` and `scripts/make_plates.py`. Every plate carries `SYNTHETIC DEMO ASSET`.
-- Our code is MIT licensed, see [LICENCE](LICENCE).
+- The Valmet documents are copyright Valmet, all rights reserved. `make corpus` downloads them into `data/`, which is gitignored. The repository ships section ids, titles, pages and quotes of one to two lines only.
+- The asset register, tag text and service intervals are synthetic. Every printed tag carries `SYNTHETIC DEMO ASSET`.
+- Our code is MIT, see [LICENCE](LICENCE).
 
-## What is real and what is mocked
+## What is real and what is not
 
 | | |
 | --- | --- |
-| Real | the two documents, the section and page anchors, the VMR003 intervals, the OCR, the retrieval, the capture gate, the offline run, the timing |
-| Mocked | the asset register and its 48 rows, the tag numbers, the line graph and its overdue neighbour, the printed plates |
+| Real | the photographs, the depth model, the guided filter, the ArUco scale, the point cloud, the floor and occupancy grid, the routes, the OCR, the corpus, the page anchors, the timing, the offline run |
+| Synthetic | the asset register, tag text, service intervals, the work orders, the plant framing. The room is the venue or a supplied scan standing in for a plant, and the screen says which |
+| Not attempted | LiDAR or photogrammetry capture, physics simulation, robot control, a multi-room twin, predictive maintenance |
 
 ## Limitations
 
-- The asset register is synthetic. One real row can replace a synthetic row through the documented CSV import.
-- OCR depends on print quality and light. A clean plate at 20 px character height reads back field for field; a dirty or curved plate is the open risk.
-- No indoor positioning or navigation. No work order creation and no CMMS integration.
-- The index covers the numbered sections in the printed table of contents. Unnumbered bullet headings inside a section are not separate entries.
-- The timed claim is measured by hand with a stopwatch and written to `proof/trials.csv`; `make proof` summarises it into `proof/metrics.json`.
+- Semantics are proposals until confirmed. The interface shows the difference and the README does not blur it.
+- Depth on flat white walls and glass is weak; textual views and tagged assets carry the demo.
+- The walkable floor may be reviewed and corrected by hand. If it is, the evaluation reports it as manual preparation.
+- The alert behind a work order is simulated and labelled simulated. A scan cannot establish that a bearing is failing.
+- Routes are for a person or a cart on one floor, not a robot with dynamics.
 
 ## Repository layout
 
 ```
-app/server/      FastAPI app, corpus, OCR and register modules, pytest suite
-app/web/         Vite, React and Tailwind single page UI
-scripts/         corpus fetch and index, register generator, plate sheet, proof summary
-fixtures/        committed, synthetic and small: register CSV, section sample, action sample
+app/server/      FastAPI app: corpus, OCR, register, capture
+app/web/         React, Vite and three.js viewer
+scripts/         corpus, register, plates, photo scan, proof summary
+fixtures/        committed and small: register CSV, section sample, action sample
 proof/           trials.csv and the metrics the README and the video quote
-docs/            the event brief, the challenge plans and the workflow rules
+docs/            event brief, plans and workflow rules
 ```
 
 Repository: <https://github.com/theoabw/SinceAI-2026>

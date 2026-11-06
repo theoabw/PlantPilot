@@ -1,4 +1,4 @@
-// Types for the Fieldplate API contract. The contract is fixed by the backend,
+// Types for the PlantPilot API contract. The contract is fixed by the backend,
 // so these mirror it exactly; nothing here may drift from the responses.
 
 export type Gate = {

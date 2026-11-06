@@ -29,7 +29,7 @@ Assumed selected on Friday afternoon. Fill the briefing lines at 18:50 and keep 
 - Company: Valmet
 - Challenge title: Connecting the physical and digital worlds at industrial sites
 - The task in the company's own words: "Imagine entering a digital industrial plant where the environment does more than look real. It understands where machines are, what they are, how people or robots could move between them and which equipment needs attention. Today's 3D captures can be visually extraordinary, but they often lack the meaning needed for intelligent action. Valmet challenges you to bridge that gap. Explore how spatial perception, semantic 3D understanding and AI-grounded equipment information could transform a scanned industrial environment into a navigable, useful digital world." The scored criteria are still to be written at the 18:50 briefing.
-- Why this one (business value, data available, fit with the stack): a scan of a plant room becomes a model that knows where each machine is, what it is, which equipment needs attention, and how to get to it. The plate in a technician's hand anchors the physical asset to its twin, and the manual corpus supplies a cited reason behind each maintenance decision. The result is measurable (find the asset in seconds against a CMMS scroll; path clearance in centimetres) and the vote story is a grey scan that becomes a navigable world.
+- Why this one (business value, data available, fit with the stack): a work order becomes a guided mission. The plant identifies the machine, explains why it needs attention, computes a route to its inspection position, and reroutes when an aisle is blocked. The scan can be supplied or captured with our depth pipeline; the asset register, the OCR tags and the manual corpus supply identity and evidence. The result is measurable (correct asset selection, routes found, blocked handling, response time, manual preparation) and the vote story is a blocked aisle that visibly changes the answer.
 - Accepted by the whole team (names): TODO at check-in
 - Selected in sinceai.app (time, by whom): TODO, before 17:30
 - IP terms (who owns the work, any NDA): "Your team owns what you build. Valmet can use it in its business." No NDA in the public summary. Confirm at the briefing; FORCIT is the only challenge the event brief names an NDA for.
@@ -47,11 +47,11 @@ Write the criteria in their words at the briefing, not a paraphrase.
 
 What a judge sees in 90 seconds, step by step:
 
-1. A grey point cloud of a plant room rotates. No labels, no colour. Click Understand: points take colour by class and 40 assets get tags.
-2. Click Needs attention: six assets light red with their service intervals. Photograph a printed plate with the laptop webcam: the camera flies to that machine in the model and pulses it.
-3. Ask for a route from the door to that asset. A straight line clips a tank; the real path threads around it, with clearance and a collision count. Then click the asset and ask why it needs attention: the answer cites the manual section, page and VMR003 interval.
+1. A scan of the area rotates, unlabelled. Click Understand: equipment highlights, and selecting P-204 shows its evidence, the tag and the operator confirmation.
+2. Pick the inspection request: the machine lights up and a route appears from the start to the inspection position beside it, with distance and clearance.
+3. Block an aisle with a click: the route vanishes and a new one appears around the obstruction, or the app says the destination is unreachable and why. Follow the route to the waypoint, then open the reason: the answer cites the manual section, page and VMR003 interval.
 
-The moment that proves it works (output, number, before/after): a path that visibly avoids a machine, and the measured time to find the right asset from a plate against scrolling a 40 row CMMS table. Target under 12 s against 95 s. The pipeline numbers come from `make proof` and are never typed by hand. The scan is synthetic and the demo says so.
+The moment that proves it works (output, number, before/after): the blocked aisle rerouting the mission, plus correct asset selection on 5 to 8 destinations, route response time, and how much was prepared by hand. Numbers come from `make proof` and are never typed by hand. Whether the scan is supplied or captured is printed on screen.
 
 ## What we are not building
 

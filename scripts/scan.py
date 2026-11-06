@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app" / "server" / "src"))
 
-from fieldplate import capture  # noqa: E402
+from plantpilot import capture  # noqa: E402
 
 MODEL = ROOT / "data" / "models" / "depth_anything_v2_small_q.onnx"
 

@@ -4,7 +4,7 @@ PY := uv run
 
 ## demo: build the register, then serve the API and the built web page
 demo: register
-	$(PY) uvicorn fieldplate.main:app --host 127.0.0.1 --port 8000 --app-dir app/server/src
+	$(PY) uvicorn plantpilot.main:app --host 127.0.0.1 --port 8000 --app-dir app/server/src
 
 ## web: vite dev server on 5173, proxying /api to 8000
 web:
@@ -20,7 +20,7 @@ corpus:
 ## register: regenerate the synthetic CSV and the SQLite register
 register:
 	$(PY) python scripts/make_register.py
-	$(PY) -c "from fieldplate import register; from pathlib import Path; print(register.build(Path('data/register.db'), Path('fixtures/register/assets.csv')), 'assets indexed')"
+	$(PY) -c "from plantpilot import register; from pathlib import Path; print(register.build(Path('data/register.db'), Path('fixtures/register/assets.csv')), 'assets indexed')"
 
 ## models: fetch the monocular depth model (27 MB) into data/models/
 models:

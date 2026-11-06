@@ -4,7 +4,7 @@ import shutil
 import pytest
 from PIL import Image, ImageDraw, ImageFont
 
-from fieldplate import ocr
+from plantpilot import ocr
 
 HAS_TESSERACT = shutil.which("tesseract") is not None
 

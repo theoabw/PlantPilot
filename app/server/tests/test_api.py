@@ -3,7 +3,7 @@ import shutil
 import pytest
 from fastapi.testclient import TestClient
 
-from fieldplate.main import app
+from plantpilot.main import app
 from test_ocr import plate_png
 
 client = TestClient(app)

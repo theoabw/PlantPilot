@@ -1,4 +1,4 @@
-"""Fieldplate API. One process, one port, no cloud calls."""
+"""PlantPilot API. One process, one port, no cloud calls."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__, corpus, ocr, register
 
 ROOT = Path(__file__).resolve().parents[4]
-DATA = Path(os.environ.get("FIELDPLATE_DATA", ROOT / "data"))
+DATA = Path(os.environ.get("PLANTPILOT_DATA", ROOT / "data"))
 FIXTURES = ROOT / "fixtures"
 INDEX_DB = DATA / "index.db"
 REGISTER_DB = DATA / "register.db"
 
-app = FastAPI(title="Fieldplate", version=__version__)
+app = FastAPI(title="PlantPilot", version=__version__)
 
 
 def _ensure_register() -> None:

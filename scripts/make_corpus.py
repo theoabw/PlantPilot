@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app" / "server" / "src"))
 
-from fieldplate import corpus  # noqa: E402
+from plantpilot import corpus  # noqa: E402
 
 DATA = ROOT / "data"
 VALMET = DATA / "valmet"
@@ -49,7 +49,7 @@ def fetch(path: Path) -> None:
     if path.exists() and path.stat().st_size > 10_000:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(URLS[path], headers={"User-Agent": "fieldplate/0.1 (hackathon)"})
+    req = urllib.request.Request(URLS[path], headers={"User-Agent": "plantpilot/0.1 (hackathon)"})
     with urllib.request.urlopen(req, timeout=120) as resp, path.open("wb") as fh:
         fh.write(resp.read())
     print(f"fetched {path.name} ({path.stat().st_size} bytes)")

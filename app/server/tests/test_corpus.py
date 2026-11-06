@@ -1,4 +1,4 @@
-from fieldplate import corpus
+from plantpilot import corpus
 
 TOC = """Contents
 1   INTRODUCTION TO PIPELINE FLOW.........................................8

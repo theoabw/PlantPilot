@@ -10,9 +10,9 @@ export default function TopBar({ health }: TopBarProps) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b-4 border-slate-900 bg-white px-5 py-3">
       <div className="flex items-baseline gap-3">
-        <span className="text-3xl font-black tracking-tight text-slate-900">Fieldplate</span>
+        <span className="text-3xl font-black tracking-tight text-slate-900">PlantPilot</span>
         <span className="text-base font-semibold text-slate-700">
-          nameplate to service action
+          inspection missions in a scanned plant
         </span>
       </div>
 
