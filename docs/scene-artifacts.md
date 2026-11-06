@@ -124,8 +124,15 @@ the `scene lab` button.
 - `make splat-asset` writes `data/viewer/room.ply`: the sane prefix with the 14
   core properties only, 28 MB for the supplied capture instead of 355 MB, so the
   browser loads it in seconds.
-- `GET /api/splat` serves that file, and `GET /api/scene/objects` serves the
-  extraction artifact. Both are local, so the demo makes no network calls.
+- `GET /api/splat` serves that file, `GET /api/scene/objects` serves the
+  extraction artifact and `GET /api/scene/mapped` serves the mapping when
+  `make map` has run. Everything is local, so the demo makes no network calls.
+- `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` point the room view at another
+  capture, for example `PLANTPILOT_SCENE=data/equipment
+  PLANTPILOT_SPLAT=data/viewer/equipment.ply`. The supplied boiler-room delivery
+  only holds 502,483 real rows of the 1,506,136 it declares, and those rows
+  cover a diagonal band of the room, so the improved `Equipment Room.ply`
+  capture (1,676,481 rows, 377 MiB) is the one that shows a whole room.
 - The viewer takes the camera up axis from `source.up_axis` in `objects.json`,
   and frames the room from the extracted objects: a stand position near one end
   of the room, at 1.45 m above the detected floor, looking across it.

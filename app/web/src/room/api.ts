@@ -18,7 +18,7 @@ export type RoomObject = {
 export type RoomObjects = {
   artifact: string
   version: number
-  source: { points: number; up_axis: string; units: string }
+  source: { scene: string; points: number; up_axis: string; units: string }
   floor: { detected: boolean; height: number | null; normal: number[] | null }
   counts: {
     objects: number
@@ -30,6 +30,29 @@ export type RoomObjects = {
   scale_check: { performed: boolean; units_are_metres: boolean; reason: string }
   timing_s: number
   objects: RoomObject[]
+}
+
+export type MappedAsset = {
+  asset_id: string
+  tag: string
+  object_id: string
+  class: string
+  state: 'healthy' | 'degraded' | 'watch' | 'attention_required'
+  issue_code: string
+  method: string
+  confidence: number
+  object_class_proposal: string
+}
+
+export type RoomMapped = {
+  artifact: string
+  version: number
+  counts: { assets: number; mapped: number; unmapped_objects: number }
+  target_asset_id: string
+  target_tag: string
+  target_object_id: string
+  mappings: MappedAsset[]
+  unmapped_object_ids: string[]
 }
 
 export const SPLAT_URL = '/api/splat'
@@ -50,6 +73,18 @@ export function splatAssetUrl(): string {
   return SPLAT_URL
 }
 
+/** The mapping artifact, or null when make map has not run yet. */
+export async function fetchRoomMapped(): Promise<RoomMapped | null> {
+  const response = await fetch('/api/scene/mapped')
+  if (response.status === 404) {
+    return null
+  }
+  if (!response.ok) {
+    throw new Error(`/api/scene/mapped answered ${response.status}`)
+  }
+  return (await response.json()) as RoomMapped
+}
+
 /** The scene's up axis as a unit vector, from "+y" or "-y" style metadata. */
 export function upVector(axis: string | undefined): [number, number, number] {
   const value = (axis ?? '+y').trim().toLowerCase()
@@ -62,6 +97,20 @@ export function upVector(axis: string | undefined): [number, number, number] {
   }
   const vector = vectors[name] ?? vectors.y
   return [vector[0] * sign, vector[1] * sign, vector[2] * sign]
+}
+
+export const STATE_COLOURS: Record<string, string> = {
+  healthy: '#22c55e',
+  watch: '#f59e0b',
+  degraded: '#fb923c',
+  attention_required: '#ef4444',
+}
+
+export const STATE_LABEL: Record<string, string> = {
+  healthy: 'healthy',
+  watch: 'watch',
+  degraded: 'degraded',
+  attention_required: 'attention',
 }
 
 export const CLASS_COLOURS: Record<string, string> = {

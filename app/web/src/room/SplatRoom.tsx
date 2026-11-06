@@ -9,7 +9,10 @@ type Props = {
   objects: RoomObject[]
   upAxis: string | undefined
   floorHeight: number | null
+  resetToken: number
   selectedId: string | null
+  mappedIds: string[]
+  targetId: string | null
   onSelect: (id: string) => void
 }
 
@@ -19,7 +22,23 @@ type BoxView = {
   material: THREE.LineBasicMaterial
 }
 
-const FAULT_COLOUR = 0xff2020
+// Surface and structure frames are room-sized and would drown the equipment,
+// so they stay quiet until selected.
+const QUIET_CLASSES = new Set(['surface', 'structure', 'beam'])
+const SELECTED_COLOUR = 0xffffff
+const TARGET_COLOUR = 0xff3030
+const MAPPED_COLOUR = 0x22d3ee
+
+function boxColour(object: RoomObject, mapped: Set<string>, targetId: string | null): number {
+  if (targetId === object.id) {
+    return TARGET_COLOUR
+  }
+  if (mapped.has(object.id)) {
+    return MAPPED_COLOUR
+  }
+  const value = CLASS_COLOURS[object.class] ?? CLASS_COLOURS.unknown
+  return new THREE.Color(value).getHex()
+}
 
 function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   const x = new THREE.Vector3(...axes[0]).normalize()
@@ -28,7 +47,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, upAxis, floorHeight, selectedId, onSelect }: Props) {
+export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -48,6 +67,8 @@ export default function SplatRoom({ objects, upAxis, floorHeight, selectedId, on
   } | null>(null)
   const selectRef = useRef(onSelect)
   selectRef.current = onSelect
+  // The framed camera is kept so the toolbar's overview and reset can restore it.
+  const frameRef = useRef<{ eye: THREE.Vector3; target: THREE.Vector3 } | null>(null)
 
   // One effect owns the canvas and the render loop; the others only add content.
   useEffect(() => {
@@ -244,9 +265,9 @@ export default function SplatRoom({ objects, upAxis, floorHeight, selectedId, on
     for (const object of objects) {
       const quaternion = boxQuaternion(object.axes)
       const material = new THREE.LineBasicMaterial({
-        color: new THREE.Color(CLASS_COLOURS[object.class] ?? CLASS_COLOURS.unknown),
+        color: boxColour(object, new Set(mappedIds), targetId),
         transparent: true,
-        opacity: 0.9,
+        opacity: QUIET_CLASSES.has(object.class) && !mappedIds.includes(object.id) ? 0.16 : 0.9,
       })
       const lines = new THREE.LineSegments(edges, material)
       lines.position.set(...object.centre)
@@ -374,6 +395,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, selectedId, on
 
     const uprightEye = stand.clone().applyQuaternion(state.world.quaternion)
     const uprightTarget = lookAt.clone().applyQuaternion(state.world.quaternion)
+    frameRef.current = { eye: uprightEye.clone(), target: uprightTarget.clone() }
     state.camera.position.copy(uprightEye)
     state.controls.target.copy(uprightTarget)
     state.controls.minDistance = 0.4
@@ -382,24 +404,36 @@ export default function SplatRoom({ objects, upAxis, floorHeight, selectedId, on
     state.controls.update()
     state.centre.copy(uprightTarget)
     state.radius = Math.max(1.5, size.length() / 2)
-  }, [objects, floorHeight, upAxis])
+  }, [objects, floorHeight, upAxis, mappedIds, targetId])
+
+  useEffect(() => {
+    const state = stateRef.current
+    const frame = frameRef.current
+    if (!state || !frame || resetToken === 0) {
+      return
+    }
+    state.camera.position.copy(frame.eye)
+    state.controls.target.copy(frame.target)
+    state.controls.update()
+  }, [resetToken])
 
   useEffect(() => {
     const state = stateRef.current
     if (!state) {
       return
     }
+    const mapped = new Set(mappedIds)
     for (const box of state.boxes) {
+      const object = objects.find((candidate) => candidate.id === box.id)
       if (box.id === selectedId) {
-        box.material.color.setHex(FAULT_COLOUR)
+        box.material.color.setHex(SELECTED_COLOUR)
         box.material.opacity = 1
-      } else {
-        const object = objects.find((candidate) => candidate.id === box.id)
-        box.material.color.set(CLASS_COLOURS[object?.class ?? 'unknown'] ?? CLASS_COLOURS.unknown)
-        box.material.opacity = 0.9
+      } else if (object) {
+        box.material.color.setHex(boxColour(object, mapped, targetId))
+        box.material.opacity = QUIET_CLASSES.has(object.class) && !mapped.has(object.id) ? 0.16 : 0.9
       }
     }
-  }, [selectedId, objects])
+  }, [selectedId, objects, mappedIds, targetId])
 
   if (glError) {
     return (

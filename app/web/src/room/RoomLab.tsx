@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CLASS_COLOURS, fetchRoomObjects } from './api'
-import type { RoomObjects } from './api'
+import {
+  CLASS_COLOURS,
+  STATE_COLOURS,
+  STATE_LABEL,
+  fetchRoomMapped,
+  fetchRoomObjects,
+} from './api'
+import type { MappedAsset, RoomMapped, RoomObjects } from './api'
 import SplatRoom from './SplatRoom'
+import ViewToolbar from '../components/ViewToolbar'
 
 type Props = {
   onLeave: () => void
@@ -9,10 +16,12 @@ type Props = {
 
 export default function RoomLab({ onLeave }: Props) {
   const [data, setData] = useState<RoomObjects | null>(null)
+  const [mapped, setMapped] = useState<RoomMapped | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
+  const [resetToken, setResetToken] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -24,6 +33,11 @@ export default function RoomLab({ onLeave }: Props) {
       })
       .catch((problem: Error) => alive && setError(problem.message))
       .finally(() => alive && setLoading(false))
+    // The mapping artifact is optional: without make map the room still shows
+    // the extracted objects, just without the builder assets.
+    fetchRoomMapped()
+      .then((value) => alive && setMapped(value))
+      .catch(() => undefined)
     return () => {
       alive = false
     }
@@ -33,6 +47,36 @@ export default function RoomLab({ onLeave }: Props) {
     () => data?.objects.find((object) => object.id === selectedId) ?? null,
     [data, selectedId],
   )
+
+  const mappedByObject = useMemo(() => {
+    const byObject = new Map<string, MappedAsset>()
+    for (const mapping of mapped?.mappings ?? []) {
+      byObject.set(mapping.object_id, mapping)
+    }
+    return byObject
+  }, [mapped])
+
+  const mappedIds = useMemo(() => [...mappedByObject.keys()], [mappedByObject])
+
+  const attention = useMemo(
+    () => (mapped?.mappings ?? []).filter((mapping) => mapping.state !== 'healthy'),
+    [mapped],
+  )
+
+  const faults = useMemo(
+    () => (mapped?.mappings ?? []).filter((mapping) => mapping.state === 'attention_required'),
+    [mapped],
+  )
+
+  const selectedMapping = selectedId ? mappedByObject.get(selectedId) ?? null : null
+
+  // The artifact names the scene it came from, so a second capture does not
+  // keep calling itself the boiler room.
+  const roomName = (() => {
+    const scene = data?.source.scene ?? ''
+    const folder = scene.split('/').filter(Boolean).slice(-2, -1)[0] ?? 'scene'
+    return folder === 'scene' ? 'Boiler room' : `${folder.charAt(0).toUpperCase()}${folder.slice(1)} room`
+  })()
 
   const classes = useMemo(() => {
     const counts = data?.counts.objects_by_class ?? {}
@@ -67,6 +111,9 @@ export default function RoomLab({ onLeave }: Props) {
                   objects={data.objects}
                   upAxis={data.source.up_axis}
                   floorHeight={data.floor.height}
+                  resetToken={resetToken}
+                  mappedIds={mappedIds}
+                  targetId={mapped?.target_object_id ?? null}
                   selectedId={selectedId}
                   onSelect={(id) => {
                     setSelectedId(id)
@@ -92,31 +139,33 @@ export default function RoomLab({ onLeave }: Props) {
               </span>
             </div>
 
-            <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPanelOpen((value) => !value)}
-                className="rounded-md border border-slate-600 bg-slate-950/80 px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-200 backdrop-blur hover:border-slate-400"
-              >
-                {panelOpen ? 'hide panel' : 'show panel'}
-              </button>
-              <button
-                type="button"
-                onClick={onLeave}
-                className="rounded-md border border-slate-600 bg-slate-950/80 px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-200 backdrop-blur hover:border-slate-400"
-              >
-                scene lab
-              </button>
-            </div>
+            <ViewToolbar
+              follow={false}
+              followEnabled={false}
+              panelOpen={panelOpen}
+              faultCount={faults.length}
+              onOverview={() => setResetToken((value) => value + 1)}
+              onFollow={() => undefined}
+              onReset={() => setResetToken((value) => value + 1)}
+              onTogglePanel={() => setPanelOpen((value) => !value)}
+            />
+
+            <button
+              type="button"
+              onClick={onLeave}
+              className="absolute left-3 top-14 z-20 rounded-md border border-slate-600 bg-slate-950/80 px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.12em] text-slate-200 backdrop-blur hover:border-slate-400"
+            >
+              scene lab
+            </button>
 
             {panelOpen ? (
               <aside
                 aria-label="Capture details"
-                className="absolute inset-x-0 bottom-0 top-auto z-30 max-h-[64%] overflow-y-auto rounded-t-2xl border-t border-slate-700 bg-slate-950/95 p-4 shadow-2xl backdrop-blur-md lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[380px] lg:max-h-none lg:rounded-none lg:border-l lg:border-t-0"
+                className="absolute inset-x-0 bottom-0 top-auto z-30 max-h-[64%] overflow-y-auto rounded-t-2xl border-t border-slate-700 bg-slate-950/95 p-4 shadow-2xl backdrop-blur-md lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[390px] lg:max-h-none lg:rounded-none lg:border-l lg:border-t-0"
               >
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Supplied scene</p>
                 <h2 className="text-xl font-black leading-tight text-white">
-                  {selected ? selected.id : 'Boiler room'}
+                  {selected ? selected.id : roomName}
                 </h2>
 
                 <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
@@ -162,6 +211,56 @@ export default function RoomLab({ onLeave }: Props) {
                   </div>
                 </section>
 
+                {mapped ? (
+                  <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Builder assets</p>
+                      <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        {mapped.counts.mapped}/{mapped.counts.assets} mapped
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-slate-300">
+                      {attention.length} of {mapped.counts.mapped} need attention
+                      {faults.length > 0 ? `, ${faults.length} attention required` : ''}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(mapped.target_object_id)
+                        setPanelOpen(true)
+                      }}
+                      className="mt-2 flex w-full items-center justify-between rounded-lg border border-red-500/60 bg-red-500/10 px-2.5 py-1.5 text-left hover:border-red-400"
+                    >
+                      <span className="text-sm font-black text-white">
+                        {mapped.target_tag} <span className="font-semibold text-red-300">FOULING</span>
+                      </span>
+                      <span className="text-[10px] font-black uppercase tracking-wide text-red-300">
+                        {mapped.target_object_id}
+                      </span>
+                    </button>
+                    <div className="mt-2 max-h-36 space-y-0.5 overflow-y-auto pr-1">
+                      {mapped.mappings
+                        .filter((mapping) => mapping.state !== 'healthy')
+                        .map((mapping) => (
+                          <button
+                            key={mapping.object_id}
+                            type="button"
+                            onClick={() => setSelectedId(mapping.object_id)}
+                            className="flex w-full items-center justify-between rounded px-1.5 py-1 text-left hover:bg-slate-800/70"
+                          >
+                            <span className="text-xs font-black text-slate-200">{mapping.tag}</span>
+                            <span
+                              className="text-[10px] font-bold uppercase tracking-wide"
+                              style={{ color: STATE_COLOURS[mapping.state] }}
+                            >
+                              {STATE_LABEL[mapping.state]} {mapping.issue_code.toLowerCase()}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  </section>
+                ) : null}
+
                 {selected ? (
                   <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Framed object</p>
@@ -172,6 +271,23 @@ export default function RoomLab({ onLeave }: Props) {
                       </span>
                     </p>
                     <p className="text-xs font-semibold text-slate-400">{selected.class_reason}</p>
+                    {selectedMapping ? (
+                      <div className="mt-2 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-black text-white">{selectedMapping.tag}</span>
+                          <span
+                            className="text-[10px] font-black uppercase tracking-wide"
+                            style={{ color: STATE_COLOURS[selectedMapping.state] }}
+                          >
+                            {STATE_LABEL[selectedMapping.state]}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-semibold text-slate-400">
+                          {selectedMapping.class} · {selectedMapping.issue_code.toLowerCase()} · confidence{' '}
+                          {Math.round(selectedMapping.confidence * 100)} % via {selectedMapping.method}
+                        </p>
+                      </div>
+                    ) : null}
                     <dl className="mt-2 grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Points</dt>

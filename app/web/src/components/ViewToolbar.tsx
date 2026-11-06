@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 type ViewToolbarProps = {
   follow: boolean
+  followEnabled?: boolean
   panelOpen: boolean
   faultCount: number
   onOverview: () => void
@@ -45,6 +46,7 @@ function ToolButton({ label, active = false, badge, onClick, children }: ToolBut
 
 export default function ViewToolbar({
   follow,
+  followEnabled = true,
   panelOpen,
   faultCount,
   onOverview,
@@ -69,6 +71,7 @@ export default function ViewToolbar({
         </svg>
       </ToolButton>
 
+      {followEnabled ? (
       <ToolButton label={follow ? 'Following' : 'Follow'} active={follow} onClick={onFollow}>
         <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="6.5" />
@@ -76,6 +79,7 @@ export default function ViewToolbar({
           <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
         </svg>
       </ToolButton>
+      ) : null}
 
       <ToolButton label="Reset" onClick={onReset}>
         <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
