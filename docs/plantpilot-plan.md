@@ -71,10 +71,11 @@ If the area has only one approach, the blocked case becomes "no route available"
 
 ## 5. The data decision at 19:30
 
-Two branches, one adapter.
+Three branches, one adapter.
 
 1. **Valmet supplies geometry** (scan, mesh, splat, or images with poses). Inspect it in the first hour: format, units, axes, one room, scale sanity. Crop it with Open3D or CloudCompare, convert to the app format, and keep the source file out of the repo.
 2. **Valmet supplies nothing.** Photograph the most machine-like room in the venue with the laptop or a phone, and run `make scan`. The room is a stand-in for a plant and every screen that shows it says so.
+3. **Valmet supplies nothing and the room has nothing industrial in it.** Load the generated reference plant: `make plant` builds 141k points from a 16 by 12 metre hall with ten tagged assets, two tanks, an overhead pipe run, a doorway, four aisles and a blocker, with noise, dropout and per-point ground truth. It exists so the mission demo cannot be blocked by the venue, and its ground truth lets the semantic pipeline be scored rather than asserted. Every screen labels it synthetic.
 
 The app contract does not change: a cloud of points with colours and, where available, triangles; a set of asset records with positions; a walkable floor; waypoints. The source is a field in the metadata, printed on screen.
 
