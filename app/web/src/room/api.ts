@@ -1,0 +1,202 @@
+// Types and fetchers for the room view. The artifacts are written by make scene,
+// make objects and make splat-asset; their contract is docs/scene-artifacts.md.
+
+export type RoomObject = {
+  id: string
+  centre: [number, number, number]
+  axes: [number, number, number][]
+  extents: [number, number, number]
+  points: number
+  class: string
+  class_confidence: number
+  class_reason: string
+  height_above_floor: number
+  volume_m3: number
+  planarity: number
+}
+
+export type RoomRoute = {
+  reachable: boolean
+  reason?: string
+  target_asset_id: string
+  target_waypoint: number[]
+  start: number[]
+  path: number[][]
+  path_samples?: { point: number[] }[]
+  distance_m: number
+  clearance_m: number
+  floor_height_m: number
+  up_axis: string
+}
+
+export type DiagnosisFinding = {
+  finding_id: string
+  type: string
+  statement: string
+  evidence_ids: string[]
+  confidence: number
+}
+
+export type Diagnosis = {
+  available: boolean
+  reason?: string
+  target?: { asset_id: string; tag: string; class: string; area?: string }
+  condition?: string
+  health_score?: number
+  issue?: { code: string; summary: string; urgency: string }
+  findings?: DiagnosisFinding[]
+  next_safe_check?: { action: string; document_id: string; reason: string }
+  citations?: { doc_id: string; title: string; scope: string; content: string }[]
+}
+
+export type RoomCamera = {
+  eye: [number, number, number]
+  target: [number, number, number]
+  up: [number, number, number]
+}
+
+export type RoomObjects = {
+  artifact: string
+  version: number
+  source: { scene: string; capture?: string | null; points: number; up_axis: string; units: string }
+  floor: { detected: boolean; height: number | null; normal: number[] | null }
+  counts: {
+    objects: number
+    largest_object_share: number
+    median_points_per_object: number
+    points_in_objects_fraction: number
+    objects_by_class: Record<string, number>
+  }
+  scale_check: { performed: boolean; units_are_metres: boolean; reason: string }
+  timing_s: number
+  camera?: RoomCamera | null
+  objects: RoomObject[]
+}
+
+export type MappedAsset = {
+  asset_id: string
+  tag: string
+  object_id: string | null
+  status?: 'proposed' | 'unresolved'
+  match_score?: number | null
+  reason?: string | null
+  class: string
+  state: 'healthy' | 'degraded' | 'watch' | 'attention_required'
+  issue_code: string
+  method: string
+  confidence: number | null
+  object_class_proposal: string | null
+}
+
+export type RoomMapped = {
+  artifact: string
+  version: number
+  counts: { assets: number; mapped: number; unresolved?: number; unmapped_objects: number }
+  target_asset_id: string
+  target_tag: string
+  target_object_id: string | null
+  mappings: MappedAsset[]
+  unmapped_object_ids: string[]
+}
+
+export const SPLAT_URL = '/api/splat'
+
+export async function fetchRoomObjects(): Promise<RoomObjects> {
+  const response = await fetch('/api/scene/objects')
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'no objects artifact on the server, run make objects'
+        : `/api/scene/objects answered ${response.status}`,
+    )
+  }
+  return (await response.json()) as RoomObjects
+}
+
+export function splatAssetUrl(version?: number): string {
+  // The asset URL has to change when the capture changes, otherwise the browser
+  // serves a cached splat from the previous scene.
+  return version ? `${SPLAT_URL}?v=${version}` : SPLAT_URL
+}
+
+/** The navigation route, or null when make route has not run yet. */
+export async function fetchRoomRoute(): Promise<RoomRoute | null> {
+  const response = await fetch('/api/scene/route')
+  if (response.status === 404) {
+    return null
+  }
+  if (!response.ok) {
+    throw new Error(`/api/scene/route answered ${response.status}`)
+  }
+  return (await response.json()) as RoomRoute
+}
+
+/** The diagnosis for the target asset, or null when make diagnose has not run. */
+export async function fetchDiagnosis(): Promise<Diagnosis | null> {
+  const response = await fetch('/api/diagnosis')
+  if (!response.ok) {
+    return null
+  }
+  const body = (await response.json()) as Diagnosis
+  return body.available ? body : null
+}
+
+/** The mapping artifact, or null when make map has not run yet. */
+export async function fetchRoomMapped(): Promise<RoomMapped | null> {
+  const response = await fetch('/api/scene/mapped')
+  if (response.status === 404) {
+    return null
+  }
+  if (!response.ok) {
+    throw new Error(`/api/scene/mapped answered ${response.status}`)
+  }
+  return (await response.json()) as RoomMapped
+}
+
+/** The scene's up axis as a unit vector, from "+y" or "-y" style metadata. */
+export function upVector(axis: string | undefined): [number, number, number] {
+  const value = (axis ?? '+y').trim().toLowerCase()
+  const sign = value.startsWith('-') ? -1 : 1
+  const name = value.replace(/^[+-]/, '')
+  const vectors: Record<string, [number, number, number]> = {
+    x: [1, 0, 0],
+    y: [0, 1, 0],
+    z: [0, 0, 1],
+  }
+  const vector = vectors[name] ?? vectors.y
+  return [vector[0] * sign, vector[1] * sign, vector[2] * sign]
+}
+
+export const STATE_COLOURS: Record<string, string> = {
+  healthy: '#22c55e',
+  watch: '#f59e0b',
+  degraded: '#fb923c',
+  attention_required: '#ef4444',
+}
+
+export const STATE_LABEL: Record<string, string> = {
+  healthy: 'healthy',
+  watch: 'watch',
+  degraded: 'degraded',
+  attention_required: 'attention',
+}
+
+export const CLASS_COLOURS: Record<string, string> = {
+  pump: '#ff6060',
+  motor: '#ffa040',
+  valve: '#ffe060',
+  pipe: '#60c8ff',
+  duct: '#60ffc8',
+  door: '#c878ff',
+  drum: '#ff78dc',
+  pallet: '#b4ff60',
+  cabinet: '#8caaff',
+  panel: '#ffbe8c',
+  ladder: '#96ffc8',
+  beam: '#96c8dc',
+  tray: '#c8c878',
+  machine: '#f0f0f0',
+  structure: '#aaaaaa',
+  surface: '#778899',
+  unknown: '#969696',
+}

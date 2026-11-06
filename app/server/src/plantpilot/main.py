@@ -9,8 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import Response
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, corpus, nav, ocr, register
@@ -36,7 +36,16 @@ REGISTER_DB = DATA / "register.db"
 PLANT_SPEC = FIXTURES / "plant" / "plant.json"
 PLANT_CLOUD = DATA / "plant" / "cloud.npz"
 ROUTE_FILE = DATA / "scene" / "route.json"
-DIAGNOSIS_FILE = DATA / "scene" / "diagnosis.json"
+# The scene artifacts the room view reads. They are written by make scene,
+# make objects, make map and make splat-asset, never committed. PLANTPILOT_SCENE
+# and PLANTPILOT_SPLAT point the room at another capture, for example
+# PLANTPILOT_SCENE=data/equipment PLANTPILOT_SPLAT=data/viewer/equipment.ply.
+SCENE_DIR = Path(os.environ.get("PLANTPILOT_SCENE", DATA / "scene"))
+OBJECTS_FILE = SCENE_DIR / "objects.json"
+MAPPED_FILE = SCENE_DIR / "mapped.json"
+ROUTE_ARTIFACT = SCENE_DIR / "route.json"
+DIAGNOSIS_FILE = SCENE_DIR / "diagnosis.json"
+SPLAT_ASSET = Path(os.environ.get("PLANTPILOT_SPLAT", DATA / "viewer" / "room.ply"))
 
 app = FastAPI(title="PlantPilot", version=__version__)
 
@@ -267,6 +276,65 @@ def route(payload: RouteRequest) -> RouteResponse:
     result["goal"] = [round(float(v), 3) for v in goal]
     result["agent_radius_m"] = agent
     return result
+
+
+# The scene artifacts are written by the pipeline, so the API documents their
+# shape without modelling every field of every version.
+_ARTIFACT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "artifact": {"type": "string"},
+        "version": {"type": "integer"},
+        "source": {"type": "object"},
+        "floor": {"type": "object"},
+        "counts": {"type": "object"},
+        "objects": {"type": "array", "items": {"type": "object"}},
+        "mappings": {"type": "array", "items": {"type": "object"}},
+        "path": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
+        "reachable": {"type": "boolean"},
+    },
+}
+_ARTIFACT_RESPONSES = {200: {"content": {"application/json": {"schema": _ARTIFACT_SCHEMA}}}}
+
+
+@app.get("/api/scene/objects", responses=_ARTIFACT_RESPONSES)
+def scene_objects() -> dict:
+    """The framed objects of the supplied capture, as make objects writes them."""
+    if not OBJECTS_FILE.exists():
+        raise HTTPException(status_code=404, detail="no objects artifact, run make objects")
+    return json.loads(OBJECTS_FILE.read_text())
+
+
+@app.get("/api/scene/mapped", responses=_ARTIFACT_RESPONSES)
+def scene_mapped() -> dict:
+    """The builder assets mapped onto the extracted objects, from make map."""
+    if not MAPPED_FILE.exists():
+        raise HTTPException(status_code=404, detail="no mapping artifact, run make map")
+    return json.loads(MAPPED_FILE.read_text())
+
+
+@app.get("/api/scene/route", responses=_ARTIFACT_RESPONSES)
+def scene_route() -> dict:
+    """The navigation route for the supplied scene, from make route."""
+    if not ROUTE_ARTIFACT.exists():
+        raise HTTPException(status_code=404, detail="no route artifact, run make route")
+    return json.loads(ROUTE_ARTIFACT.read_text())
+
+
+@app.get(
+    "/api/splat",
+    responses={200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def splat_asset() -> FileResponse:
+    """The sanitised capture as a gaussian splat PLY for the browser renderer."""
+    if not SPLAT_ASSET.exists():
+        raise HTTPException(status_code=404, detail="no splat asset, run make splat-asset")
+    return FileResponse(
+        SPLAT_ASSET,
+        media_type="application/octet-stream",
+        filename="room.ply",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 _web = ROOT / "app" / "web" / "dist"

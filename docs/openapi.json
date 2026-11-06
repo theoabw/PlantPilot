@@ -1771,6 +1771,192 @@
         "summary": "Scan"
       }
     },
+    "/api/scene/mapped": {
+      "get": {
+        "description": "The builder assets mapped onto the extracted objects, from make map.",
+        "operationId": "scene_mapped_api_scene_mapped_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Mapped Api Scene Mapped Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Mapped"
+      }
+    },
+    "/api/scene/objects": {
+      "get": {
+        "description": "The framed objects of the supplied capture, as make objects writes them.",
+        "operationId": "scene_objects_api_scene_objects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Objects Api Scene Objects Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Objects"
+      }
+    },
+    "/api/scene/route": {
+      "get": {
+        "description": "The navigation route for the supplied scene, from make route.",
+        "operationId": "scene_route_api_scene_route_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Route Api Scene Route Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Route"
+      }
+    },
     "/api/section/{sid}": {
       "get": {
         "operationId": "section_api_section__sid__get",
@@ -1808,6 +1994,29 @@
           }
         },
         "summary": "Section"
+      }
+    },
+    "/api/splat": {
+      "get": {
+        "description": "The sanitised capture as a gaussian splat PLY for the browser renderer.",
+        "operationId": "splat_asset_api_splat_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Splat Asset"
       }
     }
   }

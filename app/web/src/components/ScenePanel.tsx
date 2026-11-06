@@ -18,7 +18,7 @@ type ScenePanelProps = {
   onClose: () => void
   onSend: () => void
   onFaultDemo: () => void
-  onNavigate: (view: 'plant' | 'plate') => void
+  onNavigate: (view: 'room' | 'plant' | 'plate') => void
 }
 
 type Tab = 'mission' | 'machines' | 'info'
@@ -178,6 +178,21 @@ export default function ScenePanel({
           <section className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Workspace</p>
             <div className="mt-2 space-y-1.5">
+              <button
+                type="button"
+                onClick={() => onNavigate('room')}
+                className="flex w-full items-center justify-between rounded-lg border border-cyan-500/60 bg-cyan-500/10 px-3 py-2 text-left hover:border-cyan-400 hover:bg-cyan-500/15"
+              >
+                <span>
+                  <span className="block text-sm font-black text-white">Real capture</span>
+                  <span className="block text-xs font-semibold text-cyan-200/80">
+                    The supplied splat with its extracted objects
+                  </span>
+                </span>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 text-cyan-300" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
               <button
                 type="button"
                 onClick={() => onNavigate('plant')}

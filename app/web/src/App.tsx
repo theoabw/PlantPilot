@@ -9,6 +9,7 @@ import DocumentCard from './components/DocumentCard'
 import GraphCard from './components/GraphCard'
 import MissionView from './mission/MissionView'
 import SceneLab from './scene-lab/SceneLab'
+import RoomLab from './room/RoomLab'
 import { GateAccepted, GateRefusal } from './components/GateBanner'
 
 function closestTypes(response: ScanResponse | null): string[] {
@@ -49,7 +50,7 @@ export default function App() {
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
   const [isSample, setIsSample] = useState(false)
-  const [view, setView] = useState<'scene' | 'plant' | 'plate'>('scene')
+  const [view, setView] = useState<'room' | 'scene' | 'plant' | 'plate'>('room')
 
   const assetTag = result?.asset?.tag ?? null
 
@@ -115,6 +116,10 @@ export default function App() {
   }
 
   const state: ScanState = scanError ? 'error' : result ? 'done' : 'idle'
+
+  if (view === 'room') {
+    return <RoomLab onLeave={() => setView('scene')} />
+  }
 
   if (view === 'scene') {
     return <SceneLab onNavigate={(next) => setView(next)} />

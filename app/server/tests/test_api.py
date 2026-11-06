@@ -1,3 +1,4 @@
+import json
 import shutil
 
 import pytest
@@ -88,3 +89,53 @@ def test_explain_returns_the_work_order_and_a_reason():
 def test_explain_unknown_asset_is_a_reason_not_a_crash():
     body = client.post("/api/explain", json={"asset_id": "ZZ-999"}).json()
     assert body["asset"] is None and "unknown asset" in body["reason"]
+
+
+def test_the_room_endpoints_explain_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "OBJECTS_FILE", tmp_path / "objects.json")
+    monkeypatch.setattr(main, "SPLAT_ASSET", tmp_path / "room.ply")
+    objects = client.get("/api/scene/objects")
+    splat = client.get("/api/splat")
+    assert objects.status_code == 404 and "make objects" in objects.json()["detail"]
+    assert splat.status_code == 404 and "make splat-asset" in splat.json()["detail"]
+
+
+def test_the_room_endpoints_serve_the_artifacts(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    payload = {"artifact": "objects", "version": 1, "source": {"points": 3, "up_axis": "+y"},
+               "objects": [], "counts": {"objects": 0}}
+    objects_path = tmp_path / "objects.json"
+    objects_path.write_text(json.dumps(payload))
+    splat_path = tmp_path / "room.ply"
+    splat_path.write_bytes(b"ply\nformat binary_little_endian 1.0\nend_header\n")
+    monkeypatch.setattr(main, "OBJECTS_FILE", objects_path)
+    monkeypatch.setattr(main, "SPLAT_ASSET", splat_path)
+
+    body = client.get("/api/scene/objects").json()
+    assert body["artifact"] == "objects" and body["source"]["up_axis"] == "+y"
+
+    response = client.get("/api/splat")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.content.startswith(b"ply\n")
+
+
+def test_the_route_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "ROUTE_ARTIFACT", tmp_path / "route.json")
+    response = client.get("/api/scene/route")
+    assert response.status_code == 404 and "make route" in response.json()["detail"]
+
+
+def test_the_route_endpoint_serves_the_route(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    path = tmp_path / "route.json"
+    path.write_text(json.dumps({"reachable": True, "path": [[0, 0, 0], [1, 0, 1]], "distance_m": 1.41}))
+    monkeypatch.setattr(main, "ROUTE_ARTIFACT", path)
+    body = client.get("/api/scene/route").json()
+    assert body["reachable"] is True and len(body["path"]) == 2

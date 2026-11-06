@@ -1,8 +1,9 @@
 # Scene artifacts
 
-> Superseded 2026-11-06 by [scene-pipeline.md](scene-pipeline.md). Kept for
-> history. The artifact names and the API below belong to the old FastAPI
-> pipeline.
+> This is the contract for the artifacts the pipeline writes and the API the
+> room view reads today. [scene-pipeline.md](scene-pipeline.md) describes a
+> different, unbuilt pipeline; where the two disagree, this page and the code
+> are correct.
 
 Generated artifacts are written into `data/` and never committed:
 
@@ -13,6 +14,7 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer, preview renderer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
+| `data/viewer/room.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
 boundaries. This page fixes the exact shape, because the stages are written in
@@ -21,22 +23,29 @@ parallel and a silent change to a key breaks another seat's work.
 ## Regenerate
 
 ```
-make pack                           # convert the supplied builder workbook
-make map                            # assign pack assets to distinct scene objects
-make diagnose                       # build the P-005 evidence panel
-make pipeline                       # build scene, objects, pack, mapping, diagnosis and route
+make pipeline                       # build every artifact the room view needs
+make demo                           # build, then serve the API and the web page
+make demo CAPTURE=equipment         # the same stages on the complete capture
 make scene                          # ingest the capture as delivered
 make objects                        # extract the framed objects
-make scene PLY=path/to/other.ply    # the same code on another capture
+make splat-asset                    # the sanitised capture as a viewer PLY
 make generality                     # the same stages on the reference plant, scored
 ```
 
+`CAPTURE` selects the capture and every artifact path that follows it:
+`equipment` is the default and the complete capture the organiser re-uploaded
+after the delivered file was found truncated, `boiler` is the capture the brief
+names as delivered. The server reads the matching
+directory through `PLANTPILOT_SCENE` and the viewer asset through
+`PLANTPILOT_SPLAT`, so one `make demo CAPTURE=...` runs either scene with no
+other overrides.
+
 `make pack` reads `data/supplied/builder_pack.xlsx` and writes
-`data/scene/pack.json`. It preserves the tables needed by mapping and
+`<capture>/pack.json`. It preserves the tables needed by mapping and
 diagnosis, merges the asset master, scene anchors and current state into
 `assets`, and records P-005 (`ASSET-017`) as the fixed demo target.
 
-`make map` reads the pack and object artifacts and writes `mapped.json`. Each
+`make map` reads the pack and object artifacts and writes `<capture>/mapped.json`. Each
 assignment records its object id, class proposal, mapping method, confidence,
 and current state. The target mapping is exposed as `target_object_id`; no
 scene-anchor coordinates are used as physical positions.
@@ -104,8 +113,52 @@ which draws the same artifact on the GPU:
   cover whole image regions and wash the render out;
 - colour is blended in display space, with no gamma conversion.
 
-The supplied captures do not share an up axis: the boiler room is `+y`, the
-improved equipment room is `-y`. Nothing in the renderer assumes either.
+Both supplied captures are `-y` up: their frames are the usual 3DGS axes with y
+pointing down. The floor is the bright concrete slab at positive y and the
+ceiling is the dark slab that carries the pipes and trays at negative y, which
+is what the walkthrough footage shows. The synthetic reference plant is `+y`
+because our own generator builds it that way, which is why nothing may hardcode
+a sign: the renderer and the viewer both take the axis from the artifact.
+
+### The browser viewer
+
+The app renders the same capture with [Spark](https://github.com/sparkjsdev/spark)
+(MIT), a WebGL gaussian splat renderer that lives inside the three.js scene, so
+the room and the extracted boxes share one camera and one depth order. The room
+view is the default view; the scene lab with its provisional room stays behind
+the `scene lab` button.
+
+- `make splat-asset` writes `data/viewer/room.ply`: the sane prefix with the 14
+  core properties only, 28 MB for the supplied capture instead of 355 MB, so the
+  browser loads it in seconds.
+- `GET /api/splat` serves that file, `GET /api/scene/objects` serves the
+  extraction artifact and `GET /api/scene/mapped` serves the mapping when
+  `make map` has run. Everything is local, so the demo makes no network calls.
+- `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` point the room view at another
+  capture, for example `PLANTPILOT_SCENE=data/equipment
+  PLANTPILOT_SPLAT=data/viewer/equipment.ply`. The supplied boiler-room delivery
+  only holds 502,483 real rows of the 1,506,136 it declares, and those rows
+  cover a diagonal band of the room, so the improved `Equipment Room.ply`
+  capture (1,676,481 rows, 377 MiB) is the one that shows a whole room.
+- The viewer takes the camera up axis from `source.up_axis` in `objects.json`
+  and opens at the hero view the extraction records in `camera`: eye, target
+  and up in scene coordinates. That view stands at 1.45 m above the detected
+  floor and looks down the longest open sightline, so the browser and the
+  rendered stills show the same room.
+- `GET /api/scene/route` serves the route `make route` writes. The room view
+  draws it on the detected floor (the artifact's path carries heights in the up
+  axis, the viewer places the line and the robot on the floor plane), sends the
+  robot along it with a follow camera, and shows the planned distance and
+  clearance. The mapping and diagnosis panels read the matching artifacts when
+  they exist.
+- The splat URL carries the capture's point count (`/api/splat?v=<points>`) and
+  the response is `no-cache`: without that, the browser keeps the previous
+  capture under the same URL and draws, say, the boiler room while the artifact
+  describes the equipment room. The renderer's splat budget is raised to the
+  artifact's count too, because Spark accumulates 2^19 splats by default and
+  silently truncates a larger capture.
+- Spark needs `three >= 0.180`; the web package is on that version and the
+  preview renderer here is unchanged.
 
 ## Why the plane band is 4 cm
 
@@ -136,10 +189,13 @@ draws at and keeps one machine from becoming several.
 
 - Coordinates are the splat frame. Nothing is rotated, translated, rescaled or
   mirrored. The viewer draws the numbers as they are.
-- `up_axis` is a signed axis string (`+y` for the supplied capture). It is
-  detected from the densest flat slab in the capture and the evidence is in
-  `frame.up_axis_evidence`; `--up` declares it instead. Every later stage reads
-  the axis from the artifact and never from a constant.
+- `up_axis` is a signed axis string. It is detected from the horizontal slabs
+  of the capture and the evidence is in `frame.up_axis_evidence`; `--up`
+  declares it instead. When two dominant slabs bound the room, the floor is the
+  brighter one (light concrete below, dark services above) and the sign points
+  from the floor to the other slab. A capture with a single slab uses the side
+  the room is on. Every later stage reads the axis from the artifact and never
+  from a constant.
 - Units are the file's units. A distance is quoted in metres only when
   `scale_check.units_are_metres` is true.
 
@@ -250,10 +306,10 @@ Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
 | Sane prefix | 502,483 | `make scene` |
 | Rendered gaussians | 502,483 | `make scene` |
 | First invalid row | 502,483 | `make scene` |
-| Up axis | `+y`, floor slab at -0.894 | `make scene` |
+| Up axis | `-y`, two slabs, floor slab at +1.069 (the brighter one) | `make scene` |
 | Points removed as planes | 278,931 (55.5 percent) | `make objects` |
 | Planes removed | 8 | `make objects` |
-| Floor height | -0.877, rms 0.020 | `make objects` |
+| Floor height | -1.074 in the up coordinate (scene y +1.074), rms 0.012 | `make objects` |
 | Point spacing on the floor | 0.014 m | `make objects` |
 | Components at 3 cm | 23,952 | `make objects` |
 | Objects framed | 130 | `make objects` |
@@ -261,13 +317,12 @@ Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
 | Largest object share | 3.7 percent of points | `make objects` |
 | Median points per object | 431 | `make objects` |
 | Extraction time | 2.9 s | `make objects` |
-| Floor to next horizontal plane | 1.95 m (floor -0.877, next plane +1.074) | `make objects` |
+| Clear height | 1.95 m between the floor (scene y +1.074) and the ceiling (scene y -0.877) | `make objects` |
 
-The 1.95 m clear height is the distance to the next strong horizontal plane, not
-to a confirmed ceiling: at +1.074 the points look like a pipe tray or duct. It
-matters for the scale check, because a 2 m door does not fit under a 1.95 m
-ceiling, so the units cannot be exactly metres unless that plane is not the
-ceiling.
+The 1.95 m clear height matters for the scale check: a 2 m door does not fit
+under a 1.95 m ceiling, so the capture units are at least a few percent larger
+than metres, or the ceiling plane is a suspended one. The door check still has
+not been performed and distances stay in scene units.
 
 ## The second scene
 

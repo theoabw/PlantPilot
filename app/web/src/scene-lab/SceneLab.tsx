@@ -14,7 +14,7 @@ const EMPTY_PROGRESS: LabProgress = {
   waypoints: 0,
 }
 
-export default function SceneLab({ onNavigate }: { onNavigate: (view: 'plant' | 'plate') => void }) {
+export default function SceneLab({ onNavigate }: { onNavigate: (view: 'room' | 'plant' | 'plate') => void }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const worldRef = useRef<LabWorld | null>(null)
   const [selectedId, setSelectedId] = useState<string>('P-005')
