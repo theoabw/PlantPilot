@@ -297,6 +297,9 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       placeRobot()
       if (motion.travelled >= motion.total) {
         motion.active = false
+        // the last placement has to be drawn even though the loop stops
+        // rendering once the trip is inactive
+        renderRef.current()
         if (!motion.reached) {
           motion.reached = true
           tripRef.current({ mode: 'arrived', travelled: motion.total, total: motion.total })
