@@ -91,7 +91,7 @@ app/web/         React, Vite and three.js viewer
 scripts/         corpus, register, plates, photo scan, proof summary
 fixtures/        committed and small: register CSV, section sample, action sample
 proof/           trials.csv and the metrics the README and the video quote
-docs/            the plan, the roadmap, the features and the workflow rules
+docs/            the plan, roadmap, features, acceptance checks and workflow
 ```
 
 Repository: <https://github.com/theoabw/SinceAI-2026>
