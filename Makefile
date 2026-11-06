@@ -1,6 +1,24 @@
 PY := uv run
 
-.PHONY: demo web web-build corpus models register plates plant scan proof route test check clean
+# The supplied capture, as delivered. `make scene` reads this file and filters
+# it itself, so the counts it prints are the counts in the delivered file. A
+# second capture is `make scene PLY=path/to/other.ply`.
+PLY ?= data/supplied/Industrial Boiler Room (1).ply
+SCENE ?= data/scene/scene.npz
+OBJECTS ?= data/scene/objects.json
+
+.PHONY: demo web web-build corpus models register plates plant scan scene objects proof route test check clean
+
+## scene: ingest the splat into data/scene/scene.npz, then render a preview
+scene:
+	$(PY) python -m plantpilot.splat --ply "$(PLY)" --out $(SCENE)
+	$(PY) python -m plantpilot.render --scene $(SCENE) --out data/scene/preview.png
+
+## objects: extract framed objects from the scene into data/scene/objects.json
+objects:
+	$(PY) python -m plantpilot.segment --scene $(SCENE) --out $(OBJECTS)
+	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out data/scene/objects_top.png
+	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out data/scene/objects_view.png
 
 ## demo: build the register, then serve the API and the built web page
 demo: register
