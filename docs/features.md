@@ -2,79 +2,77 @@
 
 P0 is the demo. P1 is the difference between a demo and a product. P2 is only if the gates pass early. P3 is out, and stays out.
 
+The score we build against: 30 percent extraction density, 25 percent navigation and proximity display, 20 percent diagnostics and grounding, 15 percent backend, 10 percent demo clarity. A feature that serves none of those is not a feature.
+
 ## P0, the demo dies without these
 
 | # | Feature | Why it is P0 | Owner | Gate |
 | --- | --- | --- | --- | --- |
-| 1 | Load a cloud and orbit it | there is no demo without the scan on screen | C | G0 |
-| 2 | Asset records with position and inspection waypoint | the mission needs a place to go | A, D | G1 |
-| 3 | Select an asset: highlight plus evidence card | this is the identity beat, and the proof the model is not a picture | C | G1 |
-| 4 | Inspection request to asset, one click | this is the mission, not a viewer | D | G1 |
-| 5 | Route from the door to the waypoint, with distance | the accessibility beat | B | G1 |
-| 6 | Add a blocker, recompute, show the new route or a clear unreachable | the reveal, and the only beat that cannot be faked | B | G2 |
-| 7 | Evidence panel with a citation: section, page, interval | the context beat, and the honest alternative to a chatbot | D | G2 |
-| 8 | Runs with the network off | a plant demo that needs Wi-Fi is a liability | all | G3 |
-| 9 | Data source label on screen | honesty about supplied, captured or generated geometry | C | G0 |
-| 10 | Asset store persisted as a file the app reads | a demo restarted twice has to behave the same | D | G1 |
+| 1 | Robust splat ingest: filter the defective rows, decimate, render points with size and alpha | there is no demo without the room on screen | A | G0 |
+| 2 | Scene-agnostic CLI and pipeline: `make pipeline PLY=... PACK=...`, no room constants | the one-room objection dies here, and it is the 15 percent backend score | A, D | G1 |
+| 3 | Object extraction: plane removal, clustering, split oversized components, oriented boxes with a class proposal | the 30 percent beat, and the demo's first impression | A | G1 |
+| 4 | Metadata mapping: 30 records to 30 objects, method and confidence, P-005 as the faulty target | space plus meaning, the join the challenge asks for | D | G1 |
+| 5 | Floor and occupancy grid derived from the splat | navigation needs a walkable surface, not a hand-drawn plan | B | G1 |
+| 6 | A* route to the service position, with length and clearance | the 25 percent beat | B | G1 |
+| 7 | Viewer: room, boxes, selection, red highlight on the faulty device | the product surface, and the display of every other beat | C | G1 |
+| 8 | Avatar travelling the route, at minimum a simple avatar body sliding along the path, with floor arrows | proves the route means something | C | G1 |
+| 9 | Proximity display: nearby objects highlighted with tag, class and state | the second half of the 25 percent criterion | C, D | G2 |
+| 10 | Grounded diagnosis panel: evidence IDs, documents, a confidence that drops when a data quality case touches the asset, next safe check | the 20 percent beat | D | G2 |
+| 11 | Offline run and a provenance line: which scene, which mapping method | a plant demo that needs Wi-Fi is a liability | all | G2 |
+| 12 | Reproducible artifacts from a clean clone once the two supplied files are in `data/supplied/` | the 15 percent backend score | D | G2 |
 
 ## P1, should have, and the value is large
 
 | # | Feature | Value | Cost | Cut when |
 | --- | --- | --- | --- | --- |
-| 1 | Fly-to camera on selection | turns a click into a story beat | 2 h | G3 at 12:30 |
-| 2 | Follow-the-route camera or walking marker | proves the route means something | 2 h | G2 at 12:30 |
-| 3 | Three prepared destinations for the judge | live proof it generalises | 3 h | G3 at 12:30 |
-| 4 | Semantics from geometry, scored against the reference truth | the "meaning" number, and a technical answer for a 3D judge | 4 h | G2 at 12:30 |
-| 5 | Clearance in centimetres and an agent width parameter | the cart versus person story, robotics relevance for free | 2 h | never, it is a parameter |
-| 6 | Photo capture mode as a second mode | shows the pipeline on real captures, not only on our own data | 3 h | G2 at 12:30 |
-| 7 | Evaluation harness with the numbers printed | turns claims into results | 3 h | G4 at 16:00 |
+| 1 | Isolate view: lift one framed object out of the room with its card | the visual from Valmet's own demo 1, and honest confidence | 2 h | G3 at 16:00 |
+| 2 | Second-scene run on the reference plant, scored against ground truth. If it is cut, the scene-agnostic claim is downgraded in the plan, the README and the pitch | proves the agnostic claim with a number | 1.5 h | G3 at 16:00 |
+| 3 | Start and waypoint search: pick the free cells with the best clearance | makes the route robust on any scene | 2 h | G2 at 12:30 |
+| 4 | Asset card built from the pack's master data | a real product surface, not a tooltip | 1 h | G2 at 12:30 |
+| 5 | Walking animation and follow camera | the avatar moves without it; this is the polish | 2 h | G3 at 16:00 |
 
 ## P2, only if the gates pass early
 
 | # | Feature | Value | Cost |
 | --- | --- | --- | --- |
-| 1 | Person versus cart toggle with visibly different routes | a second spatial reveal | 1 h |
-| 2 | CLIP zero-shot labels over proposals | richer meaning, weaker evidence than a tag | 3 h |
-| 3 | Plan view or minimap beside the 3D view | orientation for a judge | 1 h |
-| 4 | Walking time estimate at 1.2 m per second | a human number on the route | 0.5 h |
-| 5 | Search by tag | small, useful, not demo critical | 1 h |
-| 6 | Keyboard shortcuts for the six beats | keeps a live demo on the rails | 0.5 h |
-| 7 | Screenshot export for the README | saves a manual step on Sunday | 1 h |
+| 1 | Area rollup from the pack (its five area names and 30 assets) in the About and the slide, not in 3D | plant-level story without invented geometry | 1 h |
+| 2 | Top-down minimap with the route | orientation for a judge | 1 h |
+| 3 | Keyboard shortcuts for the demo beats | keeps a live demo on the rails | 0.5 h |
+| 4 | Screenshot export for the README | saves a manual step on Sunday | 1 h |
+| 5 | Point budget setting for a weaker laptop | safety on unknown hardware | 0.5 h |
+| 6 | Work-order draft from the diagnosis | shows the next step in the field workflow | 2 h |
 
 ## P3, out, and stays out
 
-Robot simulation, predictive maintenance, automatic pipe connectivity, whole plant understanding, multi-room twins, multi-floor navigation, VR or AR, LiDAR or photogrammetry capture, physics simulation, a login, a cloud service, an LLM on the answer path, a mobile app.
+Android, an emulator, AR, a 3D Gaussian rasteriser, SAM or CLIP, an LLM on the answer path, mesh reconstruction, interactive rerouting, robot dynamics, physics, a login, a cloud service, invented multi-room geometry. One extra supplied-style scene is allowed, as the generality proof, and only after G2.
 
 ## The cut ladder
 
-When time is short, this is the order things leave, and the hour that forces it. It matches the roadmap gates.
+When time is short, this is the order things leave. It matches the roadmap gates, and it never cuts an acceptance check.
 
-1. CLIP labels, first, because geometry and tags already carry meaning with better evidence.
-2. The follow-the-route camera, keeping the waypoint highlight.
-3. The judge-chosen destination, keeping the three scripted ones.
-4. The photo capture mode, keeping the reference plant and noting it on screen.
-5. Point density, down to 50k points at any stutter.
-6. The fly-to animation, keeping a cut to the asset.
+1. The follow camera, keeping the avatar moving on a fixed camera.
+2. The walking animation, keeping a simple avatar body that slides along the path.
+3. Proximity labels down to the nearest two.
+4. The isolate view, and the script selects a nearby asset instead.
+5. The second-scene run. The agnostic claim is then downgraded everywhere to "designed for compatible 3DGS PLY inputs, tested on one scene".
 
-Never cut: the blocker reroute, the waypoint beside the machine, the citation, the offline run. Those four are the difference between answering the brief and answering a different one.
+Never cut: boxes with class proposals, the 30 mapped records, P-005 turning red with its card, the route arrows, the moving avatar, the diagnosis evidence, the offline run, the provenance line. Those are the acceptance checks.
 
-## Which judge each feature serves
+## Which judge line each feature serves
 
 | Judge line | Features that carry it |
 | --- | --- |
-| Works and answers the brief | P0 1 to 7, 9 |
-| Technical quality and feasibility | P0 5, 6, P1 4, 5 |
-| Understanding of the system | evidence panel, data source label, the code path from plate to asset |
-| Responsible data handling | offline run, synthetic labels, no personal data, no cloud |
-| Business value | the mission framing itself, the route and the blocked aisle |
-
-A feature that serves none of these is not a feature, it is a distraction. That is why P3 exists.
+| Works and answers the brief | P0 1, 3, 4, 5, 6, 7, 9, 10 |
+| Technical quality and feasibility | P0 2, 3, 5, 6, 12; P1 2, 3, 5 |
+| Understanding of the system | mapping method, evidence IDs, provenance line, the code path from splat to object |
+| Responsible data handling | offline run, synthetic metadata labels, no personal data, no cloud |
+| Business value | the mission framing, the route, the diagnosis, training and remote support |
 
 ## The submission surface, which is not a feature list
 
 The vote card shows the name, the tagline, the first lines of the About text, the demo video playing inline, the optional pitch deck and the first five Built with chips. Voters can vote without watching the video to the end, so the tagline and the first two sentences do as much work as the demo. Judges read the full About text.
 
-Treat these as P0 copy, not decoration: the tagline at 20:00 Friday, the first two sentences by Saturday midday, and the Built with order chosen deliberately because only the first five become chips.
+Treat these as P0 copy, not decoration: the tagline on Friday night, the first two sentences by Saturday midday, and the Built with order chosen deliberately because only the first five become chips.
 
 ## Rules
 

@@ -1,113 +1,94 @@
 # Acceptance
 
-What has to be true, not what we hope is true. Two parts: the rules we do not negotiate, and one checkable criterion per beat of the demo.
+What has to be true, not what we hope is true. Two parts: the rules we do not negotiate, and one checkable criterion per beat of the demo, plus one for the scene-agnostic claim. Rewritten Friday evening for the supplied splat and the builder pack.
 
 ## The constitution
 
-1. **The demo is offline.** No request leaves the machine on the demo path. If a feature needs the network, it is not in the demo.
-2. **No number without a command.** Every figure on screen or in the README comes from the app or from `make proof`, never typed by hand.
-3. **Say what is simulated.** The geometry source is on screen, the plates are marked SYNTHETIC DEMO ASSET, and the README names what is mocked in its first paragraph.
-4. **The waypoint is beside the machine.** Never a machine centre, and it must resolve to a walkable cell or the answer is "blocked", not a nearby guess.
-5. **P0 never gets cut.** If a P0 is late, the demo changes shape around it. A P1 that misses its gate becomes P2 automatically.
-6. **One demo path.** A second screen, a second idea or a second dataset waits until the first path runs three times clean.
-7. **The repo runs from a clean clone at all times.** `make test` and `make demo` green before a push.
-8. **No secrets, no restricted data, no media in git.** `data/` is local, `fixtures/` is small text, keys live in `.env`.
+1. **The demo is offline.** No request leaves the machine. The splat and the pack are on disk.
+2. **No number without a command.** Every figure in the README, the video or the submission comes from the app or from a `make` target.
+3. **Say what is real and what is mapped.** The scene is Valmet's supplied splat. The metadata is synthetic and the mapping is procedural, and the interface says both, once, quietly.
+4. **The scene frame is the splat frame.** Metres, the up axis detected or declared once and reported, no rescaling and no mirroring after 21:00.
+5. **The splat is points.** It is not called a mesh, a scan with triangles, or a reconstructed surface. Rendering uses point size and alpha.
+6. **The faulty device is P-005 and it does not move.** The mapping may be re-tuned, the target does not silently change.
+7. **Mapping never guesses silently.** Every mapped object carries a method and a confidence, and the card shows them.
+8. **No NaN reaches the viewer.** The .ply tail is uninitialised memory. The loader filters, and the count of dropped vertices is printed.
+9. **One demo path.** A second scene, a second UI or a second target waits until the first path runs three times clean.
+10. **The product is not the pitch.** Extraction counts, timings and accuracy claims belong in the video, the README and the submission. Provenance (which scene, which mapping method, which pack) is product information and appears once.
 
-## The six beats
+## The eight checks
 
-Each criterion is written so a person who did not build the feature can check it.
+Each criterion is written so a person who did not build the feature can check it. Seven cover the demo beats; the eighth covers the scene-agnostic claim.
 
-### 1. The scan is on screen and unlabelled
+### 1. The room is on screen
 
-**Given** the app is open with the reference plant loaded,
-**when** the cloud finishes loading,
-**then** the view reports the point count and the geometry source, and shows no labels until a selection happens.
+**Given** the supplied `.ply` in `data/supplied/`,
+**when** `make scene` runs,
+**then** it prints the total vertices, the sane vertices and the rendered vertices, and the viewer shows the room with points at a stable frame rate.
 
-**Pass:** point count above 100,000, source label visible, first frame under 5 seconds on the demo laptop.
-**Check:** open the app with the API running; the panel shows the count and the source.
+**Pass:** total 1,506,136, sane about 502,483, rendered at least 300,000, no NaN warning, first frame under 5 s on the demo laptop.
+**Check:** `make scene`; open the app.
 
-### 2. An asset is identified, with evidence
+### 2. Objects are framed
 
-**Given** a printed tag in front of the camera,
-**when** it is scanned,
-**then** the field resolver returns type, DN, PN, body and serial, the asset match returns the tag on the plate, and the card states whether the identity is a proposal or confirmed.
+**Given** the sane points,
+**when** `make objects` runs,
+**then** it writes boxes for the objects it extracted, and each box has an id, an oriented frame, a size in metres and a class proposal.
 
-**Given** a frame whose characters are under 20 px,
-**when** it is scanned,
-**then** the gate refuses it, reports the measured pixel height, and returns no asset.
+**Pass:** at least 40 objects framed normally, or a disclosed fallback of at least 30, which is the number of mapped records; below 30 the check fails, because the mapping cannot be complete. No single object holds more than 40 percent of the points, floor and dominant walls are removed, every box has a size and a class proposal, and the viewer draws every box.
+**Check:** `make objects`; the box overlay in the viewer.
 
-**Pass:** the tag on the plate and the matched asset id are the same; the refusal message contains the measured height.
-**Check:** `uv run pytest app/server/tests/test_ocr.py app/server/tests/test_api.py`.
+### 3. The pack is mapped onto the objects
 
-### 3. An inspection request becomes a route
+**Given** the builder pack,
+**when** `make map` runs,
+**then** 30 asset records are assigned to 30 distinct objects, each with a method, a confidence and the state from `Current_State`, and P-005 is assigned to a pump-like object.
 
-**Given** an inspection request derived from last service plus the service interval,
-**when** the asset is selected,
-**then** a route to that asset's waypoint is returned with a distance in metres and a clearance in metres, and the waypoint is a walkable cell.
+**Pass:** 30 mapped, all with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record. Selecting P-005 turns it red and opens its card with the mapped state, method and confidence.
+**Check:** `make map`; select P-005 in the viewer.
 
-**Pass:** reachable true, distance greater than 0.5 m, clearance greater than 0.3 m, response under 300 ms on the demo laptop.
-**Check:** `POST /api/route {"to":"P-204"}`.
+### 4. The avatar reaches the faulty device without clipping
 
-### 4. Blocking an aisle changes the answer
+**Given** the occupancy grid and the target waypoint,
+**when** `make route` runs,
+**then** a path is returned with a length in metres and a minimum clearance, and the path crosses no blocked cell.
 
-**Given** the clear route to V-203 is known,
-**when** the west aisle is closed,
-**then** a route still exists, it is at least 4 m longer than the clear route, and the panel shows the new distance.
+**Pass:** route exists, length over 2 m, clearance at least 0.3 m, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn as floor arrows, with the length and clearance visible.
+**Check:** `make route`; replay the path in the viewer and follow the arrows.
 
-**Given** a blocker that seals the hall,
-**when** the route is requested,
-**then** no route is returned, and the answer carries a reason, not a crash and not a partial path.
+### 5. Nearby objects are shown as the avatar moves
 
-**Pass:** the detour is visibly longer, and the sealed case returns `reachable: false` with a reason.
-**Check:** `POST /api/route {"to":"V-203"}` and the same with `blockers: [[0,4.8,4.6,7.2]]`, then with `[[0,1.5,16,2.2]]`.
+**Given** the route,
+**when** the avatar walks it,
+**then** objects within 2.5 m are highlighted with a box, a tag and a state, and the set changes along the path.
 
-### 5. The reason is cited
+**Pass:** at three sampled points the highlighted set differs, the nearest three are labelled, and the label shows the mapping method.
+**Check:** scrub the path; compare the three samples.
 
-**Given** a selected asset,
-**when** the evidence panel opens,
-**then** it shows a manual section id, the page number for that section, a quote, and the service interval and source from the register and VMR003.
+### 6. The diagnosis is grounded in the pack
 
-**Pass:** the section id and page returned by the app match the corpus index; no card appears without a citation.
-**Check:** `GET /api/section/{id}` and `uv run pytest app/server/tests/test_corpus.py`.
+**Given** the target P-005,
+**when** the avatar arrives,
+**then** the panel shows the condition, the health, the issue, the telemetry evidence, the alarms, the cited documents, a confidence and a safe next check.
 
-### 6. It generalises when a judge picks
+**Pass:** every finding carries an evidence ID that exists in the pack, at least two documents are cited, the confidence drops when a data quality case touches the asset, and the next check matches the field safety document.
+**Check:** `make diagnose`; compare the panel to `Current_State`, `Alarms_Events` and `Knowledge_Docs`.
 
-**Given** the demo is running and three destinations are prepared,
-**when** a judge names one of them,
-**then** the route is computed for that asset, with the same distance, clearance and timing guarantees as beat 3.
+### 7. The demo is one reliable take
 
-**Pass:** every prepared destination reaches the same three numbers within 300 ms, and none of them needs a code change or a re-run of the app.
-**Check:** `POST /api/route` for each prepared asset id.
+**Given** the whole pipeline built,
+**when** the 120 second sequence runs three times in a row with the network unplugged,
+**then** every beat plays in order and the numbers do not change between runs.
 
-## Release checks
+**Pass:** every mandatory beat plays in order: the room, the frames, P-005 turning red with its card and the route, the avatar travelling with proximity labels, the diagnosis, and the end card that names the scene source, the mapping method and the offline status. The isolate view is P1; if it is cut, the script selects a nearby asset instead. Three clean runs, no manual retry, no network request, the same counts and route length each time.
+**Check:** unplug, run three times, note the numbers.
 
-| Check | Command | Pass |
-| --- | --- | --- |
-| Tests | `make test` | all pass |
-| Web build | `cd app/web && npm run build` | exit 0 |
-| Offline demo | disable the network, open the app, run beats 1 to 5 | no error, no spinner that never ends |
-| Clean clone | fresh clone, `uv sync`, `make plant`, `make demo` | the app opens |
-| Submission hygiene | `make check` | ready, or the remaining failure named |
-| Honesty | read the README and the video script | every simulated element is called simulated |
+### 8. The same command runs on a second scene
 
-## What would fail the demo
+**Required whenever the plan, the README or the pitch claims scene-agnostic generality.** If the second-scene run is cut, the claim is downgraded everywhere to "designed for compatible 3DGS PLY inputs, tested on one scene", and this check is not claimed.
 
-- A number on screen that no command produced.
-- A route that ends inside a machine.
-- A refused frame that returns an asset anyway.
-- A citation that does not match the corpus.
-- Any request to the network during a live run.
-- A geometry source that is not named on screen.
+**Given** the reference plant written as a `.ply` with the same gaussian schema,
+**when** `make pipeline PLY=... PACK=...` runs on it with no code change,
+**then** it produces the scene, the objects and a route, and with the pack supplied it also maps and diagnoses. The object count is compared with the plant's ground truth.
 
-## Current measurements
-
-Values change as the data changes, so they live here and not in the criteria.
-
-| Measure | Value | Where it came from |
-| --- | --- | --- |
-| Reference plant points | 141,575 | `GET /api/cloud/meta` |
-| P-204 route | 11.11 m, 0.85 m clearance | `POST /api/route` |
-| V-203 clear route | 14.65 m | `POST /api/route` |
-| V-203 with the west aisle closed | 21.25 m, +6.6 m | `POST /api/route` with the blocker |
-| Route response | 46 ms | app panel, after the cloud loads |
-| Tests | 23 | `make test` |
+**Pass:** the command completes, at least 8 of the 10 reference assets are framed with a box that contains their true position, no box is more than three times the asset's footprint, and the count is printed. A hard-coded room constant anywhere in the ingest or nav path fails this check.
+**Check:** run it on the second scene; compare the boxes with `fixtures/plant/plant.json`.
