@@ -4,9 +4,9 @@ import Card from './Card'
 // 25 nodes maximum including the asset itself.
 const MAX_NEIGHBOURS = 24
 const VIEW_WIDTH = 560
-const VIEW_HEIGHT = 380
+const VIEW_HEIGHT = 420
 const CENTER_X = VIEW_WIDTH / 2
-const CENTER_Y = 175
+const CENTER_Y = 190
 
 type GraphNode = Neighbour & {
   overdue: boolean
@@ -25,8 +25,8 @@ function layoutNodes(neighbours: Neighbour[]): GraphNode[] {
   const shown = ordered.slice(0, MAX_NEIGHBOURS)
   const count = shown.length
 
-  const radiusX = count <= 4 ? 165 : count <= 8 ? 185 : 200
-  const radiusY = count <= 4 ? 100 : count <= 8 ? 112 : 122
+  const radiusX = count <= 4 ? 160 : count <= 8 ? 175 : 185
+  const radiusY = count <= 4 ? 92 : count <= 8 ? 100 : 108
 
   return shown.map((neighbour, index) => {
     const angle = -Math.PI / 2 + (index * 2 * Math.PI) / Math.max(count, 1)
@@ -34,8 +34,10 @@ function layoutNodes(neighbours: Neighbour[]): GraphNode[] {
     const sin = Math.sin(angle)
     const x = CENTER_X + cos * radiusX
     const y = CENTER_Y + sin * radiusY
-    const labelX = CENTER_X + cos * (radiusX + 56)
-    const labelY = CENTER_Y + sin * (radiusY + 36) + 6
+    // Labels sit outside the ring. The horizontal offset is kept short so a
+    // tag or the word overdue at 16px never runs past the right edge.
+    const labelX = CENTER_X + cos * (radiusX + 26)
+    const labelY = CENTER_Y + sin * (radiusY + 46)
     const anchor: GraphNode['anchor'] =
       Math.abs(cos) < 0.3 ? 'middle' : cos > 0 ? 'start' : 'end'
 

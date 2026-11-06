@@ -45,7 +45,7 @@ export default function DocumentCard({ section, state, className = '' }: Documen
             section {section.id}, page {section.page}
           </p>
 
-          <blockquote className="mt-3 line-clamp-2 whitespace-pre-line border-l-4 border-slate-900 bg-slate-50 py-2 pl-3 text-base font-medium italic text-slate-900">
+          <blockquote className="mt-3 line-clamp-2 whitespace-pre-line border-l-4 border-slate-900 bg-slate-50 pl-3 text-base font-medium italic text-slate-900">
             {section.quote}
           </blockquote>
 
