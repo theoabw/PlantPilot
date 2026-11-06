@@ -26,7 +26,10 @@ export default function MissionView() {
         }
         setPlant(nextPlant)
         setCloud(nextCloud)
-        setSelected(nextPlant.assets.find((asset) => asset.id === 'P-204')?.id ?? nextPlant.assets[0]?.id ?? null)
+        // The demo opens on the whole hall, then a click picks a machine. A URL
+        // parameter pre-selects one, which is how the screenshots and the video are taken.
+        const fromUrl = new URLSearchParams(window.location.search).get('asset')
+        setSelected(fromUrl && nextPlant.assets.some((asset) => asset.id === fromUrl) ? fromUrl : null)
       })
       .catch((problem: Error) => alive && setError(problem.message))
       .finally(() => alive && setLoading(false))
@@ -151,6 +154,11 @@ export default function MissionView() {
               , {evidence.request.interval} interval
             </p>
           ) : null}
+          {!selected ? (
+            <p className="mt-1 text-base font-semibold text-slate-700">
+              Select a machine to see the reason and its citation.
+            </p>
+          ) : null}
           {evidence?.sections?.length ? (
             <div className="mt-2 rounded-lg border-2 border-slate-300 bg-slate-50 p-2">
               <p className="text-base font-bold text-slate-900">{evidence.sections[0].title}</p>
@@ -159,11 +167,11 @@ export default function MissionView() {
               </p>
               <p className="mt-1 text-base text-slate-700">{evidence.sections[0].quote}</p>
             </div>
-          ) : (
+          ) : selected ? (
             <p className="mt-1 text-base font-semibold text-amber-800">
-              no cited section, run make corpus
+              no cited section for this machine, run make corpus
             </p>
-          )}
+          ) : null}
           {evidence?.action ? (
             <p className="mt-2 text-base text-slate-700">
               {evidence.action.part}: {evidence.action.action}, {evidence.action.interval} ({evidence.action.source})

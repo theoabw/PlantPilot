@@ -27,7 +27,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
     camera: THREE.PerspectiveCamera
     controls: OrbitControls
     markers: THREE.Group
-    routeLine: THREE.Line | null
+    routeLine: THREE.Object3D | null
     points: THREE.Points | null
     target: THREE.Vector3
     goal: THREE.Vector3
@@ -54,7 +54,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(55, host.clientWidth / host.clientHeight, 0.1, 200)
-    camera.position.set(20, 14, 21)
+    camera.position.set(19, 11, 19)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.target.set(8, 1.2, 6)
     controls.enableDamping = true
@@ -126,7 +126,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
       routeLine: null,
       points: null,
       target: new THREE.Vector3(8, 1.2, 6),
-      goal: new THREE.Vector3(20, 14, 21),
+      goal: new THREE.Vector3(19, 11, 19),
     }
 
     return () => {
@@ -155,7 +155,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
       colours[i] = cloud.colors[i] / 255
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3))
-    const material = new THREE.PointsMaterial({ size: 0.045, vertexColors: true, sizeAttenuation: true })
+    const material = new THREE.PointsMaterial({ size: 2, vertexColors: true, sizeAttenuation: false })
     const points = new THREE.Points(geometry, material)
     state.scene.add(points)
     state.points = points
@@ -170,7 +170,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
     for (const asset of assets) {
       const selected = asset.id === selectedId
       const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(selected ? 0.45 : 0.28, 18, 14),
+        new THREE.SphereGeometry(selected ? 0.26 : 0.15, 18, 14),
         new THREE.MeshStandardMaterial({
           color: CRITICALITY[asset.criticality] ?? 0x64748b,
           emissive: selected ? 0xffffff : 0x000000,
@@ -182,8 +182,14 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
       marker.userData.assetId = asset.id
       state.markers.add(marker)
       if (selected) {
+        // Stay inside the hall: a viewpoint beyond a wall fills the frame with wall points.
+        const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value))
         state.target.set(asset.pos[0], 1.1, asset.pos[2])
-        state.goal.set(asset.pos[0] + 5.5, 4.6, asset.pos[2] + 5.5)
+        state.goal.set(
+          clamp(asset.pos[0] + 2.2, 2.0, 14.0),
+          clamp(asset.pos[1] + 7.5, 4.0, 9.5),
+          clamp(asset.pos[2] + 2.2, 2.0, 10.0),
+        )
       }
     }
   }, [assets, selectedId])
@@ -195,21 +201,23 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
     }
     if (state.routeLine) {
       state.scene.remove(state.routeLine)
-      state.routeLine.geometry.dispose()
+      ;(state.routeLine as THREE.Mesh).geometry.dispose()
       state.routeLine = null
     }
     if (!route || !route.reachable || route.path.length < 2) {
       return
     }
-    const geometry = new THREE.BufferGeometry().setFromPoints(
-      route.path.map(([x, z]) => new THREE.Vector3(x, 0.12, z)),
-    )
-    const line = new THREE.Line(
+    // A tube rather than a hairline: a one pixel line disappears among the points
+    // and the route is the beat the whole demo turns on.
+    const points = route.path.map(([x, z]) => new THREE.Vector3(x, 0.16, z))
+    const curve = new THREE.CatmullRomCurve3(points)
+    const geometry = new THREE.TubeGeometry(curve, Math.max(32, points.length), 0.06, 6, false)
+    const tube = new THREE.Mesh(
       geometry,
-      new THREE.LineBasicMaterial({ color: blocked ? 0xf59e0b : 0x38bdf8, linewidth: 2 }),
+      new THREE.MeshBasicMaterial({ color: blocked ? 0xf59e0b : 0x38bdf8 }),
     )
-    state.scene.add(line)
-    state.routeLine = line
+    state.scene.add(tube)
+    state.routeLine = tube
   }, [route, blocked])
 
   if (glError) {

@@ -37,7 +37,8 @@ make corpus             # the two public Valmet PDFs into data/ and the local in
 make register           # the synthetic asset register
 make plant              # the synthetic reference plant, points plus ground truth
 make scan PHOTO=path/to/room.jpg   # photo to metric point cloud
-make demo               # http://127.0.0.1:8000
+make web-build          # build the page that make demo serves (npm ci first on a fresh clone)
+make demo               # http://127.0.0.1:8000, or /?asset=P-204 to preselect a machine
 ```
 
 Front end development: `make web` runs Vite on 5173 and proxies `/api` to 8000. `make web-build` writes `app/web/dist`, which `make demo` serves. Tests: `make test`. Submission hygiene: `make check`. Printable tags and a scale card: `make plates`.
