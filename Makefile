@@ -17,7 +17,7 @@ PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects pack generality proof route test check clean
+.PHONY: demo web web-build corpus models register plates plant scan scene objects pack map generality proof route test check clean
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -33,6 +33,10 @@ objects:
 ## pack: convert the supplied builder workbook into data/scene/pack.json
 pack:
 	$(PY) python -m plantpilot.pack --xlsx "$(PACK_XLSX)" --out data/scene/pack.json
+
+## map: assign builder-pack assets to distinct extracted objects
+map: pack objects
+	$(PY) python -m plantpilot.mapping --pack data/scene/pack.json --objects $(OBJECTS) --out data/scene/mapped.json
 
 ## generality: run the same stages on the reference plant, score the boxes
 generality: plant
