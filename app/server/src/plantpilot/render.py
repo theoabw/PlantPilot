@@ -338,8 +338,12 @@ def hero_camera(scene: Scene, width: int, height: int, fov_deg: float = 66.0) ->
     clearance = cv2.distanceTransform(free, cv2.DIST_L2, 5) * cell
 
     centre = points.mean(axis=0)
-    steps = np.arange(0.12, 0.9, 0.06)
-    angles = np.linspace(0.0, 2.0 * np.pi, 24, endpoint=False)
+    # Prefer standing near one end of the longer horizontal axis and looking
+    # across the room: a camera dropped in the middle ends up nose to a wall.
+    long_axis = int(np.argmax(hi - lo))
+    spans = hi - lo
+    steps = np.arange(0.12, 0.95, 0.05)
+    angles = np.linspace(0.0, 2.0 * np.pi, 32, endpoint=False)
     best: tuple[float, np.ndarray] | None = None
     for step in steps:
         for angle in angles:
@@ -351,6 +355,9 @@ def hero_camera(scene: Scene, width: int, height: int, fov_deg: float = 66.0) ->
             if not (1 <= row < rows - 1 and 1 <= column < cols - 1):
                 continue
             if occupied[row, column]:
+                continue
+            offset = abs(float(candidate[horizontal[long_axis]] - centre[horizontal[long_axis]]))
+            if offset < 0.28 * float(spans[long_axis]):
                 continue
             score = float(clearance[row, column])
             if best is None or score > best[0]:
@@ -402,6 +409,7 @@ def render_scene(
     max_gaussians: int | None = None,
     eye: tuple[float, float, float] | None = None,
     target: tuple[float, float, float] | None = None,
+    labels: bool = True,
 ) -> Path:
     """Render one view and write a PNG. Returns the path written.
 
@@ -423,7 +431,7 @@ def render_scene(
     else:
         image = splat_points(camera, scene)
     if objects:
-        image = draw_boxes(image, camera, objects, fault_id=fault_id)
+        image = draw_boxes(image, camera, objects, fault_id=fault_id, label=labels)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     image.save(out)
@@ -450,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--width", default=DEFAULT_SIZE[0], type=int)
     parser.add_argument("--height", default=DEFAULT_SIZE[1], type=int)
     parser.add_argument("--fault-id", default=None)
+    parser.add_argument("--no-labels", action="store_true",
+                        help="draw the boxes without their ids, for a clean still")
     parser.add_argument("--json", action="store_true", help="print the camera and counts as JSON")
     args = parser.parse_args(argv)
 
@@ -481,6 +491,7 @@ def main(argv: list[str] | None = None) -> int:
         max_gaussians=maximum,
         eye=eye,
         target=target,
+        labels=not args.no_labels,
     )
     if args.json:
         print(json.dumps({

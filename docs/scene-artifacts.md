@@ -13,6 +13,7 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer, preview renderer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
+| `data/viewer/room.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
 boundaries. This page fixes the exact shape, because the stages are written in
@@ -21,6 +22,7 @@ parallel and a silent change to a key breaks another seat's work.
 ## Regenerate
 
 ```
+make splat-asset                    # the sanitised capture as a viewer PLY
 make pack                           # convert the supplied builder workbook
 make map                            # assign pack assets to distinct scene objects
 make diagnose                       # build the P-005 evidence panel
@@ -104,8 +106,31 @@ which draws the same artifact on the GPU:
   cover whole image regions and wash the render out;
 - colour is blended in display space, with no gamma conversion.
 
-The supplied captures do not share an up axis: the boiler room is `+y`, the
-improved equipment room is `-y`. Nothing in the renderer assumes either.
+Both supplied captures are `-y` up: their frames are the usual 3DGS axes with y
+pointing down. The floor is the bright concrete slab at positive y and the
+ceiling is the dark slab that carries the pipes and trays at negative y, which
+is what the walkthrough footage shows. The synthetic reference plant is `+y`
+because our own generator builds it that way, which is why nothing may hardcode
+a sign: the renderer and the viewer both take the axis from the artifact.
+
+### The browser viewer
+
+The app renders the same capture with [Spark](https://github.com/sparkjsdev/spark)
+(MIT), a WebGL gaussian splat renderer that lives inside the three.js scene, so
+the room and the extracted boxes share one camera and one depth order. The room
+view is the default view; the scene lab with its provisional room stays behind
+the `scene lab` button.
+
+- `make splat-asset` writes `data/viewer/room.ply`: the sane prefix with the 14
+  core properties only, 28 MB for the supplied capture instead of 355 MB, so the
+  browser loads it in seconds.
+- `GET /api/splat` serves that file, and `GET /api/scene/objects` serves the
+  extraction artifact. Both are local, so the demo makes no network calls.
+- The viewer takes the camera up axis from `source.up_axis` in `objects.json`,
+  and frames the room from the extracted objects: a stand position near one end
+  of the room, at 1.45 m above the detected floor, looking across it.
+- Spark needs `three >= 0.180`; the web package is on that version and the
+  preview renderer here is unchanged.
 
 ## Why the plane band is 4 cm
 
@@ -136,10 +161,13 @@ draws at and keeps one machine from becoming several.
 
 - Coordinates are the splat frame. Nothing is rotated, translated, rescaled or
   mirrored. The viewer draws the numbers as they are.
-- `up_axis` is a signed axis string (`+y` for the supplied capture). It is
-  detected from the densest flat slab in the capture and the evidence is in
-  `frame.up_axis_evidence`; `--up` declares it instead. Every later stage reads
-  the axis from the artifact and never from a constant.
+- `up_axis` is a signed axis string. It is detected from the horizontal slabs
+  of the capture and the evidence is in `frame.up_axis_evidence`; `--up`
+  declares it instead. When two dominant slabs bound the room, the floor is the
+  brighter one (light concrete below, dark services above) and the sign points
+  from the floor to the other slab. A capture with a single slab uses the side
+  the room is on. Every later stage reads the axis from the artifact and never
+  from a constant.
 - Units are the file's units. A distance is quoted in metres only when
   `scale_check.units_are_metres` is true.
 
@@ -250,10 +278,10 @@ Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
 | Sane prefix | 502,483 | `make scene` |
 | Rendered gaussians | 502,483 | `make scene` |
 | First invalid row | 502,483 | `make scene` |
-| Up axis | `+y`, floor slab at -0.894 | `make scene` |
+| Up axis | `-y`, two slabs, floor slab at +1.069 (the brighter one) | `make scene` |
 | Points removed as planes | 278,931 (55.5 percent) | `make objects` |
 | Planes removed | 8 | `make objects` |
-| Floor height | -0.877, rms 0.020 | `make objects` |
+| Floor height | -1.074 in the up coordinate (scene y +1.074), rms 0.012 | `make objects` |
 | Point spacing on the floor | 0.014 m | `make objects` |
 | Components at 3 cm | 23,952 | `make objects` |
 | Objects framed | 130 | `make objects` |
@@ -261,13 +289,12 @@ Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
 | Largest object share | 3.7 percent of points | `make objects` |
 | Median points per object | 431 | `make objects` |
 | Extraction time | 2.9 s | `make objects` |
-| Floor to next horizontal plane | 1.95 m (floor -0.877, next plane +1.074) | `make objects` |
+| Clear height | 1.95 m between the floor (scene y +1.074) and the ceiling (scene y -0.877) | `make objects` |
 
-The 1.95 m clear height is the distance to the next strong horizontal plane, not
-to a confirmed ceiling: at +1.074 the points look like a pipe tray or duct. It
-matters for the scale check, because a 2 m door does not fit under a 1.95 m
-ceiling, so the units cannot be exactly metres unless that plane is not the
-ceiling.
+The 1.95 m clear height matters for the scale check: a 2 m door does not fit
+under a 1.95 m ceiling, so the capture units are at least a few percent larger
+than metres, or the ceiling plane is a suspended one. The door check still has
+not been performed and distances stay in scene units.
 
 ## The second scene
 

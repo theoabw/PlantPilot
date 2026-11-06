@@ -203,6 +203,26 @@ def floor_plane(planes: list[Plane], up: np.ndarray) -> Plane | None:
     return max(candidates, key=lambda p: p.inliers)
 
 
+def floor_plane_for(scene: Scene, planes: list[Plane], up: np.ndarray) -> Plane | None:
+    """The horizontal plane at the floor the ingest detected.
+
+    The largest horizontal plane is often the ceiling: it carries the services
+    and can hold more points than the floor. The scene metadata records which
+    slab is the floor, so pick that plane and fall back to the largest one only
+    when the metadata has nothing.
+    """
+    frame = scene.meta.get("frame", {})
+    slab = frame.get("floor_slab")
+    axis = frame.get("up_axis_index")
+    candidates = [p for p in planes if p.horizontal]
+    if slab is None or axis is None or not candidates:
+        return floor_plane(planes, up)
+    along = [p for p in candidates if abs(float(np.asarray(p.normal)[axis])) > 1e-6]
+    if not along:
+        return floor_plane(planes, up)
+    return min(along, key=lambda p: abs(-p.offset / float(np.asarray(p.normal)[axis]) - float(slab)))
+
+
 def estimate_spacing(
     xyz: np.ndarray,
     planes: list[Plane],
@@ -642,7 +662,7 @@ def segment(
         iterations=int(options["plane_iterations"]),
         seed=int(options["seed"]),
     )
-    floor = floor_plane(planes, up)
+    floor = floor_plane_for(scene, planes, up)
     removed_points = int((~keep).sum())
     remaining = xyz[keep]
     if remaining.shape[0] < 3:

@@ -226,7 +226,7 @@ def sane_mask(rows: np.ndarray) -> np.ndarray:
     return ok
 
 
-def _floor_evidence(xyz: np.ndarray) -> dict:
+def _floor_evidence(xyz: np.ndarray, rgb: np.ndarray | None = None) -> dict:
     """Find the densest flat slab per axis, which is the floor candidate.
 
     A fine histogram is smoothed with a window of `SLAB_WIDTH`, and the peak of
@@ -246,26 +246,48 @@ def _floor_evidence(xyz: np.ndarray) -> dict:
         bins = max(window_bins + 1, int(np.ceil((hi - lo) / HISTOGRAM_BIN)))
         counts, edges = np.histogram(values, bins=bins, range=(lo, hi))
         smoothed = np.convolve(counts.astype(np.float64), np.ones(window_bins), mode="valid")
-        peak = int(np.argmax(smoothed))
-        start, stop = float(edges[peak]), float(edges[peak + window_bins])
-        inside = (values >= start) & (values < stop)
-        # The window edge is not the surface: report the median of the points it
-        # holds, which is where the flat surface actually is.
-        centre = float(np.median(values[inside])) if inside.any() else (start + stop) / 2.0
-        half = (stop - start) / 2.0
         total = float(values.size)
+
+        def slab_at(peak: int) -> dict:
+            start, stop = float(edges[peak]), float(edges[peak + window_bins])
+            inside = (values >= start) & (values < stop)
+            # The window edge is not the surface: report the median of the points
+            # it holds, which is where the flat surface actually is.
+            centre = float(np.median(values[inside])) if inside.any() else (start + stop) / 2.0
+            luminance = None
+            if rgb is not None and inside.any():
+                sample = rgb[inside].astype(np.float64)
+                luminance = round(float(np.median(0.2126 * sample[:, 0] + 0.7152 * sample[:, 1] + 0.0722 * sample[:, 2])), 1)
+            return {
+                "slab": round(centre, 4),
+                "share": round(float(smoothed[peak] / total), 4),
+                "luminance": luminance,
+                "points": int(inside.sum()),
+            }
+
+        peak = int(np.argmax(smoothed))
+        first = slab_at(peak)
+        # The second strong slab on this axis is the other horizontal surface of
+        # the room (floor or ceiling), with the first window suppressed.
+        suppressed = smoothed.copy()
+        low = max(0, peak - window_bins)
+        suppressed[low:peak + window_bins] = 0.0
+        second = slab_at(int(np.argmax(suppressed))) if float(suppressed.max()) > 0.04 * total else None
+        half = (edges[1] - edges[0]) * window_bins / 2.0
         evidence[name] = {
             "dense_extent": round(float(hi - lo), 4),
-            "slab": round(centre, 4),
-            "slab_share": round(float(smoothed[peak] / total), 4),
-            "share_above": round(float((values > centre + half).mean()), 4),
-            "share_below": round(float((values < centre - half).mean()), 4),
-            "slab_points": int(inside.sum()),
+            "slab": first["slab"],
+            "slab_share": first["share"],
+            "share_above": round(float((values > first["slab"] + half).mean()), 4),
+            "share_below": round(float((values < first["slab"] - half).mean()), 4),
+            "slab_points": first["points"],
+            "slab_luminance": first["luminance"],
+            "second_slab": second,
         }
     return evidence
 
 
-def detect_up_axis(xyz: np.ndarray) -> tuple[int, int, dict]:
+def detect_up_axis(xyz: np.ndarray, rgb: np.ndarray | None = None) -> tuple[int, int, dict]:
     """Return (axis index, sign, evidence) for the up axis.
 
     The floor is the densest flat surface in an indoor capture, so the up axis
@@ -275,7 +297,7 @@ def detect_up_axis(xyz: np.ndarray) -> tuple[int, int, dict]:
     says the confidence is low. A capture that defeats the heuristic declares
     its axis with `--up`.
     """
-    evidence = _floor_evidence(xyz)
+    evidence = _floor_evidence(xyz, rgb)
     shares = {name: (evidence[name]["slab_share"] or 0.0) for name in AXES}
     ranked = sorted(AXES, key=lambda name: shares[name], reverse=True)
     best, second = ranked[0], ranked[1]
@@ -291,7 +313,21 @@ def detect_up_axis(xyz: np.ndarray) -> tuple[int, int, dict]:
 
     slab = evidence[chosen]["slab"]
     sign = 1
-    if slab is not None:
+    second = evidence[chosen].get("second_slab")
+    if slab is not None and second is not None and evidence[chosen].get("slab_luminance") is not None \
+            and second.get("luminance") is not None:
+        # Two horizontal surfaces bound the room: the floor is the brighter of
+        # the two in an industrial capture (light concrete below, dark services
+        # above), and up points from the floor to the other slab. This is the
+        # case a single mass rule gets wrong: the ceiling is often denser.
+        first_is_floor = float(evidence[chosen]["slab_luminance"]) >= float(second["luminance"])
+        floor = float(slab) if first_is_floor else float(second["slab"])
+        roof = float(second["slab"]) if first_is_floor else float(slab)
+        slab = floor
+        sign = 1 if roof >= floor else -1
+        source = "two slabs; the floor is the brighter one"
+        confident = True
+    elif slab is not None:
         above = float(evidence[chosen]["share_above"] or 0.0)
         below = float(evidence[chosen]["share_below"] or 0.0)
         sign = 1 if above >= below else -1
@@ -426,7 +462,7 @@ def ingest(
     total = gaussians["xyz"].shape[0]
 
     if up is None:
-        axis, sign, up_detail = detect_up_axis(gaussians["xyz"])
+        axis, sign, up_detail = detect_up_axis(gaussians["xyz"], gaussians["rgb"])
         up_source = up_detail["source"]
     else:
         parsed = str(up).strip().lower()
@@ -464,6 +500,7 @@ def ingest(
             "up_axis_sign": sign,
             "up_axis_source": up_source,
             "up_axis_evidence": up_detail,
+            "floor_slab": up_detail.get("slab"),
             "units": "file units, treated as metres pending the scale check in objects.json",
         },
         "counts": {

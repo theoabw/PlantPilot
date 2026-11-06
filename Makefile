@@ -18,13 +18,16 @@ SPLAT_GAUSSIANS ?= 500000
 PREVIEW_WIDTH ?= 1400
 PREVIEW_HEIGHT ?= 900
 
+# The browser viewer's copy of the capture: sane prefix only, core properties only.
+VIEWER_PLY ?= data/viewer/room.ply
+
 # The second scene for the scene-agnostic check: the synthetic reference plant,
 # written as a 3DGS PLY so the same stages run on it unchanged.
 PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects pack map diagnose pipeline generality proof route openapi test check clean
+.PHONY: demo web web-build corpus models register plates plant scan scene objects splat-asset pack map diagnose pipeline generality proof route openapi test check clean
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -37,7 +40,11 @@ objects:
 	$(PY) python -m plantpilot.segment --scene $(SCENE) --out $(OBJECTS)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out $(OBJECTS_TOP)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW) \
-	  --mode splats --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT)
+	  --mode splats --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT) --no-labels
+
+## splat-asset: write the sanitised capture as a PLY for the browser viewer
+splat-asset:
+	$(PY) python scripts/make_splat_asset.py --ply "$(PLY)" --out $(VIEWER_PLY)
 
 ## pack: convert the supplied builder workbook into data/scene/pack.json
 pack:
@@ -52,7 +59,7 @@ diagnose: pack
 	$(PY) python -m plantpilot.diagnose --pack data/scene/pack.json --out data/scene/diagnosis.json
 
 ## pipeline: build the complete supplied-scene demo artifact set
-pipeline: diagnose route
+pipeline: diagnose route splat-asset
 
 ## generality: run the same stages on the reference plant, score the boxes
 generality: plant

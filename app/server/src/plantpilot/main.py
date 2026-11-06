@@ -9,8 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import Response
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, corpus, nav, ocr, register
@@ -37,6 +37,11 @@ PLANT_SPEC = FIXTURES / "plant" / "plant.json"
 PLANT_CLOUD = DATA / "plant" / "cloud.npz"
 ROUTE_FILE = DATA / "scene" / "route.json"
 DIAGNOSIS_FILE = DATA / "scene" / "diagnosis.json"
+# The scene artifacts the room view reads. They are written by make scene,
+# make objects, make map and make splat-asset, never committed.
+OBJECTS_FILE = DATA / "scene" / "objects.json"
+MAPPED_FILE = DATA / "scene" / "mapped.json"
+SPLAT_ASSET = DATA / "viewer" / "room.ply"
 
 app = FastAPI(title="PlantPilot", version=__version__)
 
@@ -267,6 +272,35 @@ def route(payload: RouteRequest) -> RouteResponse:
     result["goal"] = [round(float(v), 3) for v in goal]
     result["agent_radius_m"] = agent
     return result
+
+
+@app.get("/api/scene/objects")
+def scene_objects() -> dict:
+    """The framed objects of the supplied capture, as make objects writes them."""
+    if not OBJECTS_FILE.exists():
+        raise HTTPException(status_code=404, detail="no objects artifact, run make objects")
+    return json.loads(OBJECTS_FILE.read_text())
+
+
+@app.get("/api/scene/mapped")
+def scene_mapped() -> dict:
+    """The builder assets mapped onto the extracted objects, from make map."""
+    if not MAPPED_FILE.exists():
+        raise HTTPException(status_code=404, detail="no mapping artifact, run make map")
+    return json.loads(MAPPED_FILE.read_text())
+
+
+@app.get("/api/splat")
+def splat_asset() -> FileResponse:
+    """The sanitised capture as a gaussian splat PLY for the browser renderer."""
+    if not SPLAT_ASSET.exists():
+        raise HTTPException(status_code=404, detail="no splat asset, run make splat-asset")
+    return FileResponse(
+        SPLAT_ASSET,
+        media_type="application/octet-stream",
+        filename="room.ply",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 _web = ROOT / "app" / "web" / "dist"
