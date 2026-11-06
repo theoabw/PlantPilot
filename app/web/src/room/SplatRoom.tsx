@@ -3,7 +3,23 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, upVector } from './api'
-import type { RoomCamera, RoomObject } from './api'
+import type { RoomCamera, RoomObject, RoomRoute } from './api'
+
+export type TripState = {
+  mode: 'idle' | 'moving' | 'arrived'
+  travelled: number
+  total: number
+}
+
+type Motion = {
+  active: boolean
+  travelled: number
+  total: number
+  points: THREE.Vector3[]
+  cumulative: number[]
+  robot: THREE.Group | null
+  reached: boolean
+}
 
 type Props = {
   objects: RoomObject[]
@@ -16,6 +32,11 @@ type Props = {
   cameraPose: RoomCamera | null
   maxSplats: number
   splatUrl: string
+  route: RoomRoute | null
+  tripToken: number
+  follow: boolean
+  focus: boolean
+  onTrip: (state: TripState) => void
   onSelect: (id: string) => void
 }
 
@@ -31,6 +52,7 @@ const QUIET_CLASSES = new Set(['surface', 'structure', 'beam'])
 const SELECTED_COLOUR = 0xffffff
 const TARGET_COLOUR = 0xff3030
 const MAPPED_COLOUR = 0x22d3ee
+const ROUTE_COLOUR = 0xfbbf24
 
 function boxColour(object: RoomObject, mapped: Set<string>, targetId: string | null): number {
   if (targetId === object.id) {
@@ -50,7 +72,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, cameraPose, maxSplats, splatUrl, onSelect }: Props) {
+export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, cameraPose, maxSplats, splatUrl, route, tripToken, follow, focus, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -65,11 +87,18 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     boxGroup: THREE.Group
     pickGroup: THREE.Group
     boxes: BoxView[]
+    routeGroup: THREE.Group
+    motion: Motion
+    follow: boolean
     centre: THREE.Vector3
     radius: number
   } | null>(null)
   const selectRef = useRef(onSelect)
   selectRef.current = onSelect
+  const tripRef = useRef(onTrip)
+  tripRef.current = onTrip
+  const followRef = useRef(follow)
+  followRef.current = follow
   // The framed camera is kept so the toolbar's overview and reset can restore it.
   const frameRef = useRef<{ eye: THREE.Vector3; target: THREE.Vector3 } | null>(null)
 
@@ -110,6 +139,10 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       if (maxSplats > 0) {
         spark.maxSplats = maxSplats
       }
+      // Draw the splats first, so every ordinary mesh in the scene (the robot,
+      // the route line, the object frames) depth-tests against them and stays
+      // visible. Drawn in the default order the splat pass covers them.
+      spark.renderOrder = -1
       scene.add(spark)
     } catch (problem) {
       setGlError(problem instanceof Error ? problem.message : String(problem))
@@ -156,6 +189,8 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     world.add(boxGroup)
     const pickGroup = new THREE.Group()
     world.add(pickGroup)
+    const routeGroup = new THREE.Group()
+    scene.add(routeGroup)
 
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
@@ -172,9 +207,73 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     }
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
 
+    const up = new THREE.Vector3(0, 1, 0)
+    const robotForward = new THREE.Vector3()
+    const placeRobot = () => {
+      const motion = stateRef.current?.motion
+      if (!motion || !motion.robot || motion.points.length < 2) {
+        return
+      }
+      let travelled = motion.travelled
+      let index = 0
+      while (index < motion.points.length - 2 && travelled > motion.cumulative[index + 1] - motion.cumulative[index]) {
+        travelled -= motion.cumulative[index + 1] - motion.cumulative[index]
+        index += 1
+      }
+      const start = motion.points[index]
+      const end = motion.points[index + 1] ?? start
+      const length = Math.max(0.0001, start.distanceTo(end))
+      const ratio = Math.max(0, Math.min(1, travelled / length))
+      motion.robot.position.copy(start).lerp(end, ratio)
+      const direction = end.clone().sub(start)
+      if (direction.lengthSq() > 1e-6) {
+        motion.robot.rotation.y = Math.atan2(direction.x, direction.z)
+      }
+    }
+    const updateFollow = () => {
+      const robot = stateRef.current?.motion.robot
+      if (!robot) {
+        return
+      }
+      robotForward.set(0, 0, 1).applyAxisAngle(up, robot.rotation.y)
+      camera.position.copy(robot.position).addScaledVector(robotForward, -2.6).add(new THREE.Vector3(0, 1.4, 0))
+      controls.target.copy(robot.position).add(new THREE.Vector3(0, 0.45, 0))
+    }
+    const advanceMotion = (dt: number) => {
+      const motion = stateRef.current?.motion
+      if (!motion || !motion.active || !motion.robot || motion.points.length < 2) {
+        return
+      }
+      motion.travelled = Math.min(motion.total, motion.travelled + 1.15 * dt)
+      placeRobot()
+      if (motion.travelled >= motion.total) {
+        motion.active = false
+        if (!motion.reached) {
+          motion.reached = true
+          tripRef.current({ mode: 'arrived', travelled: motion.total, total: motion.total })
+        }
+      }
+    }
     let frame = 0
+    let lastTime = performance.now()
+    let lastReport = 0
     const loop = () => {
       try {
+        const now = performance.now()
+        const dt = Math.min(0.1, (now - lastTime) / 1000)
+        lastTime = now
+        advanceMotion(dt)
+        if (stateRef.current?.follow && stateRef.current.motion.robot) {
+          updateFollow()
+        }
+        if (stateRef.current?.motion.active && now - lastReport > 250) {
+          lastReport = now
+          tripRef.current({
+            mode: 'moving',
+            travelled: stateRef.current.motion.travelled,
+            total: stateRef.current.motion.total,
+          })
+        }
         controls.update()
         renderer.render(scene, camera)
       } catch (problem) {
@@ -206,6 +305,17 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       boxGroup,
       pickGroup,
       boxes: [],
+      routeGroup,
+      motion: {
+        active: false,
+        travelled: 0,
+        total: 0,
+        points: [],
+        cumulative: [],
+        robot: null,
+        reached: false,
+      },
+      follow: followRef.current,
       centre: new THREE.Vector3(0, 1, 0),
       radius: 5,
     }
@@ -226,6 +336,17 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
         ;(mesh.material as THREE.Material).dispose()
       })
       state?.pickGroup.clear()
+      state?.routeGroup.children.forEach((child) => {
+        const mesh = child as THREE.Mesh
+        mesh.geometry?.dispose()
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(material)) {
+          material.forEach((entry) => entry.dispose())
+        } else {
+          material?.dispose()
+        }
+      })
+      state?.routeGroup.clear()
       splat?.dispose()
       renderer.dispose()
       host.removeChild(renderer.domElement)
@@ -456,10 +577,149 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
         box.material.opacity = 1
       } else if (object) {
         box.material.color.setHex(boxColour(object, mapped, targetId))
-        box.material.opacity = QUIET_CLASSES.has(object.class) && !mapped.has(object.id) ? 0.16 : 0.9
+        const isMapped = mapped.has(object.id)
+        const isTarget = targetId === object.id
+        // While the robot is driving, keep the frames out of its way: the
+        // mapped assets stay readable and the rest of the room recedes.
+        box.material.opacity = isTarget
+          ? 1
+          : focus
+            ? isMapped
+              ? 0.45
+              : 0.08
+            : QUIET_CLASSES.has(object.class) && !isMapped
+              ? 0.16
+              : 0.9
       }
     }
-  }, [selectedId, objects, mappedIds, targetId])
+  }, [selectedId, objects, mappedIds, targetId, focus])
+
+  // The route artifact is in scene coordinates and its heights are in the up
+  // axis, so the viewer puts the path on the detected floor instead of trusting
+  // the path's own y.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    const dispose = () => {
+      state.routeGroup.children.forEach((child) => {
+        const mesh = child as THREE.Mesh
+        mesh.geometry?.dispose()
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(material)) {
+          material.forEach((entry) => entry.dispose())
+        } else {
+          material?.dispose()
+        }
+      })
+      state.routeGroup.clear()
+    }
+    dispose()
+    const motion = state.motion
+    motion.active = false
+    motion.travelled = 0
+    motion.total = 0
+    motion.points = []
+    motion.cumulative = []
+    motion.robot = null
+    motion.reached = false
+
+    if (!route || !route.reachable || route.path.length < 2) {
+      tripRef.current({ mode: 'idle', travelled: 0, total: 0 })
+      return
+    }
+
+    const up = upVector(upAxis ?? route.up_axis)
+    const axis = Math.abs(up[0]) > 0.5 ? 0 : Math.abs(up[2]) > 0.5 ? 2 : 1
+    const sign = up[axis] >= 0 ? 1 : -1
+    const floor = floorHeight ?? route.floor_height_m
+    const toWorld = (values: number[]): THREE.Vector3 => {
+      const point = new THREE.Vector3(values[0], values[1], values[2])
+      if (axis === 1 && floor !== null) {
+        point.y = sign * (floor + 0.07)
+      }
+      return point.applyQuaternion(state.world.quaternion)
+    }
+
+    const points = route.path.map(toWorld)
+    const cumulative = [0]
+    for (let index = 1; index < points.length; index += 1) {
+      cumulative.push(cumulative[index - 1] + points[index - 1].distanceTo(points[index]))
+    }
+
+    const pathLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.LineBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 0.9 }),
+    )
+    state.routeGroup.add(pathLine)
+
+    for (const [point, inner] of [[points[0], 0.16], [points[points.length - 1], 0.22]] as [THREE.Vector3, number][]) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(inner, inner + 0.06, 32),
+        new THREE.MeshBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
+      )
+      ring.rotation.x = -Math.PI / 2
+      ring.position.copy(point)
+      ring.position.y += 0.01
+      state.routeGroup.add(ring)
+    }
+
+    const robot = new THREE.Group()
+    // Spark draws the splats as a transparent pass, so the overlays have to be
+    // transparent too (opacity 1 is fine) to be drawn after the capture.
+    robot.renderOrder = 3
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.44, 0.3, 0.32),
+      new THREE.MeshBasicMaterial({ color: 0x1f2937, transparent: true, opacity: 1 }),
+    )
+    body.position.y = 0.15
+    robot.add(body)
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.16, 0.2),
+      new THREE.MeshBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 1 }),
+    )
+    head.position.y = 0.38
+    robot.add(head)
+    const halo = new THREE.Mesh(
+      new THREE.RingGeometry(0.3, 0.38, 32),
+      new THREE.MeshBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
+    )
+    halo.renderOrder = 3
+    halo.rotation.x = -Math.PI / 2
+    halo.position.y = 0.02
+    robot.add(halo)
+    robot.position.copy(points[0])
+    state.routeGroup.add(robot)
+
+    motion.points = points
+    motion.cumulative = cumulative
+    motion.total = cumulative[cumulative.length - 1]
+    motion.robot = robot
+    tripRef.current({ mode: 'idle', travelled: 0, total: motion.total })
+  }, [route, floorHeight, upAxis])
+
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state || tripToken === 0) {
+      return
+    }
+    const motion = state.motion
+    if (motion.points.length < 2 || !motion.robot) {
+      return
+    }
+    motion.active = true
+    motion.travelled = 0
+    motion.reached = false
+    motion.robot.position.copy(motion.points[0])
+    tripRef.current({ mode: 'moving', travelled: 0, total: motion.total })
+  }, [tripToken])
+
+  useEffect(() => {
+    if (stateRef.current) {
+      stateRef.current.follow = follow
+    }
+  }, [follow])
 
   if (glError) {
     return (

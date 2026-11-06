@@ -138,6 +138,12 @@ the `scene lab` button.
   and up in scene coordinates. That view stands at 1.45 m above the detected
   floor and looks down the longest open sightline, so the browser and the
   rendered stills show the same room.
+- `GET /api/scene/route` serves the route `make route` writes. The room view
+  draws it on the detected floor (the artifact's path carries heights in the up
+  axis, the viewer places the line and the robot on the floor plane), sends the
+  robot along it with a follow camera, and shows the planned distance and
+  clearance. The mapping and diagnosis panels read the matching artifacts when
+  they exist.
 - The splat URL carries the capture's point count (`/api/splat?v=<points>`) and
   the response is `no-cache`: without that, the browser keeps the previous
   capture under the same URL and draws, say, the boiler room while the artifact

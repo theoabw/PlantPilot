@@ -15,6 +15,20 @@ export type RoomObject = {
   planarity: number
 }
 
+export type RoomRoute = {
+  reachable: boolean
+  reason?: string
+  target_asset_id: string
+  target_waypoint: number[]
+  start: number[]
+  path: number[][]
+  path_samples?: { point: number[] }[]
+  distance_m: number
+  clearance_m: number
+  floor_height_m: number
+  up_axis: string
+}
+
 export type RoomCamera = {
   eye: [number, number, number]
   target: [number, number, number]
@@ -24,7 +38,7 @@ export type RoomCamera = {
 export type RoomObjects = {
   artifact: string
   version: number
-  source: { scene: string; points: number; up_axis: string; units: string }
+  source: { scene: string; capture?: string | null; points: number; up_axis: string; units: string }
   floor: { detected: boolean; height: number | null; normal: number[] | null }
   counts: {
     objects: number
@@ -80,6 +94,18 @@ export function splatAssetUrl(version?: number): string {
   // The asset URL has to change when the capture changes, otherwise the browser
   // serves a cached splat from the previous scene.
   return version ? `${SPLAT_URL}?v=${version}` : SPLAT_URL
+}
+
+/** The navigation route, or null when make route has not run yet. */
+export async function fetchRoomRoute(): Promise<RoomRoute | null> {
+  const response = await fetch('/api/scene/route')
+  if (response.status === 404) {
+    return null
+  }
+  if (!response.ok) {
+    throw new Error(`/api/scene/route answered ${response.status}`)
+  }
+  return (await response.json()) as RoomRoute
 }
 
 /** The mapping artifact, or null when make map has not run yet. */

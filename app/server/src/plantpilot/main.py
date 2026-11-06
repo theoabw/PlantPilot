@@ -44,6 +44,7 @@ DIAGNOSIS_FILE = DATA / "scene" / "diagnosis.json"
 SCENE_DIR = Path(os.environ.get("PLANTPILOT_SCENE", DATA / "scene"))
 OBJECTS_FILE = SCENE_DIR / "objects.json"
 MAPPED_FILE = SCENE_DIR / "mapped.json"
+ROUTE_ARTIFACT = SCENE_DIR / "route.json"
 SPLAT_ASSET = Path(os.environ.get("PLANTPILOT_SPLAT", DATA / "viewer" / "room.ply"))
 
 app = FastAPI(title="PlantPilot", version=__version__)
@@ -289,6 +290,8 @@ _ARTIFACT_SCHEMA = {
         "counts": {"type": "object"},
         "objects": {"type": "array", "items": {"type": "object"}},
         "mappings": {"type": "array", "items": {"type": "object"}},
+        "path": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
+        "reachable": {"type": "boolean"},
     },
 }
 _ARTIFACT_RESPONSES = {200: {"content": {"application/json": {"schema": _ARTIFACT_SCHEMA}}}}
@@ -308,6 +311,14 @@ def scene_mapped() -> dict:
     if not MAPPED_FILE.exists():
         raise HTTPException(status_code=404, detail="no mapping artifact, run make map")
     return json.loads(MAPPED_FILE.read_text())
+
+
+@app.get("/api/scene/route", responses=_ARTIFACT_RESPONSES)
+def scene_route() -> dict:
+    """The navigation route for the supplied scene, from make route."""
+    if not ROUTE_ARTIFACT.exists():
+        raise HTTPException(status_code=404, detail="no route artifact, run make route")
+    return json.loads(ROUTE_ARTIFACT.read_text())
 
 
 @app.get(

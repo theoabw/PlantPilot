@@ -737,6 +737,7 @@ def segment(
         "version": OBJECTS_VERSION,
         "source": {
             "scene": str(source_path) if source_path is not None else "data/scene/scene.npz",
+            "capture": scene.meta.get("source", {}).get("file"),
             "points": int(total),
             "up_axis": frame.get("up_axis"),
             "units": frame.get("units"),

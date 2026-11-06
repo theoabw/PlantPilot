@@ -121,3 +121,21 @@ def test_the_room_endpoints_serve_the_artifacts(monkeypatch, tmp_path):
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"
     assert response.content.startswith(b"ply\n")
+
+
+def test_the_route_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "ROUTE_ARTIFACT", tmp_path / "route.json")
+    response = client.get("/api/scene/route")
+    assert response.status_code == 404 and "make route" in response.json()["detail"]
+
+
+def test_the_route_endpoint_serves_the_route(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    path = tmp_path / "route.json"
+    path.write_text(json.dumps({"reachable": True, "path": [[0, 0, 0], [1, 0, 1]], "distance_m": 1.41}))
+    monkeypatch.setattr(main, "ROUTE_ARTIFACT", path)
+    body = client.get("/api/scene/route").json()
+    assert body["reachable"] is True and len(body["path"]) == 2

@@ -20,6 +20,16 @@ Branch: `feat/spark-room`
   floor is the brighter one, so the pipes end up overhead instead of under the
   floor. Both supplied captures are y-down 3DGS frames.
 
+### Robot on the capture
+
+- The robot now drives the real room: `GET /api/scene/route` serves the route
+  from `make route`, the room view draws it on the floor, and Send robot runs the
+  robot along it with a follow camera and a live distance and clearance readout.
+  While it drives, unmapped object frames drop back so the route and the mapped
+  asset stay readable.
+- The camera opens at the hero view the extraction records, so the browser and
+  the rendered stills share one viewpoint.
+
 ### Verification
 
 - `pnpm typecheck`, `pnpm build`, `uv run pytest` and `node scripts/sinceai_check.mjs`.
@@ -50,6 +60,16 @@ Branch: `feat/web-demo-ui`
   view toolbar uses icons only, and the camera widens its field of view below the
   `lg` breakpoint so the room is not cropped as tightly.
 
+### Robot on the capture
+
+- The robot now drives the real room: `GET /api/scene/route` serves the route
+  from `make route`, the room view draws it on the floor, and Send robot runs the
+  robot along it with a follow camera and a live distance and clearance readout.
+  While it drives, unmapped object frames drop back so the route and the mapped
+  asset stay readable.
+- The camera opens at the hero view the extraction records, so the browser and
+  the rendered stills share one viewpoint.
+
 ### Verification
 
 - `pnpm typecheck`
@@ -75,6 +95,16 @@ Branch: `feat/web-demo-ui`
   header and tab row.
 - **The Makefile uses pnpm.** `make web` and `make web-build` now call `pnpm run`
   instead of `npm run`.
+
+### Robot on the capture
+
+- The robot now drives the real room: `GET /api/scene/route` serves the route
+  from `make route`, the room view draws it on the floor, and Send robot runs the
+  robot along it with a follow camera and a live distance and clearance readout.
+  While it drives, unmapped object frames drop back so the route and the mapped
+  asset stay readable.
+- The camera opens at the hero view the extraction records, so the browser and
+  the rendered stills share one viewpoint.
 
 ### Verification
 

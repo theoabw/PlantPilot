@@ -5,10 +5,11 @@ import {
   STATE_LABEL,
   fetchRoomMapped,
   fetchRoomObjects,
+  fetchRoomRoute,
   splatAssetUrl,
 } from './api'
-import type { MappedAsset, RoomMapped, RoomObjects } from './api'
-import SplatRoom from './SplatRoom'
+import type { MappedAsset, RoomMapped, RoomObjects, RoomRoute } from './api'
+import SplatRoom, { type TripState } from './SplatRoom'
 import ViewToolbar from '../components/ViewToolbar'
 
 type Props = {
@@ -18,6 +19,10 @@ type Props = {
 export default function RoomLab({ onLeave }: Props) {
   const [data, setData] = useState<RoomObjects | null>(null)
   const [mapped, setMapped] = useState<RoomMapped | null>(null)
+  const [route, setRoute] = useState<RoomRoute | null>(null)
+  const [trip, setTrip] = useState<TripState>({ mode: 'idle', travelled: 0, total: 0 })
+  const [follow, setFollow] = useState(false)
+  const [tripToken, setTripToken] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -38,6 +43,9 @@ export default function RoomLab({ onLeave }: Props) {
     // the extracted objects, just without the builder assets.
     fetchRoomMapped()
       .then((value) => alive && setMapped(value))
+      .catch(() => undefined)
+    fetchRoomRoute()
+      .then((value) => alive && setRoute(value))
       .catch(() => undefined)
     return () => {
       alive = false
@@ -71,12 +79,27 @@ export default function RoomLab({ onLeave }: Props) {
 
   const selectedMapping = selectedId ? mappedByObject.get(selectedId) ?? null : null
 
-  // The artifact names the scene it came from, so a second capture does not
+  const routeReady = Boolean(route?.reachable && (route.path?.length ?? 0) > 1)
+
+  const sendRobot = () => {
+    if (!routeReady) {
+      return
+    }
+    setFollow(true)
+    setPanelOpen(false)
+    setTripToken((value) => value + 1)
+  }
+
+  // The artifact names the capture it came from, so a second capture does not
   // keep calling itself the boiler room.
   const roomName = (() => {
+    const capture = data?.source.capture ?? ''
+    if (capture) {
+      return capture.replace(/\.ply$/i, '').replace(/^\(\d+\)\s*/, '').trim()
+    }
     const scene = data?.source.scene ?? ''
     const folder = scene.split('/').filter(Boolean).slice(-2, -1)[0] ?? 'scene'
-    return folder === 'scene' ? 'Boiler room' : `${folder.charAt(0).toUpperCase()}${folder.slice(1)} room`
+    return folder === 'scene' ? 'Supplied scene' : `${folder.charAt(0).toUpperCase()}${folder.slice(1)} room`
   })()
 
   const classes = useMemo(() => {
@@ -118,6 +141,11 @@ export default function RoomLab({ onLeave }: Props) {
                   cameraPose={data.camera ?? null}
                   maxSplats={data.source.points + 20_000}
                   splatUrl={splatAssetUrl(data.source.points)}
+                  route={route}
+                  tripToken={tripToken}
+                  follow={follow}
+                  focus={follow || trip.mode === 'moving'}
+                  onTrip={setTrip}
                   selectedId={selectedId}
                   onSelect={(id) => {
                     setSelectedId(id)
@@ -144,12 +172,12 @@ export default function RoomLab({ onLeave }: Props) {
             </div>
 
             <ViewToolbar
-              follow={false}
-              followEnabled={false}
+              follow={follow}
+              followEnabled={routeReady}
               panelOpen={panelOpen}
               faultCount={faults.length}
               onOverview={() => setResetToken((value) => value + 1)}
-              onFollow={() => undefined}
+              onFollow={() => setFollow((value) => !value)}
               onReset={() => setResetToken((value) => value + 1)}
               onTogglePanel={() => setPanelOpen((value) => !value)}
             />
@@ -161,6 +189,38 @@ export default function RoomLab({ onLeave }: Props) {
             >
               scene lab
             </button>
+
+            <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[62%] rounded-lg border border-slate-700/80 bg-slate-950/80 px-3 py-2 backdrop-blur">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Robot</p>
+              <p className="text-base font-black text-white">
+                {trip.mode === 'moving'
+                  ? 'moving'
+                  : trip.mode === 'arrived'
+                    ? 'arrived'
+                    : routeReady
+                      ? 'ready'
+                      : 'no route'}
+              </p>
+              <p className="text-sm font-semibold text-slate-300">
+                {trip.mode === 'moving'
+                  ? `to ${route?.target_asset_id ?? 'target'}, ${Math.max(0, trip.total - trip.travelled).toFixed(1)} m to go`
+                  : trip.mode === 'arrived'
+                    ? `at ${route?.target_asset_id ?? 'target'}`
+                    : routeReady
+                      ? `${(route?.distance_m ?? 0).toFixed(1)} m planned`
+                      : (route?.reason ?? 'run make route')}
+              </p>
+            </div>
+
+            <div className="pointer-events-none absolute bottom-3 right-3 z-10 rounded-lg border border-slate-700/80 bg-slate-950/80 px-3 py-2 text-right backdrop-blur">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Route</p>
+              <p className="text-base font-black text-cyan-300">
+                {routeReady ? `${(route?.distance_m ?? 0).toFixed(1)} m` : '-'}
+              </p>
+              <p className="text-sm font-semibold text-slate-300">
+                {routeReady ? `${Math.max(0, (route?.path?.length ?? 1) - 1)} legs, ${(route?.clearance_m ?? 0).toFixed(2)} m clear` : 'not planned'}
+              </p>
+            </div>
 
             {panelOpen ? (
               <aside
@@ -241,6 +301,18 @@ export default function RoomLab({ onLeave }: Props) {
                       <span className="text-[10px] font-black uppercase tracking-wide text-red-300">
                         {mapped.target_object_id}
                       </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={sendRobot}
+                      disabled={!routeReady}
+                      className={`mt-2 w-full rounded-lg px-3 py-2 text-sm font-black ${
+                        routeReady
+                          ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
+                          : 'cursor-not-allowed border border-slate-700 bg-slate-900 text-slate-500'
+                      }`}
+                    >
+                      {routeReady ? `Send robot to ${mapped.target_tag}` : 'Route not planned yet'}
                     </button>
                     <div className="mt-2 max-h-36 space-y-0.5 overflow-y-auto pr-1">
                       {mapped.mappings
