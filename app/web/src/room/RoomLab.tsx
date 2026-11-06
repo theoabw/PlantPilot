@@ -4,11 +4,12 @@ import {
   STATE_COLOURS,
   STATE_LABEL,
   fetchRoomMapped,
+  fetchDiagnosis,
   fetchRoomObjects,
   fetchRoomRoute,
   splatAssetUrl,
 } from './api'
-import type { MappedAsset, RoomMapped, RoomObjects, RoomRoute } from './api'
+import type { Diagnosis, MappedAsset, RoomMapped, RoomObjects, RoomRoute } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
 import ViewToolbar from '../components/ViewToolbar'
 
@@ -21,6 +22,8 @@ export default function RoomLab({ onLeave }: Props) {
   const [mapped, setMapped] = useState<RoomMapped | null>(null)
   const [route, setRoute] = useState<RoomRoute | null>(null)
   const [trip, setTrip] = useState<TripState>({ mode: 'idle', travelled: 0, total: 0 })
+  const [nearby, setNearby] = useState<string[]>([])
+  const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null)
   const [follow, setFollow] = useState(false)
   const [tripToken, setTripToken] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -82,6 +85,31 @@ export default function RoomLab({ onLeave }: Props) {
   const selectedMapping = selectedId ? mappedByObject.get(selectedId) ?? null : null
 
   const routeReady = Boolean(route?.reachable && (route.path?.length ?? 0) > 1)
+
+  useEffect(() => {
+    if (trip.mode !== 'arrived' || diagnosis) {
+      return
+    }
+    let alive = true
+    fetchDiagnosis()
+      .then((value) => {
+        if (alive && value) {
+          setDiagnosis(value)
+          setPanelOpen(true)
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [trip.mode, diagnosis])
+
+  const nearbyAssets = useMemo(
+    () => nearby
+      .map((id) => mappedByObject.get(id))
+      .filter((mapping): mapping is MappedAsset => Boolean(mapping)),
+    [nearby, mappedByObject],
+  )
 
   const sendRobot = () => {
     if (!routeReady) {
@@ -147,6 +175,7 @@ export default function RoomLab({ onLeave }: Props) {
                   tripToken={tripToken}
                   follow={follow}
                   focus={follow || trip.mode === 'moving'}
+                  onNearby={setNearby}
                   onTrip={setTrip}
                   selectedId={selectedId}
                   onSelect={(id) => {
@@ -212,6 +241,24 @@ export default function RoomLab({ onLeave }: Props) {
                       ? `${(route?.distance_m ?? 0).toFixed(1)} m planned`
                       : (route?.reason ?? 'run make route')}
               </p>
+              {nearbyAssets.length > 0 ? (
+                <div className="mt-2 border-t border-slate-700/70 pt-2">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                    Nearby assets
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {nearbyAssets.slice(0, 6).map((mapping) => (
+                      <span
+                        key={mapping.tag}
+                        className="rounded border px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide"
+                        style={{ borderColor: STATE_COLOURS[mapping.state], color: STATE_COLOURS[mapping.state] }}
+                      >
+                        {mapping.tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="pointer-events-none absolute bottom-3 right-3 z-10 rounded-lg border border-slate-700/80 bg-slate-950/80 px-3 py-2 text-right backdrop-blur">
@@ -342,6 +389,38 @@ export default function RoomLab({ onLeave }: Props) {
                           </button>
                         ))}
                     </div>
+                  </section>
+                ) : null}
+
+                {diagnosis ? (
+                  <section className="mt-3 rounded-xl border border-red-500/50 bg-red-500/5 p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-red-300">Diagnosis on arrival</p>
+                      <span className="text-[10px] font-black uppercase tracking-wide text-red-200">
+                        {diagnosis.issue?.urgency ?? 'n/a'} urgency
+                      </span>
+                    </div>
+                    <p className="mt-1 text-lg font-black text-white">{diagnosis.issue?.code ?? 'finding'}</p>
+                    <p className="text-xs font-semibold text-slate-300">
+                      {diagnosis.issue?.summary} · condition {diagnosis.condition} · health {diagnosis.health_score}
+                    </p>
+                    {(diagnosis.findings ?? []).map((finding) => (
+                      <p key={finding.finding_id} className="mt-1 text-xs font-semibold text-slate-300">
+                        {finding.statement}{' '}
+                        <span className="text-slate-500">({finding.evidence_ids.length} evidence refs)</span>
+                      </p>
+                    ))}
+                    {diagnosis.next_safe_check ? (
+                      <p className="mt-2 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1.5 text-xs font-semibold text-slate-200">
+                        Next safe check: {diagnosis.next_safe_check.action}
+                        <span className="block text-slate-400">{diagnosis.next_safe_check.reason}</span>
+                      </p>
+                    ) : null}
+                    {(diagnosis.citations ?? []).slice(0, 1).map((citation) => (
+                      <p key={citation.doc_id} className="mt-1 text-[11px] font-semibold text-slate-400">
+                        Grounded in {citation.doc_id}: {citation.title}
+                      </p>
+                    ))}
                   </section>
                 ) : null}
 

@@ -29,6 +29,26 @@ export type RoomRoute = {
   up_axis: string
 }
 
+export type DiagnosisFinding = {
+  finding_id: string
+  type: string
+  statement: string
+  evidence_ids: string[]
+  confidence: number
+}
+
+export type Diagnosis = {
+  available: boolean
+  reason?: string
+  target?: { asset_id: string; tag: string; class: string; area?: string }
+  condition?: string
+  health_score?: number
+  issue?: { code: string; summary: string; urgency: string }
+  findings?: DiagnosisFinding[]
+  next_safe_check?: { action: string; document_id: string; reason: string }
+  citations?: { doc_id: string; title: string; scope: string; content: string }[]
+}
+
 export type RoomCamera = {
   eye: [number, number, number]
   target: [number, number, number]
@@ -109,6 +129,16 @@ export async function fetchRoomRoute(): Promise<RoomRoute | null> {
     throw new Error(`/api/scene/route answered ${response.status}`)
   }
   return (await response.json()) as RoomRoute
+}
+
+/** The diagnosis for the target asset, or null when make diagnose has not run. */
+export async function fetchDiagnosis(): Promise<Diagnosis | null> {
+  const response = await fetch('/api/diagnosis')
+  if (!response.ok) {
+    return null
+  }
+  const body = (await response.json()) as Diagnosis
+  return body.available ? body : null
 }
 
 /** The mapping artifact, or null when make map has not run yet. */
