@@ -20,8 +20,20 @@ DPI = 300
 A4 = (int(8.27 * DPI), int(11.69 * DPI))
 PLATE = (708, 472)
 MARGIN = 60
-BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
-PLAIN = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+def font_path(linux_name: str, macos_name: str) -> str:
+    candidates = (
+        Path("/usr/share/fonts/truetype/dejavu") / linux_name,
+        Path("/System/Library/Fonts/Supplemental") / macos_name,
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    raise RuntimeError(f"Font not found: {linux_name}")
+
+
+BOLD = font_path("DejaVuSansMono-Bold.ttf", "Courier New Bold.ttf")
+PLAIN = font_path("DejaVuSans.ttf", "Arial.ttf")
 
 PLATES = [
     ("NelesAce", "MAP-150-4", "DN 150", "PN 40", "A216 WCB", "SN 24-118377"),

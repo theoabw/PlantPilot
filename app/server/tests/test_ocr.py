@@ -1,5 +1,6 @@
 import io
 import shutil
+from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw, ImageFont
@@ -9,11 +10,22 @@ from plantpilot import ocr
 HAS_TESSERACT = shutil.which("tesseract") is not None
 
 
+def font_path(*names: str) -> str:
+    candidates = (
+        Path("/usr/share/fonts/truetype/dejavu") / names[0],
+        Path("/System/Library/Fonts/Supplemental") / names[1],
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    raise RuntimeError(f"Test font not found: {names[0]}")
+
+
 def plate_png(scale: int = 2) -> bytes:
     img = Image.new("RGB", (700 * scale, 470 * scale), (238, 238, 232))
     draw = ImageDraw.Draw(img)
-    bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", 17 * scale)
-    plain = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13 * scale)
+    bold = ImageFont.truetype(font_path("DejaVuSansMono-Bold.ttf", "Courier New Bold.ttf"), 17 * scale)
+    plain = ImageFont.truetype(font_path("DejaVuSans.ttf", "Arial.ttf"), 13 * scale)
     rows = [("TYPE", "MAP-150-4"), ("SIZE", "DN 150"), ("CLASS", "PN 40"),
             ("BODY", "A216 WCB"), ("SER", "SN 24-118377")]
     y = 40 * scale
