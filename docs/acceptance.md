@@ -7,7 +7,7 @@ What has to be true, not what we hope is true. Two parts: the rules we do not ne
 1. **The demo is offline.** No request leaves the machine. The splat and the pack are on disk.
 2. **No number without a command.** Every figure in the README, the video or the submission comes from the app or from a `make` target.
 3. **Say what is real and what is mapped.** The scene is Valmet's supplied splat. The metadata is synthetic and the mapping is procedural, and the interface says both, once, quietly.
-4. **The scene frame is the splat frame.** Metres, the up axis detected or declared once and reported, no rescaling and no mirroring after 21:00.
+4. **The scene frame is the splat frame.** The up axis is detected or declared once and reported, no rescaling and no mirroring after 21:00. A distance is quoted in metres only after the door-height scale check; otherwise it is quoted in file units.
 5. **The splat is points.** It is not called a mesh, a scan with triangles, or a reconstructed surface. Rendering uses point size and alpha.
 6. **The faulty device is P-005 and it does not move.** The mapping may be re-tuned, the target does not silently change.
 7. **Mapping never guesses silently.** Every mapped object carries a method and a confidence, and the card shows them.
@@ -52,7 +52,7 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make route` runs,
 **then** a path is returned with a length in metres and a minimum clearance, and the path crosses no blocked cell.
 
-**Pass:** route exists, length over 2 m, clearance at least 0.3 m, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn as floor arrows, with the length and clearance visible.
+**Pass:** route exists, length over 2 m, clearance at least 0.3 m (both after the door-height scale check), A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn as floor arrows, with the length and clearance visible.
 **Check:** `make route`; replay the path in the viewer and follow the arrows.
 
 ### 5. Nearby objects are shown as the avatar moves

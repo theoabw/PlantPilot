@@ -74,6 +74,8 @@ The vote card shows the name, the tagline, the first lines of the About text, th
 
 Treat these as P0 copy, not decoration: the tagline on Friday night, the first two sentences by Saturday midday, and the Built with order chosen deliberately because only the first five become chips.
 
+The challenge brief also asks for 5 to 8 presentation slides and a brief technical note. The slides are the plan's four sections as pictures; the technical note is the README's technology table plus the pipeline stage list. Both are P0 copy, owned by the lead and D, due at G3. The sinceai.app deck field is optional, but the challenge asks for the slides, so they ship.
+
 ## Rules
 
 - A P0 never gets cut. If a P0 is late, the demo changes shape around it, not without it.

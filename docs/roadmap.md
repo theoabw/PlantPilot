@@ -6,7 +6,7 @@ The plan is in [plantpilot-plan.md](plantpilot-plan.md). This page is the execut
 
 | Piece | State | Verified by |
 | --- | --- | --- |
-| Supplied scene | `Industrial Boiler Room.ply`, 1.5 M gaussians, 502,483 sane, metres, y up, dense core about 9 by 4 m and 2.5 m tall | measured with numpy on Friday evening; projections checked |
+| Supplied scene | `Industrial Boiler Room.ply`, 1.5 M gaussians, 502,483 sane, y up, dense core about 9 by 4 by 2.5 in file units (assumed metres until the door-height check) | measured with numpy on Friday evening; projections checked |
 | Supplied pack | 30 assets, 20,160 telemetry records, 1,000 events, 300 work orders, 38 documents, 120 data quality cases | converted to text and read Friday 19:50 |
 | Faulty target | P-005 (ASSET-017), pump, fouling, health 44, high urgency | `Current_State` |
 | Reusable code | `Grid`, `astar`, inflation, clearance in `nav.py`; FastAPI shape in `main.py`; viewer shell in `app/web/` | read Friday 19:55 |
@@ -46,7 +46,7 @@ Gate G1 at 01:00: `make pipeline` produces all six artifacts from the supplied f
 | 08:30 to 10:00 | integration bugs, the faulty target must be reachable and visible | the avatar walks to P-005 |
 | 09:00 | ask Valmet in the channel for a clean .ply export, quote the 502,483 sane vertices, and ask whether a second small capture exists. Timebox: one message, no waiting | sent |
 | 10:00 to 12:30 | proximity display, evidence panel, confidence from data quality cases, isolate view | G2 at 12:30: the 120 s runs three times in a row, offline, unplugged |
-| 12:30 to 16:00 | numbers, README, submission copy, video script locked. If G2 is green, the second-scene run gets 90 minutes, no more | G3 at 16:00 |
+| 12:30 to 16:00 | numbers, README, the technical note, the 5 to 8 slides, submission copy, video script locked. If G2 is green, the second-scene run gets 90 minutes, no more | G3 at 16:00 |
 | 16:00 to 19:30 | record at real speed, voice, render, upload to YouTube unlisted | the link works logged out |
 | 19:30 to 22:00 | fix what the recording exposes, then freeze | G4 at 22:00: no code changes after this |
 
