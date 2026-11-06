@@ -1,11 +1,12 @@
 PY := uv run
 
-# Which supplied capture the demo uses. `boiler` is the capture the challenge
-# names and the default; `equipment` is the complete capture of the same kind of
-# room. The choice sets every artifact path, so
-#   make demo CAPTURE=equipment
-# runs the second scene with no other overrides.
-CAPTURE ?= boiler
+# Which supplied capture the demo uses. `equipment` is the complete capture the
+# organiser re-uploaded after the first delivery was found truncated, and it is
+# the default; `boiler` is the capture named in the brief as delivered. The
+# choice sets every artifact path, so
+#   make demo CAPTURE=boiler
+# runs the named capture with no other overrides.
+CAPTURE ?= equipment
 ifeq ($(CAPTURE),equipment)
 CAPTURE_DIR ?= data/equipment
 CAPTURE_PLY ?= data/supplied/Equipment Room.ply

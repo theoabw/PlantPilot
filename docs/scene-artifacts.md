@@ -33,8 +33,9 @@ make generality                     # the same stages on the reference plant, sc
 ```
 
 `CAPTURE` selects the capture and every artifact path that follows it:
-`boiler` is the default and the file the challenge names, `equipment` is the
-complete capture of the same kind of room. The server reads the matching
+`equipment` is the default and the complete capture the organiser re-uploaded
+after the delivered file was found truncated, `boiler` is the capture the brief
+names as delivered. The server reads the matching
 directory through `PLANTPILOT_SCENE` and the viewer asset through
 `PLANTPILOT_SPLAT`, so one `make demo CAPTURE=...` runs either scene with no
 other overrides.
