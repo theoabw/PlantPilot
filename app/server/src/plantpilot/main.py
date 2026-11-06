@@ -137,15 +137,32 @@ def plant() -> dict:
     }
 
 
+PLANT_TRUTH = DATA / "plant" / "truth.npz"
+
+
+def _cloud_layout(count: int) -> dict:
+    """Byte offsets for the binary buffer, padded so the int16 block is aligned."""
+    colour_offset = count * 12
+    instance_offset = colour_offset + count * 3
+    instance_offset += instance_offset % 2
+    return {
+        "count": count,
+        "point_offset": 0,
+        "colour_offset": colour_offset,
+        "instance_offset": instance_offset,
+        "bytes": instance_offset + count * 2,
+    }
+
+
 @app.get("/api/cloud/meta")
 def cloud_meta() -> dict:
     if not PLANT_CLOUD.exists():
-        return {"available": False, "count": 0, "source": "synthetic reference plant"}
-    data = np.load(PLANT_CLOUD)
+        return {"available": False, **_cloud_layout(0), "source": "synthetic reference plant"}
+    count = int(len(np.load(PLANT_CLOUD)["points"]))
     return {
         "available": True,
-        "count": int(len(data["points"])),
-        "layout": "float32 xyz triples, then uint8 rgb triples",
+        **_cloud_layout(count),
+        "layout": "float32 xyz, then uint8 rgb, then int16 instance id",
         "source": "synthetic reference plant",
     }
 
@@ -155,9 +172,18 @@ def cloud() -> Response:
     if not PLANT_CLOUD.exists():
         return Response(status_code=404, content=b"no cloud generated, run make plant")
     data = np.load(PLANT_CLOUD)
+    count = int(len(data["points"]))
     points = np.ascontiguousarray(data["points"], dtype=np.float32)
     colours = np.ascontiguousarray(data["colors"], dtype=np.uint8)
-    return Response(content=points.tobytes() + colours.tobytes(), media_type="application/octet-stream")
+    if PLANT_TRUTH.exists():
+        instances = np.ascontiguousarray(np.load(PLANT_TRUTH)["instances"], dtype=np.int16)
+    else:
+        instances = np.full(count, -1, dtype=np.int16)
+    layout = _cloud_layout(count)
+    body = points.tobytes() + colours.tobytes()
+    body += b"\x00" * (layout["instance_offset"] - len(body))
+    body += instances.tobytes()
+    return Response(content=body, media_type="application/octet-stream")
 
 
 def _plant_asset(asset_id: str) -> dict | None:

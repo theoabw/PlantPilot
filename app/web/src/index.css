@@ -131,3 +131,15 @@
 
   .field-error { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 24px; color: #fff; }
 }
+
+@layer components {
+  .field-label {
+    position: absolute; top: 12px; left: 14px;
+    padding: 2px 6px; background: rgba(8, 13, 18, 0.72);
+    font-size: 13px; font-weight: 600; color: #c2d1db; letter-spacing: 0.01em;
+    pointer-events: none;
+  }
+  .sheet-head { padding-bottom: 11px; }
+  .sheet-title { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+  .sheet-head .meta { margin-top: 2px; }
+}

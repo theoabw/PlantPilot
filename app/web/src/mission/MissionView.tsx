@@ -95,19 +95,31 @@ export default function MissionView() {
             onSelect={setSelected}
           />
         )}
+        <div className="field-label">
+          {plant?.name ?? 'plant'} ·{' '}
+          {plant?.source?.includes('synthetic') ? 'reference dataset' : (plant?.source ?? 'reference dataset')}
+        </div>
+        {current ? (
         <div className="field-bar">
           <div className="gauge">
             <b className="tnum">{route?.reachable ? `${route.distance_m} m` : 'no route'}</b>
-            <i>to the inspection point</i>
+            <i>{current ? `to the ${current.id} inspection point` : 'to the inspection point'}</i>
           </div>
           <div className="gauge">
             <b className="tnum">{route?.reachable ? `${route.clearance_m} m` : '—'}</b>
             <i>clearance</i>
           </div>
         </div>
+        ) : null}
       </section>
 
       <aside className="sheet">
+        <div className="block sheet-head">
+          <p className="sheet-title">{plant?.name ?? 'plant'}</p>
+          <p className="meta">
+            {orders.length} machines · {orders.filter((order) => order.dueInDays < 0).length} overdue
+          </p>
+        </div>
         {nextOrder ? (
           <div className="block">
             <p className="label">Next inspection</p>
@@ -188,7 +200,7 @@ export default function MissionView() {
         <div className="block">
           <p className="label">Equipment</p>
           <div className="rows">
-            {plant?.assets.map((asset) => {
+            {orders.map(({ asset }) => {
               const order = orders.find((entry) => entry.asset.id === asset.id)
               const overdue = order ? order.dueInDays < 0 : false
               return (
@@ -211,10 +223,7 @@ export default function MissionView() {
         </div>
 
         <div className="block">
-          <p className="meta">
-            Model: {plant?.name ?? 'plant'} ·{' '}
-            {plant?.source?.includes('synthetic') ? 'reference dataset' : (plant?.source ?? 'reference dataset')}
-          </p>
+          <p className="meta">PlantPilot {plant ? 'v0.1.0' : ''}</p>
         </div>
       </aside>
     </div>

@@ -38,7 +38,7 @@ export type RouteResult = {
   cells?: number
 }
 
-export type Cloud = { positions: Float32Array; colors: Uint8Array; count: number }
+export type Cloud = { positions: Float32Array; colors: Uint8Array; instances: Int16Array; count: number }
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
@@ -50,8 +50,16 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const fetchPlant = () => json<Plant>('/api/plant')
 
+type CloudMeta = {
+  available: boolean
+  count: number
+  point_offset: number
+  colour_offset: number
+  instance_offset: number
+}
+
 export async function fetchCloud(): Promise<Cloud> {
-  const meta = await json<{ available: boolean; count: number }>('/api/cloud/meta')
+  const meta = await json<CloudMeta>('/api/cloud/meta')
   if (!meta.available || meta.count === 0) {
     throw new Error('no cloud generated, run make plant')
   }
@@ -61,9 +69,12 @@ export async function fetchCloud(): Promise<Cloud> {
   }
   const buffer = await response.arrayBuffer()
   const count = meta.count
-  const positions = new Float32Array(buffer, 0, count * 3)
-  const colors = new Uint8Array(buffer, count * 12, count * 3)
-  return { positions, colors, count }
+  return {
+    positions: new Float32Array(buffer, meta.point_offset, count * 3),
+    colors: new Uint8Array(buffer, meta.colour_offset, count * 3),
+    instances: new Int16Array(buffer, meta.instance_offset, count),
+    count,
+  }
 }
 
 export function fetchRoute(to: string, blockers: number[][] = []): Promise<RouteResult> {
