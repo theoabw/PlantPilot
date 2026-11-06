@@ -37,7 +37,7 @@ objects:
 	$(PY) python -m plantpilot.segment --scene $(SCENE) --out $(OBJECTS)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out $(OBJECTS_TOP)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW) \
-	  --mode splats --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT)
+	  --mode splats --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT) --no-labels
 
 ## pack: convert the supplied builder workbook into data/scene/pack.json
 pack:
