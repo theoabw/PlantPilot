@@ -12,6 +12,7 @@ What has to be true, not what we hope is true. Two parts: the rules we do not ne
 6. **One demo path.** A second screen, a second idea or a second dataset waits until the first path runs three times clean.
 7. **The repo runs from a clean clone at all times.** `make test` and `make demo` green before a push.
 8. **No secrets, no restricted data, no media in git.** `data/` is local, `fixtures/` is small text, keys live in `.env`.
+9. **The product is not the pitch.** The interface shows what an operator needs and nothing that exists to impress a judge. Point counts, response times, "offline" stamps, judge buttons and demo scripts belong in the pitch, the video and the README. The one exception is provenance: which dataset is loaded is a fact an operator needs, so it appears once, quietly.
 
 ## The six beats
 

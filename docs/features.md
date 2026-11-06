@@ -78,6 +78,8 @@ Treat these as P0 copy, not decoration: the tagline at 20:00 Friday, the first t
 
 ## Rules
 
+- No demo furniture in the product. A control exists because an operator needs it, not because a judge will click it. Timings, counts and provenance claims live in the pitch and the README.
+
 - A P0 never gets cut. If a P0 is late, the demo changes shape around it, not without it.
 - A P1 that misses its gate becomes P2 automatically. No negotiating at 03:00.
 - A P2 can never displace a P1 without the lead naming the P1 it replaces.
