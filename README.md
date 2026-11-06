@@ -1,6 +1,6 @@
 # PlantPilot
 
-PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival. The named capture is the Industrial Boiler Room, the complete Equipment Room is a second scene, and there is no network at demo time.
+PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival. The demo runs on the complete capture the organisers re-uploaded after the first delivery was found truncated; the capture the brief names is also processed, with its numbers reported. There is no network at demo time.
 
 ## Problem
 
@@ -28,23 +28,23 @@ cd app/web && pnpm install && cd ../..
 The captures and workbook are supplied separately, not committed. Create `data/supplied/` and put them there:
 
 ```
+data/supplied/Equipment Room.ply               the complete capture, the demo default
 data/supplied/Industrial Boiler Room (1).ply   the named capture, as delivered
-data/supplied/Equipment Room.ply               the complete capture, the second scene
 data/supplied/builder_pack.xlsx                the supplied Valmet builder workbook
 ```
 
-Build and serve the boiler-room scene:
+Build and serve the complete capture:
+
+```bash
+make demo
+```
+
+Open <http://127.0.0.1:8000>. The browser opens the room view. That target builds everything it serves.
+
+The first delivery declares 1,506,136 gaussians in the file the brief names and only 502,483 rows hold data; the rest is unreadable, so the loader keeps the contiguous sane prefix and that scene covers part of the room. The complete capture was re-uploaded by the organisers and is the demo default. Build and serve the named capture instead:
 
 ```bash
 make demo CAPTURE=boiler
-```
-
-Open <http://127.0.0.1:8000>. The browser opens the room view. That target builds everything it serves, and `CAPTURE=boiler` is the default.
-
-The delivered boiler file declares 1,506,136 gaussians and 502,483 rows hold data. The rest is unreadable; the loader keeps the contiguous sane prefix and the scene covers part of the room. The Equipment Room capture is complete. Build and serve it instead:
-
-```bash
-make demo CAPTURE=equipment
 ```
 
 The demo video and the deck use the complete capture; the numbers below cover both captures.
