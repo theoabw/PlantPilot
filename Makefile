@@ -20,7 +20,7 @@ corpus:
 ## register: regenerate the synthetic CSV and the SQLite register
 register:
 	$(PY) python scripts/make_register.py
-	$(PY) -c "from plantpilot import register; from pathlib import Path; print(register.build(Path('data/register.db'), Path('fixtures/register/assets.csv')), 'assets indexed')"
+	$(PY) python -c "from plantpilot import register; from pathlib import Path; print(register.build(Path('data/register.db'), Path('fixtures/register/assets.csv')), 'assets indexed')"
 
 ## models: fetch the monocular depth model (27 MB) into data/models/
 models:
