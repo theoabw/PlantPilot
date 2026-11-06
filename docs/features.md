@@ -70,6 +70,12 @@ Never cut: the blocker reroute, the waypoint beside the machine, the citation, t
 
 A feature that serves none of these is not a feature, it is a distraction. That is why P3 exists.
 
+## The submission surface, which is not a feature list
+
+The vote card shows the name, the tagline, the first lines of the About text, the demo video playing inline, the optional pitch deck and the first five Built with chips. Voters can vote without watching the video to the end, so the tagline and the first two sentences do as much work as the demo. Judges read the full About text.
+
+Treat these as P0 copy, not decoration: the tagline at 20:00 Friday, the first two sentences by Saturday midday, and the Built with order chosen deliberately because only the first five become chips.
+
 ## Rules
 
 - A P0 never gets cut. If a P0 is late, the demo changes shape around it, not without it.

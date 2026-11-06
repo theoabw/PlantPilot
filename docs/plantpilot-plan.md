@@ -153,6 +153,22 @@ No claim about predictive maintenance. The alert is simulated and labelled simul
 
 Robot simulation, predictive maintenance, automatic pipe connectivity, whole-plant understanding, VR or AR, LiDAR or photogrammetry capture, a login, a cloud service, an LLM on the answer path.
 
+## 11b. How the submission is actually read
+
+The vote card is not the repository. Voters see a name, a tagline, the first lines of the About text, the demo video playing on the card, the pitch deck if we upload one, and the first five Built with chips. Judges read all of the About text, up to 5,000 characters.
+
+So three pieces of copy are as load bearing as the demo:
+
+1. **Tagline**: one line, the 20 second pitch in miniature.
+2. **First two sentences of About**: they are what a scanning voter reads.
+3. **Built with order**: the first five become chips, so list the stack in the order we want it read.
+
+The demo video must be a **YouTube link, public or unlisted**. There are no MP4 uploads, so the render goes to YouTube and the link goes in the form. A pitch deck is optional, one PDF or PPTX, and voters can open it from the card.
+
+The repository link can be private, in which case judges use a source-code zip. That is a worse experience than a public repo and it adds a step on Sunday morning, so make the repo public before submission unless the challenge forbids it.
+
+Every member must accept the challenge IP terms in sinceai.app, and any member can submit. One entry per team.
+
 ## 12. Checklist at 19:30
 
 1. Read the full brief in the app. Check it against section 0 and name anything scored that we do not cover.

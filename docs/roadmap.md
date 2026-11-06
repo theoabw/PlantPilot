@@ -29,9 +29,9 @@ Not built yet: the mission layer. No asset store with positions, no route, no bl
 | Sleep | 02:45 to 07:45 | nobody on call, no half-merges | clean clone still runs |
 | M2 | 08:30 to 12:30 | blockage, reroute, evidence panel, follow the route | gates G2 and G3 |
 | M3 | 12:30 to 16:00 | numbers, evaluation, three clean runs, script locked | gate G4 |
-| Video | 16:00 to 19:30 | screen recording, voice, render, README, submission text | the artefacts exist |
+| Video | 16:00 to 19:30 | screen recording, voice, render, upload to YouTube unlisted, README, submission text | the video is live on YouTube and the link works |
 | Buffer | 19:30 to 22:00 | fix what the demo exposes, final runs | features frozen |
-| Submit | Sunday 07:00 to 09:30 | entry saved, links checked logged out, video attached | submitted before 10:00 |
+| Submit | Sunday 07:00 to 09:30 | entry saved, links checked logged out, YouTube link pasted, IP terms accepted by every member | submitted before 10:00 |
 
 ## Gates
 
@@ -95,14 +95,15 @@ Every one of these comes from a command or from the app, not from a slide.
 4. Synthesise the voice and attach it as an audio track in the video project.
 5. Re-cut the video after any late fix rather than after midnight.
 6. README numbers, limitations, and the submission text before the video render finishes.
+7. Upload the cut to YouTube as unlisted and paste that link into the submission. There are no video file uploads; YouTube is the only accepted format.
 
 ## Sunday
 
 | Time | Action |
 | --- | --- |
 | 07:00 | wake, clean clone, `make test`, `make check`, `make demo` |
-| 07:30 | submission entry saved with every required field |
-| 08:00 | links open logged out, video attached, deck skipped unless it helps |
+| 07:30 | submission entry saved: name, tagline, About under 5,000 characters, Built with (first five become chips), repo link, YouTube link |
+| 08:00 | repo and YouTube link open logged out, deck uploaded only if it earns its place |
 | 09:00 | every member has accepted the IP terms |
 | 09:30 | done, with 30 minutes of slack |
 | 10:00 | deadline, vote window opens |
