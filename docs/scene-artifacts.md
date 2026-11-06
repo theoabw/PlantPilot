@@ -20,6 +20,7 @@ parallel and a silent change to a key breaks another seat's work.
 make pack                           # convert the supplied builder workbook
 make map                            # assign pack assets to distinct scene objects
 make diagnose                       # build the P-005 evidence panel
+make pipeline                       # build scene, objects, pack, mapping, diagnosis and route
 make scene                          # ingest the capture as delivered
 make objects                        # extract the framed objects
 make scene PLY=path/to/other.ply    # the same code on another capture
