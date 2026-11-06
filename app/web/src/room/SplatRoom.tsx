@@ -362,17 +362,19 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
           if (perfEnabled) {
             lastRenderMs = performance.now() - start
             frames += 1
-            if (now - lastPerf > 500) {
-              setPerf({
-                draws: Math.round((frames * 1000) / Math.max(1, now - lastPerf)),
-                ms: Math.round(lastRenderMs * 10) / 10,
-                calls: renderer.info.render.calls,
-                splats: splat?.numSplats ?? 0,
-              })
-              frames = 0
-              lastPerf = now
-            }
           }
+        }
+        // report even when nothing was drawn, so the overlay says idle rather
+        // than freezing on the warmup numbers
+        if (perfEnabled && now - lastPerf > 500) {
+          setPerf({
+            draws: Math.round((frames * 1000) / Math.max(1, now - lastPerf)),
+            ms: Math.round(lastRenderMs * 10) / 10,
+            calls: renderer.info.render.calls,
+            splats: splat?.numSplats ?? 0,
+          })
+          frames = 0
+          lastPerf = now
         }
       } catch (problem) {
         setGlError(problem instanceof Error ? problem.message : String(problem))
@@ -844,8 +846,8 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     <div className="relative h-full w-full overflow-hidden rounded-xl border-2 border-slate-900 bg-slate-950">
       <div ref={hostRef} className="h-full w-full" />
       {perf ? (
-        <div className="pointer-events-none absolute bottom-16 right-3 z-20 rounded-md border border-slate-700 bg-slate-950/85 px-2 py-1 text-[10px] font-bold text-slate-300">
-          {perf.draws} draws/s | {perf.ms.toFixed(1)} ms | {perf.calls} calls | {perf.splats.toLocaleString()} splats
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-md border border-slate-700 bg-slate-950/85 px-2 py-1 text-[10px] font-bold text-slate-300">
+          {perf.draws === 0 ? 'idle' : `${perf.draws} draws/s`} | cpu {perf.ms.toFixed(1)} ms | {perf.calls} calls | {perf.splats.toLocaleString()} splats
         </div>
       ) : null}
       {!loaded ? (

@@ -47,9 +47,29 @@ def write_ply(rows: np.ndarray, out: Path) -> dict:
     }
 
 
+# The CPU preview renderer culls the metre-wide fog gaussians a capture carries,
+# because they cover whole image regions and wash the picture out. The browser
+# renderer has no such cull, so the viewer asset drops them here instead.
+FOG_MEAN_SIZE_M = 0.12
+FOG_ALPHA_MIN = 0.03
+
+
+def cull_fog(rows: np.ndarray, max_mean_size: float = FOG_MEAN_SIZE_M,
+             alpha_min: float = FOG_ALPHA_MIN) -> tuple[np.ndarray, int]:
+    """Drop gaussians that are large and faint, the capture's fog."""
+    scale = np.exp(rows[:, 3:6].astype(np.float64))
+    mean_size = scale.mean(axis=1)
+    alpha = 1.0 / (1.0 + np.exp(-rows[:, 13].astype(np.float64)))
+    keep = (mean_size < max_mean_size) & (alpha > alpha_min)
+    return rows[keep], int((~keep).sum())
+
+
 def build(ply: Path, out: Path) -> dict:
     rows, info = load_sane_prefix(Path(ply))
-    info = write_ply(rows, out)
+    kept, dropped = cull_fog(rows)
+    info = write_ply(kept, out)
+    info["fog_culled"] = dropped
+    info["source_rows"] = int(rows.shape[0])
     info["source"] = str(ply)
     info["source_declared"] = int(load_info(ply))
     return info
