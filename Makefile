@@ -14,7 +14,7 @@ OBJECTS_VIEW ?= data/scene/objects_view.png
 # The preview renderer draws native gaussian splats, which is slower than the
 # point debug view and is what makes the room read as surfaces. This is the
 # number of gaussians drawn for the preview PNGs, not what the artifact holds.
-SPLAT_GAUSSIANS ?= 350000
+SPLAT_GAUSSIANS ?= 500000
 PREVIEW_WIDTH ?= 1400
 PREVIEW_HEIGHT ?= 900
 

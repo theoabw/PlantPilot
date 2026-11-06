@@ -39,8 +39,8 @@ class counts and the extraction time.
 
 Both `scene` and `objects` render their preview PNGs with the native splat
 renderer (below). `SPLAT_GAUSSIANS`, `PREVIEW_WIDTH` and `PREVIEW_HEIGHT` set
-how much of the capture goes into a preview: the default draws 350,000
-gaussians at 1400 by 900 for a few seconds, and `SPLAT_GAUSSIANS=0` draws all
+how much of the capture goes into a preview: the default draws 500,000
+gaussians at 1400 by 900 in about 15 seconds, and `SPLAT_GAUSSIANS=0` draws all
 of them for a still. `--mode points` keeps the old fast debug view.
 
 Both stages are deterministic: the decimation seed, the plane sampler and the
