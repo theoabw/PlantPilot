@@ -72,7 +72,7 @@ def health() -> dict:
     }
 
 
-@app.get("/api/diagnosis")
+@app.get("/api/diagnosis", response_model=dict)
 def diagnosis() -> dict:
     if not DIAGNOSIS_FILE.exists():
         return {
