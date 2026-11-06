@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from . import splat_render
 from .splat import Scene, load_scene
 
 AXES = ("x", "y", "z")
@@ -289,6 +290,86 @@ def perspective_camera(scene: Scene, width: int, height: int, fov_deg: float = 6
     return Camera.look_at(eye, centre, up, width, height, fov_deg=fov_deg)
 
 
+def floor_height(scene: Scene) -> float:
+    """The up-axis coordinate of the densest flat slab, which is the floor.
+
+    The ingest detector signs the up axis so that the densest slab is the floor,
+    and records that slab and sign in the metadata. Falls back to the lowest
+    dense band when the evidence is missing.
+    """
+    frame = scene.meta.get("frame", {})
+    evidence = frame.get("up_axis_evidence", {}) or {}
+    slab = evidence.get("slab")
+    sign = int(evidence.get("sign", frame.get("up_axis_sign", 1)) or 1)
+    if slab is not None:
+        return float(sign) * float(slab)
+    return float(np.percentile(scene.height(), 1.0))
+
+
+def hero_camera(scene: Scene, width: int, height: int, fov_deg: float = 66.0) -> Camera:
+    """A person's view inside the room, standing where there is space to stand.
+
+    The floor comes from the detected slab, eye height sits 1.45 m above it, and
+    the standing position is chosen on a grid over the footprint by distance to
+    the nearest thing at torso height. That avoids parking the camera inside a
+    machine, which is what a plain orbit camera does, and it needs no constant
+    from this room.
+    """
+    import cv2
+
+    up = _up_vector(scene.up_index, scene.up_sign)
+    horizontal = [axis for axis in range(3) if axis != scene.up_index]
+    floor = floor_height(scene)
+    heights = scene.height()
+    points = scene.xyz
+    torso = (heights > floor + 0.7) & (heights < floor + 1.9)
+    obstacles = points[torso] if int(torso.sum()) > 500 else points
+
+    lo = np.percentile(points[:, horizontal], 2, axis=0)
+    hi = np.percentile(points[:, horizontal], 98, axis=0)
+    cell = 0.15
+    cols = max(4, int(np.ceil((hi[0] - lo[0]) / cell)))
+    rows = max(4, int(np.ceil((hi[1] - lo[1]) / cell)))
+    occupied = np.zeros((rows, cols), dtype=np.uint8)
+    cols_index = np.clip(((obstacles[:, horizontal[0]] - lo[0]) / cell).astype(int), 0, cols - 1)
+    rows_index = np.clip(((obstacles[:, horizontal[1]] - lo[1]) / cell).astype(int), 0, rows - 1)
+    occupied[rows_index, cols_index] = 1
+    free = (1 - occupied).astype(np.uint8)
+    clearance = cv2.distanceTransform(free, cv2.DIST_L2, 5) * cell
+
+    centre = points.mean(axis=0)
+    steps = np.arange(0.12, 0.9, 0.06)
+    angles = np.linspace(0.0, 2.0 * np.pi, 24, endpoint=False)
+    best: tuple[float, np.ndarray] | None = None
+    for step in steps:
+        for angle in angles:
+            candidate = centre.copy()
+            candidate[horizontal[0]] = centre[horizontal[0]] + step * (hi[0] - lo[0]) * math.cos(angle)
+            candidate[horizontal[1]] = centre[horizontal[1]] + step * (hi[1] - lo[1]) * math.sin(angle)
+            column = int((candidate[horizontal[0]] - lo[0]) / cell)
+            row = int((candidate[horizontal[1]] - lo[1]) / cell)
+            if not (1 <= row < rows - 1 and 1 <= column < cols - 1):
+                continue
+            if occupied[row, column]:
+                continue
+            score = float(clearance[row, column])
+            if best is None or score > best[0]:
+                best = (score, candidate)
+    if best is None:
+        eye = centre - 0.4 * (hi[0] - lo[0]) * _axis_vector(horizontal[0])
+    else:
+        eye = best[1]
+    eye = eye - up * float(eye @ up) + up * (floor + 1.45)
+    target = centre - up * float(centre @ up) + up * (floor + 0.9)
+    return Camera.look_at(eye, target, up, width, height, fov_deg=fov_deg)
+
+
+def _axis_vector(axis: int) -> np.ndarray:
+    vector = np.zeros(3)
+    vector[axis] = 1.0
+    return vector
+
+
 def top_down_camera(scene: Scene, width: int, height: int) -> Camera:
     """Orthographic camera looking straight down the up axis."""
     up = _up_vector(scene.up_index, scene.up_sign)
@@ -316,11 +397,31 @@ def render_scene(
     fault_id: str | None = None,
     width: int = DEFAULT_SIZE[0],
     height: int = DEFAULT_SIZE[1],
-    view: str = "perspective",
+    view: str = "hero",
+    mode: str = "splats",
+    max_gaussians: int | None = None,
+    eye: tuple[float, float, float] | None = None,
+    target: tuple[float, float, float] | None = None,
 ) -> Path:
-    """Render one view and write a PNG. Returns the path written."""
-    camera = perspective_camera(scene, width, height) if view == "perspective" else top_down_camera(scene, width, height)
-    image = splat_points(camera, scene)
+    """Render one view and write a PNG. Returns the path written.
+
+    `splats` draws the room the way a capture viewer does: every gaussian as a
+    soft ellipse from its own covariance, back to front. `points` is the fast
+    debug view, used for the top view where the boxes matter more than the room.
+    """
+    if eye is not None and target is not None:
+        camera = Camera.look_at(eye, target, _up_vector(scene.up_index, scene.up_sign), width, height)
+    elif view == "top":
+        camera = top_down_camera(scene, width, height)
+    elif view == "perspective":
+        camera = perspective_camera(scene, width, height)
+    else:
+        camera = hero_camera(scene, width, height)
+    if mode == "splats" and view != "top":
+        gaussians = splat_render.from_scene(scene, maximum=max_gaussians)
+        image = splat_render.render(gaussians, splat_render.Camera.from_camera(camera))
+    else:
+        image = splat_points(camera, scene)
     if objects:
         image = draw_boxes(image, camera, objects, fault_id=fault_id)
     out = Path(out)
@@ -337,7 +438,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scene", default=Path("data/scene/scene.npz"), type=Path)
     parser.add_argument("--objects", default=None, type=Path)
     parser.add_argument("--out", default=Path("data/scene/preview.png"), type=Path)
-    parser.add_argument("--view", default="perspective", choices=("perspective", "top"))
+    parser.add_argument("--view", default="hero", choices=("hero", "perspective", "top"),
+                        help="hero is a person's view inside the room; perspective orbits from outside")
+    parser.add_argument("--eye", default=None, help="camera position as x,y,z")
+    parser.add_argument("--target", default=None, help="look-at point as x,y,z")
+    parser.add_argument("--mode", default="splats", choices=("splats", "points"),
+                        help="splats draws native gaussian splats (slower, like a capture viewer); "
+                             "points is the fast debug view, and the only mode for the top view")
+    parser.add_argument("--max-gaussians", default=400_000, type=int,
+                        help="deterministic subset for the preview; 0 keeps every gaussian")
     parser.add_argument("--width", default=DEFAULT_SIZE[0], type=int)
     parser.add_argument("--height", default=DEFAULT_SIZE[1], type=int)
     parser.add_argument("--fault-id", default=None)
@@ -355,6 +464,11 @@ def main(argv: list[str] | None = None) -> int:
         payload = load_objects(args.objects)
         objects = payload.get("objects", [])
         fault = fault or (payload.get("mapping") or {}).get("faulty_target")
+    maximum = args.max_gaussians if args.max_gaussians and args.max_gaussians > 0 else None
+    if args.view == "top" and args.mode == "splats":
+        args.mode = "points"  # the top view is a layout drawing, fast points are enough
+    eye = tuple(float(v) for v in args.eye.split(",")) if args.eye else None
+    target = tuple(float(v) for v in args.target.split(",")) if args.target else None
     out = render_scene(
         scene,
         args.out,
@@ -363,6 +477,10 @@ def main(argv: list[str] | None = None) -> int:
         width=args.width,
         height=args.height,
         view=args.view,
+        mode=args.mode,
+        max_gaussians=maximum,
+        eye=eye,
+        target=target,
     )
     if args.json:
         print(json.dumps({
@@ -373,7 +491,7 @@ def main(argv: list[str] | None = None) -> int:
             "bytes": out.stat().st_size,
         }))
     else:
-        print(f"{args.view} view of {scene.xyz.shape[0]:,} points"
+        print(f"{args.view} view ({args.mode}) of {scene.xyz.shape[0]:,} points"
               + (f" with {len(objects)} boxes" if objects else "")
               + f" written to {out} ({out.stat().st_size:,} bytes)")
     return 0

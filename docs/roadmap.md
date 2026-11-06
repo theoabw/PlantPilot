@@ -11,6 +11,7 @@ The plan is in [plantpilot-plan.md](plantpilot-plan.md). This page is the execut
 | Faulty target | P-005 (ASSET-017), pump, fouling, health 44, high urgency | `Current_State` |
 | Reusable code | `Grid`, `astar`, inflation, clearance in `nav.py`; FastAPI shape in `main.py`; viewer shell in `app/web/` | read Friday 19:55 |
 | Seat A extraction | `make scene` ingests the delivered file and `make objects` frames 130 objects: 1,506,136 declared, 502,483 sane, largest object 3.7 percent, extraction 2.7 s | measured Friday 21:10; artifact shape in [scene-artifacts.md](scene-artifacts.md) |
+| Improved capture | A complete `Equipment Room.ply` arrived: 1,676,481 sane gaussians, up `-y`, 150 objects framed from 380 clusters, largest 1.2 percent, 10.2 s. The stages run on it unchanged and its splat render is the stronger demo material | measured Friday 21:55; paths and numbers in [scene-artifacts.md](scene-artifacts.md) |
 | Second scene | `make generality` runs the same stages on the reference plant: 141,575 points, effective voxel 0.058 m from a measured 0.042 m spacing, 62 objects framed, 10 of 10 assets framed against ground truth, PASS | measured Friday 21:10; the plan's generality claim is now supported by a check, not only designed |
 | Off demo path | printed plates, OCR identity, register, photo capture, public PDF corpus, `fixtures/plant/plant.json` | the new rubric names none of them; the reference plant is kept only as the generality fixture |
 | Stale docs | `README.md`, `docs/submission-copy.md`, `docs/video-script.md` still describe the synthetic-plant product | rewrite on Saturday, before the video |
@@ -81,7 +82,7 @@ Sunday: wake 07:00, clean clone, `make test`, `make demo`, submission saved by 0
 | The floor plane is wrong | the occupancy grid blocks the whole room | a disclosed per-scene override: a hand-checked floor polygon, with the run labelled assisted. An assisted run does not count toward the scene-agnostic check |
 | The target is unreachable | A* returns no path | remap P-005 to the pump-like object with the best clearance |
 | The viewer drops frames | under 20 fps on the demo laptop | render a 400 k point subset for the demo and say the number honestly |
-| Valmet never sends a clean export | no reply by Saturday 12:30 | ship what the sane prefix shows, and say it on screen and in the limitations |
+| Valmet never sends a clean export | retired Friday night: a complete 1,676,481 gaussian export arrived, all rows sane, and the stages run on it unchanged | keep the boiler room artifacts as the demo path until the team decides, since the mapping and diagnosis stages read their paths |
 
 ## What we are not doing
 

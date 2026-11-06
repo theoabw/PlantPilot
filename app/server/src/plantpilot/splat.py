@@ -50,7 +50,7 @@ OPTIONAL_PROPERTIES = tuple(f"f_rest_{i}" for i in range(45))
 SH_DC = 0.28209479177387814
 
 SCENE_VERSION = 2
-DEFAULT_BUDGET = 600_000
+DEFAULT_BUDGET = 2_000_000
 AXES = ("x", "y", "z")
 
 # Plausibility bounds for one gaussian. These are format sanity checks, not

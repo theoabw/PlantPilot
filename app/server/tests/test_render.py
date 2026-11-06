@@ -106,6 +106,6 @@ def test_the_cli_writes_the_png_it_reports(scene, tmp_path, capsys):
                         "--width", "160", "--height", "120"])
     assert code == 0
     printed = capsys.readouterr().out
-    assert "view of" in printed
+    assert "view" in printed and "points" in printed
     assert "out.png" in printed
     assert (tmp_path / "out.png").exists()
