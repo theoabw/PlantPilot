@@ -22,23 +22,28 @@ parallel and a silent change to a key breaks another seat's work.
 ## Regenerate
 
 ```
-make splat-asset                    # the sanitised capture as a viewer PLY
-make pack                           # convert the supplied builder workbook
-make map                            # assign pack assets to distinct scene objects
-make diagnose                       # build the P-005 evidence panel
-make pipeline                       # build scene, objects, pack, mapping, diagnosis and route
+make pipeline                       # build every artifact the room view needs
+make demo                           # build, then serve the API and the web page
+make demo CAPTURE=equipment         # the same stages on the complete capture
 make scene                          # ingest the capture as delivered
 make objects                        # extract the framed objects
-make scene PLY=path/to/other.ply    # the same code on another capture
+make splat-asset                    # the sanitised capture as a viewer PLY
 make generality                     # the same stages on the reference plant, scored
 ```
 
+`CAPTURE` selects the capture and every artifact path that follows it:
+`boiler` is the default and the file the challenge names, `equipment` is the
+complete capture of the same kind of room. The server reads the matching
+directory through `PLANTPILOT_SCENE` and the viewer asset through
+`PLANTPILOT_SPLAT`, so one `make demo CAPTURE=...` runs either scene with no
+other overrides.
+
 `make pack` reads `data/supplied/builder_pack.xlsx` and writes
-`data/scene/pack.json`. It preserves the tables needed by mapping and
+`<capture>/pack.json`. It preserves the tables needed by mapping and
 diagnosis, merges the asset master, scene anchors and current state into
 `assets`, and records P-005 (`ASSET-017`) as the fixed demo target.
 
-`make map` reads the pack and object artifacts and writes `mapped.json`. Each
+`make map` reads the pack and object artifacts and writes `<capture>/mapped.json`. Each
 assignment records its object id, class proposal, mapping method, confidence,
 and current state. The target mapping is exposed as `target_object_id`; no
 scene-anchor coordinates are used as physical positions.
