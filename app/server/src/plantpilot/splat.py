@@ -49,7 +49,7 @@ OPTIONAL_PROPERTIES = tuple(f"f_rest_{i}" for i in range(45))
 # harmonic coefficient. This is a convention of the format, not a scene value.
 SH_DC = 0.28209479177387814
 
-SCENE_VERSION = 1
+SCENE_VERSION = 2
 DEFAULT_BUDGET = 600_000
 AXES = ("x", "y", "z")
 
@@ -362,16 +362,27 @@ def load_sane_prefix(
 
 
 def derive_gaussians(core: np.ndarray) -> dict[str, np.ndarray]:
-    """Turn the 15 core columns into what a renderer needs: point, colour, size, alpha."""
+    """Turn the core columns into what a renderer needs.
+
+    Position, colour, per-axis size, opacity and orientation. The quaternion is
+    stored as (w, x, y, z) by property name, not in file order, and is
+    normalised: the rotation is what turns three per-axis sizes into the
+    anisotropic gaussian a splat renderer draws. The higher order spherical
+    harmonics are not carried; the DC term is the view-independent colour.
+    """
     xyz = np.ascontiguousarray(core[:, 0:3], dtype=np.float32)
     scale = core[:, 3:6].astype(np.float32)
+    quaternion = core[:, 6:10].astype(np.float64)
     dc = core[:, 10:13].astype(np.float32)
     opacity = core[:, 13].astype(np.float32)
+    norm = np.linalg.norm(quaternion, axis=1, keepdims=True)
+    rot = (quaternion / np.maximum(norm, 1e-9)).astype(np.float32)
     rgb = np.clip(0.5 + SH_DC * dc, 0.0, 1.0)
     alpha = 1.0 / (1.0 + np.exp(-np.clip(opacity, -30.0, 30.0)))
     size = np.exp(np.clip(scale, SCALE_RANGE[0], SCALE_RANGE[1]))
     return {
         "xyz": xyz,
+        "rot": rot,
         "rgb": np.rint(rgb * 255.0).astype(np.uint8),
         "size": size.astype(np.float32),
         "alpha": alpha.astype(np.float32),
@@ -472,6 +483,8 @@ def ingest(
             "median_size": [round(float(v), 5) for v in np.median(gaussians["size"], axis=0)],
             "alpha_median": round(float(np.median(gaussians["alpha"])), 4),
             "alpha_p95": round(float(np.percentile(gaussians["alpha"], 95.0)), 4),
+            "rotation": "unit quaternion per gaussian as (w, x, y, z), a splat's orientation",
+            "colour": "view-independent DC term only; the higher order harmonics are not carried",
         },
         "render": {
             "decimation": "uniform random subset, sorted original order",
@@ -484,6 +497,7 @@ def ingest(
     np.savez(
         out,
         xyz=arrays["xyz"].astype(np.float32, copy=False),
+        rot=arrays["rot"].astype(np.float32, copy=False),
         rgb=arrays["rgb"].astype(np.uint8, copy=False),
         size=arrays["size"].astype(np.float32, copy=False),
         alpha=arrays["alpha"].astype(np.float32, copy=False),
@@ -495,13 +509,18 @@ def ingest(
 
 @dataclass
 class Scene:
-    """One loaded scene artifact."""
+    """One loaded scene artifact.
+
+    `rot` is optional only so a version 1 artifact still loads; every artifact
+    written by this stage carries it.
+    """
 
     xyz: np.ndarray
     rgb: np.ndarray
     size: np.ndarray
     alpha: np.ndarray
     meta: dict = field(default_factory=dict)
+    rot: np.ndarray | None = None
 
     @property
     def up_index(self) -> int:
@@ -530,6 +549,7 @@ def load_scene(path: Path) -> Scene:
         rgb = np.array(data["rgb"], dtype=np.uint8)
         size = np.array(data["size"], dtype=np.float32)
         alpha = np.array(data["alpha"], dtype=np.float32)
+        rot = np.array(data["rot"], dtype=np.float32) if "rot" in keys else None
         meta = json.loads(str(np.asarray(data["meta"]).item()))
     if xyz.ndim != 2 or xyz.shape[1] != 3:
         raise SplatError(f"{path.name}: xyz has shape {xyz.shape}, expected (n, 3)")
@@ -537,7 +557,9 @@ def load_scene(path: Path) -> Scene:
         raise SplatError(f"{path.name}: array shapes disagree, {xyz.shape} against {rgb.shape}")
     if not np.isfinite(xyz).all():
         raise SplatError(f"{path.name}: non-finite coordinates reached the artifact")
-    return Scene(xyz=xyz, rgb=rgb, size=size, alpha=alpha, meta=meta)
+    if rot is not None and rot.shape != (xyz.shape[0], 4):
+        raise SplatError(f"{path.name}: rot has shape {rot.shape}, expected ({xyz.shape[0]}, 4)")
+    return Scene(xyz=xyz, rgb=rgb, size=size, alpha=alpha, meta=meta, rot=rot)
 
 
 def format_report(meta: dict) -> str:
