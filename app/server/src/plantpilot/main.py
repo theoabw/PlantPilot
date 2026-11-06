@@ -322,7 +322,7 @@ def splat_asset() -> FileResponse:
         SPLAT_ASSET,
         media_type="application/octet-stream",
         filename="room.ply",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "no-cache"},
     )
 
 

@@ -367,7 +367,33 @@ def hero_camera(scene: Scene, width: int, height: int, fov_deg: float = 66.0) ->
     else:
         eye = best[1]
     eye = eye - up * float(eye @ up) + up * (floor + 1.45)
+
+    # Point the camera down the longest open sightline from that spot. A camera
+    # that merely looks at the room centre ends up nose to a wall or a machine,
+    # which is what made the first previews read as broken.
+    flat_eye = np.array([eye[horizontal[0]], eye[horizontal[1]]])
+    flat_centre = np.array([centre[horizontal[0]], centre[horizontal[1]]])
+    to_centre = math.atan2(flat_centre[1] - flat_eye[1], flat_centre[0] - flat_eye[0])
+    best_view: tuple[float, float] | None = None
+    for angle in np.linspace(0.0, 2.0 * np.pi, 96, endpoint=False):
+        direction = np.array([math.cos(angle), math.sin(angle)])
+        free = 0.0
+        for _ in range(64):
+            free += 0.25
+            column = int((flat_eye[0] + direction[0] * free - lo[0]) / cell)
+            row = int((flat_eye[1] + direction[1] * free - lo[1]) / cell)
+            if not (0 <= row < rows and 0 <= column < cols) or occupied[row, column]:
+                break
+        # Free path first, then a preference for looking across the room.
+        alignment = math.cos(angle - to_centre)
+        score = min(free, 8.0) + 0.45 * alignment
+        if best_view is None or score > best_view[0]:
+            best_view = (score, float(angle))
+    forward_flat = np.array([math.cos(best_view[1]), math.sin(best_view[1])]) if best_view else np.array([1.0, 0.0])
+    reach = 4.0 if best_view is None else min(max(best_view[0], 1.5), 4.5)
     target = centre - up * float(centre @ up) + up * (floor + 0.9)
+    target[horizontal[0]] = eye[horizontal[0]] + forward_flat[0] * reach
+    target[horizontal[1]] = eye[horizontal[1]] + forward_flat[1] * reach
     return Camera.look_at(eye, target, up, width, height, fov_deg=fov_deg)
 
 

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
-import { CLASS_COLOURS, splatAssetUrl, upVector } from './api'
-import type { RoomObject } from './api'
+import { CLASS_COLOURS, upVector } from './api'
+import type { RoomCamera, RoomObject } from './api'
 
 type Props = {
   objects: RoomObject[]
@@ -13,6 +13,9 @@ type Props = {
   selectedId: string | null
   mappedIds: string[]
   targetId: string | null
+  cameraPose: RoomCamera | null
+  maxSplats: number
+  splatUrl: string
   onSelect: (id: string) => void
 }
 
@@ -47,7 +50,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, onSelect }: Props) {
+export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, cameraPose, maxSplats, splatUrl, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -102,12 +105,16 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     let spark: SparkRenderer | null = null
     try {
       spark = new SparkRenderer({ renderer })
+      // Spark caps the splats it accumulates (2^19 by default); a capture above
+      // that budget would silently render only part of the room.
+      if (maxSplats > 0) {
+        spark.maxSplats = maxSplats
+      }
       scene.add(spark)
     } catch (problem) {
       setGlError(problem instanceof Error ? problem.message : String(problem))
     }
 
-    const splatUrl = splatAssetUrl()
     let splat: SplatMesh | null = null
     if (spark) {
       splat = new SplatMesh({
@@ -302,7 +309,26 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       boxMaxs.push(new THREE.Vector3().copy(centre).add(worldHalf))
     }
 
-    // Frame the room the way a person sees it: stand inside, at eye height above
+    // The extraction ships the view its previews use, a hero camera standing
+    // inside the room. Prefer it, so the browser and the rendered stills agree.
+    if (cameraPose) {
+      const eye = new THREE.Vector3(...cameraPose.eye).applyQuaternion(state.world.quaternion)
+      const target = new THREE.Vector3(...cameraPose.target).applyQuaternion(state.world.quaternion)
+      const viewUp = new THREE.Vector3(...cameraPose.up).applyQuaternion(state.world.quaternion).normalize()
+      frameRef.current = { eye: eye.clone(), target: target.clone() }
+      state.camera.position.copy(eye)
+      state.camera.up.copy(viewUp)
+      state.controls.target.copy(target)
+      state.controls.minDistance = 0.4
+      state.controls.maxDistance = Math.max(10, eye.distanceTo(target) * 4)
+      state.camera.updateProjectionMatrix()
+      state.controls.update()
+      state.centre.copy(target)
+      state.radius = Math.max(1.5, eye.distanceTo(target))
+      return
+    }
+
+    // Without a shipped view, frame the room the way a person sees it: stand inside, at eye height above
     // the floor, and look across the room. A handful of dust objects sit far
     // outside the walls, so the room is the 5th to 95th percentile of the
     // per-object extents, not the bounding box of everything.
@@ -404,7 +430,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     state.controls.update()
     state.centre.copy(uprightTarget)
     state.radius = Math.max(1.5, size.length() / 2)
-  }, [objects, floorHeight, upAxis, mappedIds, targetId])
+  }, [objects, floorHeight, upAxis, mappedIds, targetId, cameraPose])
 
   useEffect(() => {
     const state = stateRef.current

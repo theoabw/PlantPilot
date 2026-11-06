@@ -15,6 +15,12 @@ export type RoomObject = {
   planarity: number
 }
 
+export type RoomCamera = {
+  eye: [number, number, number]
+  target: [number, number, number]
+  up: [number, number, number]
+}
+
 export type RoomObjects = {
   artifact: string
   version: number
@@ -29,6 +35,7 @@ export type RoomObjects = {
   }
   scale_check: { performed: boolean; units_are_metres: boolean; reason: string }
   timing_s: number
+  camera?: RoomCamera | null
   objects: RoomObject[]
 }
 
@@ -69,8 +76,10 @@ export async function fetchRoomObjects(): Promise<RoomObjects> {
   return (await response.json()) as RoomObjects
 }
 
-export function splatAssetUrl(): string {
-  return SPLAT_URL
+export function splatAssetUrl(version?: number): string {
+  // The asset URL has to change when the capture changes, otherwise the browser
+  // serves a cached splat from the previous scene.
+  return version ? `${SPLAT_URL}?v=${version}` : SPLAT_URL
 }
 
 /** The mapping artifact, or null when make map has not run yet. */

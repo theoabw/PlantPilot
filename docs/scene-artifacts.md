@@ -133,9 +133,17 @@ the `scene lab` button.
   only holds 502,483 real rows of the 1,506,136 it declares, and those rows
   cover a diagonal band of the room, so the improved `Equipment Room.ply`
   capture (1,676,481 rows, 377 MiB) is the one that shows a whole room.
-- The viewer takes the camera up axis from `source.up_axis` in `objects.json`,
-  and frames the room from the extracted objects: a stand position near one end
-  of the room, at 1.45 m above the detected floor, looking across it.
+- The viewer takes the camera up axis from `source.up_axis` in `objects.json`
+  and opens at the hero view the extraction records in `camera`: eye, target
+  and up in scene coordinates. That view stands at 1.45 m above the detected
+  floor and looks down the longest open sightline, so the browser and the
+  rendered stills show the same room.
+- The splat URL carries the capture's point count (`/api/splat?v=<points>`) and
+  the response is `no-cache`: without that, the browser keeps the previous
+  capture under the same URL and draws, say, the boiler room while the artifact
+  describes the equipment room. The renderer's splat budget is raised to the
+  artifact's count too, because Spark accumulates 2^19 splats by default and
+  silently truncates a larger capture.
 - Spark needs `three >= 0.180`; the web package is on that version and the
   preview renderer here is unchanged.
 

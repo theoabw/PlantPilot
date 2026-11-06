@@ -716,6 +716,22 @@ def segment(
     elapsed = time.perf_counter() - started
 
     frame = scene.meta.get("frame", {})
+    camera = None
+    try:
+        # Deferred: render pulls in the CPU splat renderer, which the extraction
+        # itself does not need.
+        from .render import hero_camera
+
+        view = hero_camera(scene, width=1400, height=900)
+        look = view.eye + view.forward * 4.0
+        camera = {
+            "eye": [round(float(value), 4) for value in view.eye],
+            "target": [round(float(value), 4) for value in look],
+            "up": [round(float(value), 4) for value in view.up],
+        }
+    except Exception:
+        camera = None
+
     payload = {
         "artifact": "objects",
         "version": OBJECTS_VERSION,
@@ -757,6 +773,7 @@ def segment(
         },
         "scale_check": scale_check(objects, up),
         "timing_s": round(elapsed, 2),
+        "camera": camera,
         "objects": [obj.as_dict() for obj in objects],
     }
 

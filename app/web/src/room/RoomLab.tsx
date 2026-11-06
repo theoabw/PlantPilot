@@ -5,6 +5,7 @@ import {
   STATE_LABEL,
   fetchRoomMapped,
   fetchRoomObjects,
+  splatAssetUrl,
 } from './api'
 import type { MappedAsset, RoomMapped, RoomObjects } from './api'
 import SplatRoom from './SplatRoom'
@@ -114,6 +115,9 @@ export default function RoomLab({ onLeave }: Props) {
                   resetToken={resetToken}
                   mappedIds={mappedIds}
                   targetId={mapped?.target_object_id ?? null}
+                  cameraPose={data.camera ?? null}
+                  maxSplats={data.source.points + 20_000}
+                  splatUrl={splatAssetUrl(data.source.points)}
                   selectedId={selectedId}
                   onSelect={(id) => {
                     setSelectedId(id)
