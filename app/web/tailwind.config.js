@@ -5,6 +5,7 @@ export default {
     extend: {
       fontFamily: {
         sans: [
+          'Raleway',
           'system-ui',
           '-apple-system',
           'Segoe UI',
