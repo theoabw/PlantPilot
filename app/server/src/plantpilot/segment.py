@@ -39,8 +39,13 @@ VOXEL_PER_SPACING = 1.4
 # room; `make objects` prints the values in force.
 DEFAULTS = {
     "voxel_m": 0.03,
-    "plane_distance_m": 0.025,
-    "planes_max": 12,
+    # The splat surface is about 2.6 cm thick (rms 1.3 cm on the floor). A band
+    # narrower than that cuts through the slab and leaves a shell of the same
+    # surface behind, which keeps the room connected: measured on the supplied
+    # capture, a 2.5 cm band left components 3.8 times larger than a 4 cm band
+    # with the same number of planes.
+    "plane_distance_m": 0.04,
+    "planes_max": 8,
     "plane_min_fraction": 0.02,
     "plane_sample": 60_000,
     "plane_iterations": 400,
@@ -48,7 +53,7 @@ DEFAULTS = {
     "split_points": 20_000,
     "split_target": 6_000,
     "split_max_extent_m": 3.0,
-    "max_objects": 120,
+    "max_objects": 150,
     "seed": 0,
 }
 
@@ -796,6 +801,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=Path("data/scene/objects.json"), type=Path)
     parser.add_argument("--voxel", default=None, type=float, help="voxel size in scene units")
     parser.add_argument("--planes", default=None, type=int, help="maximum planes to remove")
+    parser.add_argument("--plane-distance", default=None, type=float,
+                        help="half thickness of the band removed around each plane, in scene units")
     parser.add_argument("--min-points", default=None, type=int, help="minimum points per object")
     parser.add_argument("--max-objects", default=None, type=int, help="maximum objects kept")
     parser.add_argument("--json", action="store_true", help="print the metadata as JSON")
@@ -806,6 +813,8 @@ def main(argv: list[str] | None = None) -> int:
         overrides["voxel_m"] = args.voxel
     if args.planes is not None:
         overrides["planes_max"] = args.planes
+    if args.plane_distance is not None:
+        overrides["plane_distance_m"] = args.plane_distance
     if args.min_points is not None:
         overrides["min_points"] = args.min_points
     if args.max_objects is not None:
