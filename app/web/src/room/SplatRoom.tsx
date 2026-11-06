@@ -92,6 +92,10 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
   const [loaded, setLoaded] = useState(false)
+  const [perf, setPerf] = useState<{ draws: number; ms: number; calls: number; splats: number } | null>(null)
+  const perfEnabled = useRef(new URLSearchParams(window.location.search).has('perf')).current
+  // Effects outside the render effect need a way to say "the scene changed".
+  const renderRef = useRef<() => void>(() => undefined)
   const stateRef = useRef<{
     renderer: THREE.WebGLRenderer
     scene: THREE.Scene
@@ -132,7 +136,14 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       setGlError(problem instanceof Error ? problem.message : String(problem))
       return
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // The splat pass is fill bound, and a 2x ratio on a large canvas is four
+    // times the fragments of 1x. Cap it by canvas area rather than globally.
+    const clampPixelRatio = () => {
+      const pixels = host.clientWidth * host.clientHeight * window.devicePixelRatio ** 2
+      const cap = pixels > 3_000_000 ? 1.25 : 1.75
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap))
+    }
+    clampPixelRatio()
     renderer.setSize(host.clientWidth, host.clientHeight)
     renderer.setClearColor(0x05070d, 1)
     host.appendChild(renderer.domElement)
@@ -145,12 +156,29 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     controls.minDistance = 0.4
     controls.maxDistance = 80
 
+    let needsRender = true
+    let warmupUntil = performance.now() + 2_500
+    const requestRender = () => {
+      needsRender = true
+    }
+    renderRef.current = requestRender
+
     const world = new THREE.Group()
     scene.add(world)
 
     let spark: SparkRenderer | null = null
     try {
-      spark = new SparkRenderer({ renderer })
+      spark = new SparkRenderer({
+        renderer,
+        // Performance knobs. The defaults grow splats to a 512 px radius and
+        // re-sort every frame; the capture's metre-wide gaussians are the main
+        // source of overdraw, and 20 sorts a second still reads as smooth.
+        maxStdDev: Math.sqrt(4),
+        maxPixelRadius: 192,
+        minAlpha: 0.01,
+        minSortIntervalMs: 50,
+        onDirty: requestRender,
+      })
       // Spark caps the splats it accumulates (2^19 by default); a capture above
       // that budget would silently render only part of the room.
       if (maxSplats > 0) {
@@ -182,11 +210,14 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       splat.initialized
         .then(() => {
           setLoaded(true)
+          warmupUntil = performance.now() + 2_500
+          requestRender()
           // Paint a few frames once the capture is ready. requestAnimationFrame
           // is throttled when the tab is in the background, and the room should
           // not be blank the first time someone looks at it.
           let tries = 0
           const paint = () => {
+            requestRender()
             renderer.render(scene, camera)
             tries += 1
             if (tries < 6) {
@@ -223,6 +254,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       }
     }
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    controls.addEventListener('change', requestRender)
 
     const up = new THREE.Vector3(0, 1, 0)
     const robotForward = new THREE.Vector3()
@@ -275,6 +307,10 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     let lastTime = performance.now()
     let lastReport = 0
     let lastNearby = 0
+    let lastNearbyKey = ''
+    let lastRenderMs = 0
+    let lastPerf = performance.now()
+    let frames = 0
     const loop = () => {
       try {
         const now = performance.now()
@@ -285,7 +321,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
           updateFollow()
         }
         const liveState = stateRef.current
-        if (liveState?.motion.robot && objects.length > 0 && now - lastNearby > 300) {
+        if (liveState?.motion.robot && objects.length > 0 && now - lastNearby > 500) {
           lastNearby = now
           const robot = liveState.motion.robot
           const sceneRobot = robot.position.clone().applyQuaternion(liveState.world.quaternion.clone().invert())
@@ -296,14 +332,18 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
             }
           }
           nearbyRef.current(nearby)
-          for (const box of liveState.boxes) {
-            const isNearby = nearby.includes(box.id)
-            if (isNearby) {
-              box.material.opacity = 1
+          const nearbyKey = nearby.join(',')
+          if (nearbyKey !== lastNearbyKey) {
+            lastNearbyKey = nearbyKey
+            for (const box of liveState.boxes) {
+              if (nearby.includes(box.id)) {
+                box.material.opacity = 1
+              }
             }
+            requestRender()
           }
         }
-        if (stateRef.current?.motion.active && now - lastReport > 250) {
+        if (stateRef.current?.motion.active && now - lastReport > 400) {
           lastReport = now
           tripRef.current({
             mode: 'moving',
@@ -312,7 +352,25 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
           })
         }
         controls.update()
-        renderer.render(scene, camera)
+        if (needsRender || stateRef.current?.motion.active || now < warmupUntil) {
+          needsRender = false
+          const start = perfEnabled ? performance.now() : 0
+          renderer.render(scene, camera)
+          if (perfEnabled) {
+            lastRenderMs = performance.now() - start
+            frames += 1
+            if (now - lastPerf > 500) {
+              setPerf({
+                draws: Math.round((frames * 1000) / Math.max(1, now - lastPerf)),
+                ms: Math.round(lastRenderMs * 10) / 10,
+                calls: renderer.info.render.calls,
+                splats: splat?.numSplats ?? 0,
+              })
+              frames = 0
+              lastPerf = now
+            }
+          }
+        }
       } catch (problem) {
         setGlError(problem instanceof Error ? problem.message : String(problem))
         return
@@ -325,6 +383,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       if (!host.clientWidth || !host.clientHeight) {
         return
       }
+      clampPixelRatio()
       renderer.setSize(host.clientWidth, host.clientHeight)
       camera.aspect = host.clientWidth / host.clientHeight
       camera.updateProjectionMatrix()
@@ -361,6 +420,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       cancelAnimationFrame(frame)
       observer.disconnect()
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      controls.removeEventListener('change', requestRender)
       const state = stateRef.current
       for (const box of state?.boxes ?? []) {
         state?.boxGroup.remove(box.lines)
@@ -401,6 +461,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     const up = new THREE.Vector3(...upVector(upAxis))
     const target = new THREE.Vector3(0, 1, 0)
     state.world.quaternion.setFromUnitVectors(up, target)
+    renderRef.current()
   }, [upAxis])
 
   // Frame the room from the extracted objects, then add their boxes.
@@ -588,6 +649,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     state.controls.update()
     state.centre.copy(uprightTarget)
     state.radius = Math.max(1.5, size.length() / 2)
+    renderRef.current()
   }, [objects, floorHeight, upAxis, mappedIds, targetId, cameraPose])
 
   useEffect(() => {
@@ -599,6 +661,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     state.camera.position.copy(frame.eye)
     state.controls.target.copy(frame.target)
     state.controls.update()
+    renderRef.current()
   }, [resetToken])
 
   useEffect(() => {
@@ -629,6 +692,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
               : 0.9
       }
     }
+    renderRef.current()
   }, [selectedId, objects, mappedIds, targetId, focus])
 
   // The route artifact is in scene coordinates and its heights are in the up
@@ -734,6 +798,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     motion.total = cumulative[cumulative.length - 1]
     motion.robot = robot
     tripRef.current({ mode: 'idle', travelled: 0, total: motion.total })
+    renderRef.current()
   }, [route, floorHeight, upAxis])
 
   useEffect(() => {
@@ -750,12 +815,14 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     motion.reached = false
     motion.robot.position.copy(motion.points[0])
     tripRef.current({ mode: 'moving', travelled: 0, total: motion.total })
+    renderRef.current()
   }, [tripToken])
 
   useEffect(() => {
     if (stateRef.current) {
       stateRef.current.follow = follow
     }
+    renderRef.current()
   }, [follow])
 
   if (glError) {
@@ -773,6 +840,11 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border-2 border-slate-900 bg-slate-950">
       <div ref={hostRef} className="h-full w-full" />
+      {perf ? (
+        <div className="pointer-events-none absolute bottom-16 right-3 z-20 rounded-md border border-slate-700 bg-slate-950/85 px-2 py-1 text-[10px] font-bold text-slate-300">
+          {perf.draws} draws/s | {perf.ms.toFixed(1)} ms | {perf.calls} calls | {perf.splats.toLocaleString()} splats
+        </div>
+      ) : null}
       {!loaded ? (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80">
           <span className="text-lg font-bold text-white">loading the capture</span>
