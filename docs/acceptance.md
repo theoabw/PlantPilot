@@ -87,7 +87,7 @@ Each criterion is written so a person who did not build the feature can check it
 **Required whenever the plan, the README or the pitch claims scene-agnostic generality.** If the second-scene run is cut, the claim is downgraded everywhere to "designed for compatible 3DGS PLY inputs, tested on one scene", and this check is not claimed.
 
 **Given** the reference plant written as a `.ply` with the same gaussian schema,
-**when** `make pipeline PLY=... PACK=...` runs on it with no code change,
+**when** `make pipeline CAPTURE=equipment` runs on it with no code change,
 **then** it produces the scene, the objects and a route, and with the pack supplied it also maps and diagnoses. The object count is compared with the plant's ground truth.
 
 **Pass:** the command completes, at least 8 of the 10 reference assets are framed with a box that contains their true position, no box is more than three times the asset's footprint, and the count is printed. A hard-coded room constant anywhere in the ingest or nav path fails this check.
