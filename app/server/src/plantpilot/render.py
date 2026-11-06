@@ -114,7 +114,7 @@ class Camera:
             half_h = half_w * self.height / self.width
             u = (rel @ self.right) / (2.0 * half_w) + 0.5
             v = 0.5 - (rel @ self.up) / (2.0 * half_h)
-            depth = -(rel @ self.forward) * -1.0
+            depth = rel @ self.forward
             radius = np.full(xyz.shape[0], 1.0)
         else:
             depth = rel @ self.forward
@@ -131,11 +131,14 @@ class Camera:
                 radius = np.clip(radius, 0.7, 7.0)
         px = u * self.width
         py = v * self.height
+        # An orthographic camera has no near plane in front of it: every point is
+        # in front of the eye, so only the image bounds decide what is visible.
+        near_ok = np.ones(xyz.shape[0], dtype=bool) if self.orthographic else depth > self.near
         visible = (
             np.isfinite(px)
             & np.isfinite(py)
             & np.isfinite(depth)
-            & (depth > self.near - 1e9 if self.orthographic else depth > self.near)
+            & near_ok
             & (px >= -32)
             & (px < self.width + 32)
             & (py >= -32)
@@ -164,9 +167,8 @@ def splat_points(camera: Camera, scene: Scene, radius_scale: float = 1.0) -> Ima
     base_y = np.rint(py).astype(np.int64)
 
     buckets = np.clip(np.rint(radius).astype(np.int64), 0, 6)
-    write = np.isfinite(rgb).all(axis=1)
-    for bucket in np.unique(buckets[write]):
-        index = np.flatnonzero(write & (buckets == bucket))
+    for bucket in np.unique(buckets):
+        index = np.flatnonzero(buckets == bucket)
         offsets = _disc_offsets(int(bucket))
         gain = (float(bucket) + 1.0) ** 2 * 0.35
         step = 0.75 if bucket == 0 else 0.55
@@ -248,12 +250,16 @@ def draw_boxes(image: Image.Image, camera: Camera, objects: list[dict], *, fault
         corners = box_corners(obj["centre"], obj["axes"], obj["extents"])
         zero = np.zeros_like(corners)
         proj = camera.project(corners, zero)
-        if not bool(proj["visible"].all()):
+        visible = proj["visible"]
+        if int(visible.sum()) < 2:
             continue
         px, py = proj["px"], proj["py"]
         cls = str(obj.get("class", "unknown"))
         colour = FAULT_COLOUR if obj.get("id") == fault_id else CLASS_COLOURS.get(cls, CLASS_COLOURS["unknown"])
         for a, b in BOX_EDGES:
+            # a box cut by the frame edge still draws the edges that project
+            if not (bool(visible[a]) and bool(visible[b])):
+                continue
             draw.line([(float(px[a]), float(py[a])), (float(px[b]), float(py[b]))], fill=colour, width=width)
         if label:
             cx, cy = float(px.mean()), float(py.mean())
