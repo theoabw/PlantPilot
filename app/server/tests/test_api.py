@@ -62,3 +62,17 @@ def test_route_with_the_west_aisle_closed_is_longer():
 def test_unknown_asset_is_a_reason_not_a_crash():
     body = client.post("/api/route", json={"to": "ZZ-999"}).json()
     assert body["reachable"] is False and "unknown asset" in body["reason"]
+
+
+def test_explain_returns_the_work_order_and_a_reason():
+    body = client.post("/api/explain", json={"asset_id": "P-204"}).json()
+    assert body["asset"]["id"] == "P-204"
+    assert body["request"]["symptom"] == "cavitation damage"
+    assert body["request"]["interval"] == "1 year"
+    assert body["action"]["part"] == "Limit switches"
+    assert "sections" in body
+
+
+def test_explain_unknown_asset_is_a_reason_not_a_crash():
+    body = client.post("/api/explain", json={"asset_id": "ZZ-999"}).json()
+    assert body["asset"] is None and "unknown asset" in body["reason"]

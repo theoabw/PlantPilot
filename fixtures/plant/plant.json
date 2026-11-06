@@ -95,7 +95,8 @@
       "type": "MAP-150-4",
       "dn": "DN 150",
       "pn": "PN 40",
-      "criticality": "medium"
+      "criticality": "medium",
+      "symptom": "noise and vibration"
     },
     {
       "id": "P-204",
@@ -120,7 +121,8 @@
       "type": "MAP-150-4",
       "dn": "DN 150",
       "pn": "PN 40",
-      "criticality": "high"
+      "criticality": "high",
+      "symptom": "cavitation damage"
     },
     {
       "id": "M-310",
@@ -145,7 +147,8 @@
       "type": "NEL-100-3",
       "dn": "DN 100",
       "pn": "PN 16",
-      "criticality": "low"
+      "criticality": "low",
+      "symptom": "noise"
     },
     {
       "id": "V-102",
@@ -170,7 +173,8 @@
       "type": "JBS-080-2",
       "dn": "DN 80",
       "pn": "PN 16",
-      "criticality": "medium"
+      "criticality": "medium",
+      "symptom": "flashing of liquids"
     },
     {
       "id": "T-501",
@@ -196,7 +200,8 @@
       "type": "NEL-250-4",
       "dn": "DN 250",
       "pn": "PN 25",
-      "criticality": "high"
+      "criticality": "high",
+      "symptom": "level and pressure"
     },
     {
       "id": "T-502",
@@ -222,7 +227,8 @@
       "type": "NEL-250-4",
       "dn": "DN 250",
       "pn": "PN 25",
-      "criticality": "high"
+      "criticality": "high",
+      "symptom": "level and pressure"
     },
     {
       "id": "S-410",
@@ -247,7 +253,8 @@
       "type": "FLX-300-5",
       "dn": "DN 300",
       "pn": "PN 40",
-      "criticality": "medium"
+      "criticality": "medium",
+      "symptom": "erosion"
     },
     {
       "id": "C-701",
@@ -272,7 +279,8 @@
       "type": "JBS-150-3",
       "dn": "DN 150",
       "pn": "PN 40",
-      "criticality": "low"
+      "criticality": "low",
+      "symptom": "instrument air leakage"
     },
     {
       "id": "HX-450",
@@ -297,7 +305,8 @@
       "type": "NEL-100-3",
       "dn": "DN 100",
       "pn": "PN 25",
-      "criticality": "medium"
+      "criticality": "medium",
+      "symptom": "noise"
     },
     {
       "id": "V-203",
@@ -322,7 +331,8 @@
       "type": "MAP-050-1",
       "dn": "DN 50",
       "pn": "PN 40",
-      "criticality": "high"
+      "criticality": "high",
+      "symptom": "cavitation damage"
     }
   ],
   "pipes": [

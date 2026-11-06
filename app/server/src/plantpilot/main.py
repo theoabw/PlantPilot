@@ -160,6 +160,44 @@ def cloud() -> Response:
     return Response(content=points.tobytes() + colours.tobytes(), media_type="application/octet-stream")
 
 
+def _plant_asset(asset_id: str) -> dict | None:
+    for asset in _plant_spec()["assets"]:
+        if asset["id"] == asset_id:
+            return asset
+    return None
+
+
+def _due(asset: dict) -> dict:
+    from datetime import date, timedelta
+
+    years = 4 if "4" in asset.get("interval", "") else 1
+    last = date.fromisoformat(asset["last_service"])
+    due = last + timedelta(days=365 * years)
+    today = date(2026, 11, 6)
+    return {
+        "interval": asset.get("interval", ""),
+        "last_service": asset.get("last_service", ""),
+        "due": due.isoformat(),
+        "due_in_days": (due - today).days,
+        "symptom": asset.get("symptom", "inspection"),
+    }
+
+
+@app.post("/api/explain")
+def explain(payload: dict) -> dict:
+    """The work order plus the cited reason: a section, a page and the next action."""
+    asset_id = payload.get("asset_id") or payload.get("to")
+    asset = _plant_asset(str(asset_id)) if asset_id else None
+    if not asset:
+        return {"asset": None, "reason": f"unknown asset {asset_id}", "sections": [], "action": None}
+    order = _due(asset)
+    symptom = str(payload.get("symptom") or order["symptom"])
+    query = " ".join(p for p in [symptom, asset.get("kind", ""), "valve", "maintenance"] if p)
+    sections = corpus.search(INDEX_DB, query, limit=2)
+    action = _next_action(ocr.family_of({"type": asset.get("type", "")}) if asset.get("type") else "NelesAce")
+    return {"asset": asset, "request": {**order, "symptom": symptom}, "sections": sections, "action": action}
+
+
 @app.post("/api/route")
 def route(payload: dict) -> dict:
     spec = _plant_spec()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchCloud, fetchPlant, fetchRoute, inspections } from './api'
-import type { Cloud, Plant, RouteResult } from './api'
+import { fetchCloud, fetchExplain, fetchPlant, fetchRoute, inspections } from './api'
+import type { Cloud, Explain, Plant, RouteResult } from './api'
 import PlantScene from './PlantScene'
 
 const WEST_AISLE_CLOSED = [[0.0, 4.8, 4.6, 7.2]]
@@ -15,6 +15,7 @@ export default function MissionView() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [routeMs, setRouteMs] = useState<number | null>(null)
+  const [evidence, setEvidence] = useState<Explain | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -54,6 +55,20 @@ export default function MissionView() {
   useEffect(() => {
     load(selected, blocked)
   }, [selected, blocked, load])
+
+  useEffect(() => {
+    if (!selected) {
+      setEvidence(null)
+      return
+    }
+    let alive = true
+    fetchExplain(selected)
+      .then((next) => alive && setEvidence(next))
+      .catch(() => alive && setEvidence(null))
+    return () => {
+      alive = false
+    }
+  }, [selected])
 
   const orders = useMemo(() => (plant ? inspections(plant.assets) : []), [plant])
   const current = plant?.assets.find((asset) => asset.id === selected) ?? null
@@ -125,6 +140,52 @@ export default function MissionView() {
             </p>
           </div>
         ) : null}
+
+        <div className="rounded-xl border-2 border-slate-900 bg-white p-3">
+          <p className="text-sm font-bold uppercase tracking-wide text-slate-600">Why this visit</p>
+          {evidence?.request ? (
+            <p className="mt-1 text-base font-semibold text-slate-700">
+              {evidence.request.symptom}, {evidence.request.due_in_days < 0
+                ? `${Math.abs(evidence.request.due_in_days)} days overdue`
+                : `due in ${evidence.request.due_in_days} days`}
+              , {evidence.request.interval} interval
+            </p>
+          ) : null}
+          {evidence?.sections?.length ? (
+            <div className="mt-2 rounded-lg border-2 border-slate-300 bg-slate-50 p-2">
+              <p className="text-base font-bold text-slate-900">{evidence.sections[0].title}</p>
+              <p className="text-sm font-bold text-slate-600">
+                section {evidence.sections[0].id}, page {evidence.sections[0].page}
+              </p>
+              <p className="mt-1 text-base text-slate-700">{evidence.sections[0].quote}</p>
+            </div>
+          ) : (
+            <p className="mt-1 text-base font-semibold text-amber-800">
+              no cited section, run make corpus
+            </p>
+          )}
+          {evidence?.action ? (
+            <p className="mt-2 text-base text-slate-700">
+              {evidence.action.part}: {evidence.action.action}, {evidence.action.interval} ({evidence.action.source})
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border-2 border-slate-900 bg-white p-3">
+          <p className="text-sm font-bold uppercase tracking-wide text-slate-600">Judge pick</p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {['P-204', 'V-203', 'T-501'].map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setSelected(id)}
+                className="rounded-md border-2 border-slate-900 bg-white px-3 py-1.5 text-base font-bold text-slate-900 hover:bg-slate-100"
+              >
+                {id}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="rounded-xl border-2 border-slate-900 bg-white p-3">
           <p className="text-sm font-bold uppercase tracking-wide text-slate-600">Obstruction</p>
