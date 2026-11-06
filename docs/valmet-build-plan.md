@@ -1,5 +1,7 @@
 # Valmet build plan, Friday 6 November
 
+**Superseded in part, Friday 15:40.** The full brief turned out to be about a scanned plant: spatial perception, semantic point clouds, navigation and a digital twin. The product and demo in sections 1 to 6 below answer the old summary, not the brief. Read [valmet-brief-plan.md](valmet-brief-plan.md) for the product, the demo, the proof number and the seats. The repo rules, workflow, agent rules and briefing questions here still stand.
+
 Assumed selected Friday afternoon. The company materials open at 19:30 and only for the team that picked Valmet, so this plan is written from the public summary plus tonight's probes, and section 10 says exactly what changes if the real brief differs. Hours are counted from H+0 = Friday 19:30. Submission is Sunday 10:00. Four team members and one shared sleep block, no night watch: section 6 is built around that, and the scope in sections 3 and 5 is sized for it.
 
 Read [plans/valmet.md](plans/valmet.md) first for the reasoning. This file is the execution plan: what we build, in what order, by whom, and how we prove it.
