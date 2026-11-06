@@ -1,5 +1,11 @@
 # PlantPilot
 
+> Direction change, 2026-11-06: the next iteration removes the FastAPI service
+> and serves static scene artifacts to the Three.js client. This README
+> describes the current prototype until the rewrite lands. See
+> [docs/roadmap.md](docs/roadmap.md) and
+> [docs/scene-pipeline.md](docs/scene-pipeline.md).
+
 Inspection missions in a scanned plant.
 
 Built for the **SinceAI Hackathon 2026**, Valmet challenge: a digital plant that "understands where machines are, what they are, how people or robots could move between them and which equipment needs attention".

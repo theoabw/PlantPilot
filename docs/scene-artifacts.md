@@ -1,5 +1,9 @@
 # Scene artifacts
 
+> Superseded 2026-11-06 by [scene-pipeline.md](scene-pipeline.md). Kept for
+> history. The artifact names and the API below belong to the old FastAPI
+> pipeline.
+
 Generated artifacts are written into `data/` and never committed:
 
 | File | Written by | Read by |
