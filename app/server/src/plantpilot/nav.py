@@ -3,10 +3,30 @@
 Builds an occupancy grid from either a plant specification or a 3D point cloud,
 inflates obstacles by the agent radius, computes collision-free A* routes
 to reviewed inspection waypoints, and evaluates dynamic proximity along the path.
+
+A grid built from a capture has two independent obstacle layers, because the
+extracted boxes alone cannot be trusted to enclose a room: the extraction caps
+objects at 150 and removes dominant planes, so a route could avoid every
+retained box while walking through a wall the extraction omitted.
+
+- The object layer blocks the footprint of every extracted box that reaches
+  into the robot's body height, keeping the long-standing rules that a box
+  larger than half the room is skipped and that the footprints are inflated once.
+- The structural layer rasterises the capture's own points in the robot band,
+  from OBSTACLE_MIN_HEIGHT_M to ROBOT_HEIGHT_M above the floor, at CELL_M, and
+  blocks a cell that holds at least STRUCTURE_MIN_POINTS gaussians. That catches
+  walls, machine bodies and pipework dense at torso height while ignoring the one
+  or two points of cable or splatter noise that cross a cell.
+
+The union is what the route sees. It is never replaced by an empty or
+points-only grid when it looks crowded: a room with a wall must never become a
+free room, so a blocked fraction above MAX_BLOCKED_FRACTION is reported as
+`saturated` and kept as it is.
 """
 
 from __future__ import annotations
 
+import argparse
 import heapq
 import json
 import math
@@ -30,6 +50,26 @@ WALKABLE_HEIGHT_MAX_M = 2.00
 ROBOT_HEIGHT_M = 0.55
 OBSTACLE_MIN_HEIGHT_M = 0.08
 LARGE_FOOTPRINT_SHARE = 0.5
+# The structural layer counts gaussians per CELL_M cell inside the robot band.
+# Measured on the two supplied captures, starting at the requested 3 to 5:
+# cells holding 1 or 2 gaussians are transient splat noise, but the equipment
+# room's floor is strewn with debris, so its histogram keeps a long tail: at a
+# 5 point minimum 44 percent of cells block, inflation turns that into 88
+# percent, and the P-005 waypoint becomes unreachable. Raising the count and
+# measuring the resulting grid and route gives a plateau from 48 to 70 points
+# where the route stays the same 6.38 m and below 48 it disconnects. The
+# equipment room's per-cell histogram decays smoothly to a shoulder at 50 to 60
+# points, and the cells above that shoulder are the dense surfaces: the debug
+# raster shows them tracing the room's walls and machine outlines, and the old
+# route crossed one of them at 635 points per cell. Fifty-five sits on the
+# shoulder, clear of the 45 to 48 knife edge, and still blocks both captures'
+# dense walls. The boiler room is sparser and stays routable from 4 upward.
+STRUCTURE_MIN_POINTS = 55
+# The grid is never replaced when it looks crowded; at this blocked fraction the
+# artifact says `saturated` so a reviewer looks at the floor and axis instead of
+# the router quietly finding a free room. The supplied equipment room is already
+# 68 percent blocked by its object boxes alone, before the structural layer.
+MAX_BLOCKED_FRACTION = 0.85
 # The extracted boxes are already conservative axis aligned footprints of an
 # oriented box, so the route needs only a small extra margin on top of them.
 ROUTE_SAFETY_MARGIN_M = 0.02
@@ -186,15 +226,27 @@ class Grid:
         bounds_pad_m: float = 0.5,
         walkable_height_max_m: float = ROBOT_HEIGHT_M,
         safety_margin_m: float = SAFETY_MARGIN_M,
+        structure_min_points: int | None = None,
     ) -> "Grid":
         """Build the occupancy grid for the capture.
 
-        Obstacles come from the extracted object boxes when they are supplied:
-        a real room saturates a point grid (every cell holds a pipe, a cable or
-        a cable tray somewhere in the walkable band), and a saturated grid used
-        to fall back to an empty one, which drew routes straight through the
-        equipment. With no objects, points are rasterised as before.
+        Two layers are rasterised and unioned before the single inflation pass:
+        the extracted object boxes (robot-band rule and large-footprint skip
+        unchanged) and the structural layer, which counts gaussians per cell in
+        the robot band and blocks a cell at `structure_min_points` or more.
+        `structure_min_points=None` uses the measured module default.
+
+        `walkable_height_max_m` is kept for callers but no longer sets the
+        obstacle band: the structural layer uses the robot body band
+        (`OBSTACLE_MIN_HEIGHT_M` to `ROBOT_HEIGHT_M`), which is what a robot can
+        hit.
+
+        The union is never discarded. The grid is reported as `saturated` when
+        the inflated blocked fraction passes `MAX_BLOCKED_FRACTION`, and it
+        still stands: a wall must not turn a room into free space.
         """
+        if structure_min_points is None:
+            structure_min_points = STRUCTURE_MIN_POINTS
         if up_axis == 1:
             h_x, h_z = points[:, 0], points[:, 2]
             heights = points[:, 1] * up_axis_sign
@@ -203,7 +255,7 @@ class Grid:
             heights = points[:, 2] * up_axis_sign
 
         valid = np.isfinite(h_x) & np.isfinite(h_z) & np.isfinite(heights)
-        h_x, h_z = h_x[valid], h_z[valid]
+        h_x, h_z, heights = h_x[valid], h_z[valid], heights[valid]
 
         q01_x, q99_x = np.percentile(h_x, [0.5, 99.5])
         q01_z, q99_z = np.percentile(h_z, [0.5, 99.5])
@@ -222,9 +274,8 @@ class Grid:
         blocked[:, -1] = 1
 
         room_area = max(1e-6, (x1 - x0) * (z1 - z0))
-        obstacles_from = "points"
+        object_cells = np.zeros((rows, cols), dtype=np.uint8)
         if objects:
-            obstacles_from = "objects"
             for obj in objects:
                 if not _blocks_the_robot(obj, floor_y, up_axis, up_axis_sign):
                     continue
@@ -236,16 +287,26 @@ class Grid:
                 c1 = int(math.ceil((footprint.x1 - x0) / CELL_M))
                 r0 = int(math.floor((footprint.z0 - z0) / CELL_M))
                 r1 = int(math.ceil((footprint.z1 - z0) / CELL_M))
-                blocked[max(0, r0):min(rows, r1), max(0, c0):min(cols, c1)] = 1
-        else:
-            is_obstacle = (heights[valid] >= floor_y + OBSTACLE_MIN_HEIGHT_M) & (
-                heights[valid] <= floor_y + walkable_height_max_m
-            )
-            obs_x = h_x[is_obstacle]
-            obs_z = h_z[is_obstacle]
-            col_indices = np.clip(np.floor((obs_x - x0) / CELL_M).astype(int), 0, cols - 1)
-            row_indices = np.clip(np.floor((obs_z - z0) / CELL_M).astype(int), 0, rows - 1)
-            blocked[row_indices, col_indices] = 1
+                object_cells[max(0, r0):min(rows, r1), max(0, c0):min(cols, c1)] = 1
+
+        # Structural layer: count the capture's own gaussians per cell inside
+        # the band the robot's body occupies, then keep only cells dense enough
+        # to be a surface rather than noise.
+        band = (heights >= floor_y + OBSTACLE_MIN_HEIGHT_M) & (
+            heights <= floor_y + ROBOT_HEIGHT_M
+        )
+        band_cols = np.floor((h_x[band] - x0) / CELL_M).astype(np.int64)
+        band_rows = np.floor((h_z[band] - z0) / CELL_M).astype(np.int64)
+        inside = (
+            (band_cols >= 0) & (band_cols < cols) & (band_rows >= 0) & (band_rows < rows)
+        )
+        per_cell = np.bincount(
+            band_rows[inside] * cols + band_cols[inside], minlength=rows * cols
+        ).reshape(rows, cols)
+        structural_cells = (per_cell >= structure_min_points).astype(np.uint8)
+
+        blocked |= object_cells
+        blocked |= structural_cells
 
         grid_instance = cls(
             area={"x0": x0, "z0": z0, "x1": x1, "z1": z1},
@@ -253,9 +314,15 @@ class Grid:
             agent_radius_m=agent_radius_m,
             safety_margin_m=safety_margin_m,
         )
+        total_cells = rows * cols
+        blocked_cells = int(np.sum(grid_instance.blocked == 1))
         grid_instance.occupancy_fallback = False
-        grid_instance.obstacles_from = obstacles_from
-        grid_instance.base_blocked = grid_instance.blocked.copy()
+        grid_instance.obstacles_from = "objects+structure" if objects else "structure"
+        grid_instance.object_cells = int(np.sum(object_cells == 1))
+        grid_instance.structural_cells = int(np.sum(structural_cells == 1))
+        grid_instance.structure_min_points = int(structure_min_points)
+        grid_instance.blocked_fraction = round(blocked_cells / max(1, total_cells), 4)
+        grid_instance.saturated = bool(grid_instance.blocked_fraction > MAX_BLOCKED_FRACTION)
         return grid_instance
 
     def _cells(self, rect: Rect) -> tuple[int, int, int, int]:
@@ -878,6 +945,8 @@ def build_route(
 
     free_count = int(np.sum(grid.free == 1))
     blocked_count = int(np.sum(grid.blocked == 1))
+    total_cells = max(1, grid.rows * grid.cols)
+    blocked_fraction = blocked_count / total_cells
 
     route_doc: dict[str, Any] = {
         "floor_height_m": round(floor_y, 3),
@@ -900,6 +969,12 @@ def build_route(
             "resolution_m": CELL_M,
             "free_cells": free_count,
             "blocked_cells": blocked_count,
+            "blocked_fraction": round(blocked_fraction, 4),
+            "object_blocked_cells": int(getattr(grid, "object_cells", 0)),
+            "structural_blocked_cells": int(getattr(grid, "structural_cells", 0)),
+            "structure_min_points": getattr(grid, "structure_min_points", None),
+            "blocked_fraction_limit": MAX_BLOCKED_FRACTION,
+            "saturated": bool(blocked_fraction > MAX_BLOCKED_FRACTION),
             "occupancy_fallback": bool(getattr(grid, "occupancy_fallback", False)),
             "obstacles_from": getattr(grid, "obstacles_from", "points"),
             "agent_radius_m": round(float(agent_radius_m), 3),
@@ -912,3 +987,135 @@ def build_route(
         output_path.write_text(json.dumps(route_doc, indent=2))
 
     return route_doc
+
+
+def write_obstacle_png(
+    grid: Grid,
+    out: Path | str,
+    *,
+    route: dict[str, Any] | None = None,
+    px_per_cell: int = 6,
+) -> Path:
+    """Write a top-down PNG of the occupancy grid, blocked dark and free light.
+
+    The image is a straight view of the grid arrays: image row 0 is the low
+    edge of the second horizontal axis and image column 0 the low x edge.
+    `route` is a route document as written by `build_route`; when it holds a
+    path, the path is drawn over the raster and its start and target are marked.
+    One pixel per `px_per_cell` cells. Used by the debug CLI below and by the
+    viewer to show what the robot is avoiding.
+    """
+    from PIL import Image, ImageDraw
+
+    scale = max(1, int(px_per_cell))
+    free = grid.blocked == 0
+    raster = np.empty((grid.rows, grid.cols, 3), dtype=np.uint8)
+    raster[free] = (238, 238, 238)
+    raster[~free] = (28, 28, 28)
+    image = Image.fromarray(np.repeat(np.repeat(raster, scale, axis=0), scale, axis=1), "RGB")
+    draw = ImageDraw.Draw(image)
+
+    def to_pixel(point: list[float] | tuple[float, float]) -> tuple[float, float]:
+        return (
+            (float(point[0]) - grid.x0) / CELL_M * scale,
+            (float(point[1]) - grid.z0) / CELL_M * scale,
+        )
+
+    if route and route.get("path"):
+        up = str(route.get("up_axis", "+y"))
+        horizontal = (0, 2) if "y" in up else (0, 1)
+        path = [(p[horizontal[0]], p[horizontal[1]]) for p in route["path"]]
+        draw.line([to_pixel(point) for point in path], fill=(220, 40, 40), width=max(2, scale))
+        if route.get("start"):
+            start = [route["start"][horizontal[0]], route["start"][horizontal[1]]]
+            x, y = to_pixel(start)
+            draw.ellipse([x - scale, y - scale, x + scale, y + scale], fill=(40, 170, 80))
+        if route.get("target_waypoint"):
+            goal = [
+                route["target_waypoint"][horizontal[0]],
+                route["target_waypoint"][horizontal[1]],
+            ]
+            x, y = to_pixel(goal)
+            draw.ellipse([x - scale, y - scale, x + scale, y + scale], fill=(40, 80, 220))
+
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    image.save(out)
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Debug CLI: rasterise one capture's occupancy grid to a PNG.
+
+    The grid is built exactly as `build_route` builds it for the same capture,
+    and the route is either computed for `--target` or read from `--route`.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m plantpilot.nav",
+        description="Write a top-down PNG of a capture's occupancy grid and route.",
+    )
+    parser.add_argument("--scene", required=True, type=Path)
+    parser.add_argument("--objects", default=None, type=Path)
+    parser.add_argument("--mapped", default=None, type=Path)
+    parser.add_argument("--png", required=True, type=Path)
+    parser.add_argument("--route", default=None, type=Path,
+                        help="existing route.json to overlay; computed when omitted")
+    parser.add_argument("--target", default="P-005", type=str)
+    parser.add_argument("--agent-radius", default=0.20, type=float)
+    parser.add_argument("--floor-y", default=None, type=float)
+    parser.add_argument("--px-per-cell", default=6, type=int)
+    args = parser.parse_args(argv)
+
+    up_axis, up_axis_sign = 1, 1
+    data = np.load(args.scene)
+    points = data["xyz"] if "xyz" in data else data["points"]
+    if "meta" in data:
+        frame = json.loads(str(data["meta"])).get("frame", {})
+        up_axis = int(frame.get("up_axis_index", 1))
+        up_axis_sign = int(frame.get("up_axis_sign", 1))
+    floor_y = (
+        float(args.floor_y)
+        if args.floor_y is not None
+        else detect_floor(points, up_axis=up_axis, up_axis_sign=up_axis_sign)[0]
+    )
+    objects: list[dict] = []
+    if args.objects and args.objects.exists():
+        payload = json.loads(args.objects.read_text())
+        objects = payload if isinstance(payload, list) else payload.get("objects", [])
+
+    if args.route:
+        route = json.loads(args.route.read_text())
+    else:
+        route = build_route(
+            scene_path=args.scene,
+            objects_path=args.objects,
+            mapped_path=args.mapped,
+            target_asset_id=args.target,
+            agent_radius_m=args.agent_radius,
+            manual_floor_y=args.floor_y,
+        )
+
+    grid = Grid.from_cloud(
+        points=points,
+        floor_y=floor_y,
+        up_axis=up_axis,
+        up_axis_sign=up_axis_sign,
+        agent_radius_m=args.agent_radius,
+        objects=objects,
+        safety_margin_m=ROUTE_SAFETY_MARGIN_M,
+    )
+    path = write_obstacle_png(grid, args.png, route=route, px_per_cell=args.px_per_cell)
+    print(
+        f"{path}: {grid.rows}x{grid.cols} cells at {CELL_M:.2f} m, "
+        f"object cells {grid.object_cells}, structural cells {grid.structural_cells}, "
+        f"blocked {grid.blocked_fraction:.1%}, obstacles from {grid.obstacles_from}"
+    )
+    print(
+        f"route reachable {route['reachable']}, distance {route['distance_m']} m, "
+        f"clearance {route['clearance_m']} m, path points {len(route['path'])}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

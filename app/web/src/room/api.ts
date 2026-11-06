@@ -20,6 +20,31 @@ export type RoomObject = {
   confidence?: number
   source_object_ids?: string[]
   method?: string
+  reviewed?: boolean
+}
+
+export type RoomAnchor = {
+  id: string
+  asset_id: string
+  class: string
+  label: string
+  reviewed: boolean
+  verdict: string
+  note: string
+  centre: [number, number, number]
+  axes: [number, number, number][]
+  extents: [number, number, number]
+  points: number
+  mean_rgb?: number[] | null
+  source_object_ids: string[]
+}
+
+export type RoomAnchors = {
+  artifact: string
+  version: number
+  source?: { scene?: string; fixture?: string }
+  counts: { anchors: number }
+  anchors: RoomAnchor[]
 }
 
 export type RoomAsset = {
@@ -67,12 +92,52 @@ export type RoomRoute = {
   up_axis: string
 }
 
+export type DiagnosisEvidence = {
+  evidence_id?: string
+  ref: string
+  kind: 'telemetry' | 'alarm' | 'data_quality' | 'document'
+  label: string
+  detail?: string
+  value?: unknown
+}
+
+export type DiagnosisTrend = {
+  available: boolean
+  metric: string
+  unit: string
+  issue_code: string
+  why: string
+  points: { timestamp: string; value: number }[]
+  summary?: {
+    first: number
+    last: number
+    change: number
+    change_percent: number
+    min: number
+    max: number
+    slope_per_sample: number
+  }
+  reason?: string
+}
+
+export type DiagnosisCitation = {
+  doc_id: string
+  title: string
+  scope?: string
+  section?: string | null
+  page?: number | null
+  excerpt?: string
+  excerpt_words?: number
+  synthetic_record?: boolean
+}
+
 export type DiagnosisFinding = {
   finding_id: string
   type: string
   statement: string
   evidence_ids: string[]
   confidence: number
+  evidence?: DiagnosisEvidence[]
 }
 
 export type Diagnosis = {
@@ -83,8 +148,14 @@ export type Diagnosis = {
   health_score?: number
   issue?: { code: string; summary: string; urgency: string }
   findings?: DiagnosisFinding[]
+  trend?: DiagnosisTrend | null
   next_safe_check?: { action: string; document_id: string; reason: string }
-  citations?: { doc_id: string; title: string; scope: string; content: string }[]
+  citations?: DiagnosisCitation[]
+  data_quality?: {
+    confidence_effect?: string
+    severity_counts?: Record<string, number>
+    cases?: unknown[]
+  }
 }
 
 export type RoomCamera = {
@@ -138,6 +209,43 @@ export type RoomMapped = {
 }
 
 export const SPLAT_URL = '/api/splat'
+
+export type RoomFilters = {
+  artifact: string
+  version: number
+  source?: { scene?: string; objects?: string; assets?: string }
+  filters: { applied: string[] }
+  geometry?: Record<string, unknown>
+  variants?: Record<string, unknown>
+}
+
+export async function fetchRoomFilters(): Promise<RoomFilters> {
+  const response = await fetch('/api/scene/filters')
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'no baked filter assets on the server, run make filter-assets'
+        : `/api/scene/filters answered ${response.status}`,
+    )
+  }
+  return (await response.json()) as RoomFilters
+}
+
+export function filterAssetUrl(name: string): string {
+  return `/api/filter/${name}`
+}
+
+export async function fetchRoomAnchors(): Promise<RoomAnchors> {
+  const response = await fetch('/api/scene/anchors')
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'no reviewed anchor layer on the server, run make anchors'
+        : `/api/scene/anchors answered ${response.status}`,
+    )
+  }
+  return (await response.json()) as RoomAnchors
+}
 
 export async function fetchRoomAssets(): Promise<RoomAssets> {
   const response = await fetch('/api/scene/assets')

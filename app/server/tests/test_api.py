@@ -123,6 +123,56 @@ def test_the_room_endpoints_serve_the_artifacts(monkeypatch, tmp_path):
     assert response.content.startswith(b"ply\n")
 
 
+def test_the_filters_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "FILTER_DIR", tmp_path / "filters")
+    assert client.get("/api/scene/filters").status_code == 404
+    assert "make filter-assets" in client.get("/api/scene/filters").json()["detail"]
+    assert client.get("/api/filter/height").status_code == 404
+
+
+def test_the_filters_endpoint_serves_metadata_and_assets(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    directory = tmp_path / "filters"
+    directory.mkdir()
+    (directory / "filters.json").write_text(json.dumps({"artifact": "filters", "filters": ["height"]}))
+    (directory / "height.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    monkeypatch.setattr(main, "FILTER_DIR", directory)
+    body = client.get("/api/scene/filters").json()
+    assert body["artifact"] == "filters"
+    response = client.get("/api/filter/height")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert client.get("/api/filter/nope").status_code == 404
+
+
+def test_the_anchors_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "ANCHORS_FILE", tmp_path / "anchors.json")
+    response = client.get("/api/scene/anchors")
+    assert response.status_code == 404 and "make anchors" in response.json()["detail"]
+
+
+def test_the_anchors_endpoint_serves_the_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    payload = {
+        "artifact": "anchors",
+        "version": 1,
+        "counts": {"anchors": 1},
+        "anchors": [{"id": "AN-0001", "label": "equipment", "reviewed": True}],
+    }
+    path = tmp_path / "anchors.json"
+    path.write_text(json.dumps(payload))
+    monkeypatch.setattr(main, "ANCHORS_FILE", path)
+    body = client.get("/api/scene/anchors").json()
+    assert body["artifact"] == "anchors"
+    assert body["anchors"][0]["reviewed"] is True
+
+
 def test_the_assets_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 
