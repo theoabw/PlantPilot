@@ -99,6 +99,10 @@ def test_ingest_writes_one_scene_artifact_with_its_counts(tmp_path):
     assert np.isfinite(scene.xyz).all()
     assert 0.0 <= float(scene.alpha.min()) and float(scene.alpha.max()) <= 1.0
     assert scene.meta["artifact"] == "scene"
+    assert scene.meta["version"] == splat.SCENE_VERSION
+    # a splat renderer needs the orientation, not only the per-axis size
+    assert scene.rot is not None and scene.rot.shape == (scene.xyz.shape[0], 4)
+    assert np.abs(np.linalg.norm(scene.rot, axis=1) - 1.0).max() < 1e-5
 
 
 def test_the_render_budget_decimates_deterministically(tmp_path):
@@ -113,6 +117,7 @@ def test_the_render_budget_decimates_deterministically(tmp_path):
 
 def test_gaussian_derivation_follows_the_format_conventions():
     core = np.zeros((2, 15), dtype=np.float32)
+    core[:, 6] = 1.0  # unit quaternion, w first
     core[0, 3:6] = np.log(0.01)
     core[0, 10:13] = 1.0
     core[0, 13] = 0.0
@@ -125,6 +130,7 @@ def test_gaussian_derivation_follows_the_format_conventions():
     assert derived["alpha"][1] == pytest.approx(1.0)
     assert derived["rgb"][0, 0] == int(round((0.5 + splat.SH_DC) * 255))
     assert derived["rgb"][1, 0] == 0
+    assert np.allclose(np.linalg.norm(derived["rot"], axis=1), 1.0)
 
 
 def test_a_scene_with_disagreeing_arrays_is_refused(tmp_path):
@@ -133,6 +139,14 @@ def test_a_scene_with_disagreeing_arrays_is_refused(tmp_path):
              size=np.zeros((3, 3)), alpha=np.zeros(3), meta=np.array("{}"))
     with pytest.raises(splat.SplatError, match="shape"):
         splat.load_scene(bad)
+
+
+def test_a_version_one_scene_without_rotation_still_loads(tmp_path):
+    old = tmp_path / "old.npz"
+    np.savez(old, xyz=np.zeros((3, 3)), rgb=np.zeros((3, 3), dtype=np.uint8),
+             size=np.zeros((3, 3)), alpha=np.zeros(3), meta=np.array("{}"))
+    scene = splat.load_scene(old)
+    assert scene.rot is None
 
 
 def test_a_scene_missing_an_array_is_refused(tmp_path):

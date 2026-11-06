@@ -115,10 +115,14 @@ Arrays, all the same length `n`:
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `xyz` | float32 `(n, 3)` | position in the splat frame |
+| `rot` | float32 `(n, 4)` | unit quaternion `(w, x, y, z)`, the gaussian's orientation |
 | `rgb` | uint8 `(n, 3)` | colour from the SH DC term, `0.5 + 0.282 * f_dc`, clipped |
 | `size` | float32 `(n, 3)` | gaussian scale per axis, `exp(scale)` |
 | `alpha` | float32 `(n,)` | opacity, `sigmoid(opacity)` |
 | `meta` | JSON string | the block below |
+
+Version 1 artifacts predate `rot`; `load_scene` still reads them and returns
+`rot=None`. Everything written now is version 2.
 
 `meta` carries:
 
@@ -129,7 +133,8 @@ Arrays, all the same length `n`:
   `up_axis_evidence`, `units`
 - `counts`: `declared`, `sane`, `rendered`, `budget`, `dropped`
 - `bounds`: `min`, `max`, `p1`, `p99` per axis
-- `gaussians`: `median_size`, `alpha_median`, `alpha_p95`
+- `gaussians`: `median_size`, `alpha_median`, `alpha_p95`, `rotation` and
+  `colour` notes
 - `render`: decimation method and seed
 - `timing_s`
 
