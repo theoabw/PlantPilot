@@ -1,122 +1,124 @@
-# Valmet, plan for the real brief: a scanned plant made navigable
+# Valmet, plan for the real brief: photos in, meaning out
 
-Written Friday 15:40 after reading the full challenge description. This supersedes the product shape in [valmet-build-plan.md](valmet-build-plan.md). The old plan's reasoning, seats, repo rules, agent rules and briefing questions still apply; its demo does not.
+Written Friday 16:10, after reading the full challenge description and after probing the capture stack on this machine. Supersedes the product shape in [valmet-build-plan.md](valmet-build-plan.md) and the synthetic-scan draft of this plan. The repo rules, seats, agent rules and briefing questions in the old plan still stand.
 
-## 0. What the brief actually asks
+## 0. What the brief asks
 
-The published description, in its own words: a digital industrial plant "where the environment does more than look real", one that "understands where machines are, what they are, how people or robots could move between them and which equipment needs attention". The premise it states: "today's 3D captures can be visually extraordinary, but they often lack the meaning needed for intelligent action". The menu it offers: spatial perception, semantic 3D understanding, point-cloud intelligence, digital twins, robotics simulation, and "an assistant that can explain the context behind a maintenance decision". The outcome it asks for: "find the right equipment faster, navigate complex facilities more intelligently and turn fragmented technical data into confident, context-aware action".
+A digital plant "where the environment does more than look real", one that "understands where machines are, what they are, how people or robots could move between them and which equipment needs attention". The premise: "today's 3D captures can be visually extraordinary, but they often lack the meaning needed for intelligent action". The menu: spatial perception, semantic 3D understanding, point-cloud intelligence, digital twins, robotics simulation, and "an assistant that can explain the context behind a maintenance decision".
 
-That is four capabilities, in one sentence: **locate, identify, navigate, explain**.
+Four capabilities: **locate, identify, navigate, explain**.
 
-The old plan delivered identify and explain, with none of the space. It used a camera as a scanner for a text label, which is the smallest possible reading of "connect the physical and digital worlds". The rewrite is not a different project; it is the same project with the space put back and the camera demoted from the product to one input.
+## 1. The product, in one line
 
-## 1. What survives, and what changes
+Take four photos of a room with a phone. In about ten seconds you have a metric point cloud you can walk through: every machine placed and named, the ones that need service lit up, a route to one that goes around the equipment, and a cited reason behind its maintenance decision.
 
-| Piece | Fate |
-| --- | --- |
-| The manual corpus (57 sections, page anchors, quotes, FTS) | survives, becomes the "grounded context" layer behind a maintenance question |
-| The nameplate OCR, gate and field resolver | survives, becomes the physical anchor: a real plate identifies a real asset in the twin |
-| The 48 row register | survives and gains a position, orientation and zone per asset |
-| The API and the React shell | survive, with a plant view replacing the four stacked cards as the centre of the screen |
-| The plates and the A4 sheet | survive, they are how the judge holds the physical half |
-| The plate-to-page timing claim | replaced by a find-the-asset claim, see section 6 |
-| "The user is a technician at a valve" | replaced by "a service expert at a door, or a robot with a route" |
+Photo in, meaning out. No scanner, no LiDAR, no GPU.
 
-## 2. The product, in one line
+## 2. Probed and working before the event
 
-A scan of a plant room becomes a model you can ask questions of, walk through, and act on: every machine placed and named, the equipment that needs attention lit, a route to it drawn around the equipment, and an answer with a citation for why it needs attention.
+Run on this machine on Friday afternoon, on a real photograph:
 
-The demo uses a **synthetic scan** (a point cloud sampled from a modelled plant) because a real capture of a real facility is not available in one night. We say that out loud in the demo and in the README, and the pipeline we build is the same pipeline a real scan would enter. Claiming a real scan would be the one dishonesty this brief would punish hardest.
+| Step | Tool | Cost | Result |
+| --- | --- | --- | --- |
+| Monocular depth | Depth Anything V2 Small, int8 ONNX, Apache-2.0 | 1.7 s at 518 px, CPU | clear near and far separation, object edges preserved |
+| Depth refinement | OpenCV `ximgproc.guidedFilter` | 0.1 s | depth edges snap to image edges |
+| Metric scale | OpenCV ArUco, 4x4 dictionary, scale card | instant | a 150 mm card printed at 100 percent measures 590 px against 591 expected |
+| Back-projection | numpy pinhole, 60 degree FOV | 0.2 s | 241k coloured points at 2 cm voxels, bounded 0.1 to 20 m |
+| Floor | RANSAC plane | 0.3 s | normal and offset, 9 to 54 percent inliers depending on the scene |
+
+Whole path, photo to cloud: **3.2 s**. Model size: 27 MB, fetched once by `make models`, cached in `data/`, gitignored.
+
+The stack is all open source and all local: OpenCV 5.0 (ArUco, guided filter, calibration), ONNX Runtime, Depth Anything V2 (Apache-2.0), numpy and scipy, three.js in the browser. No API key, no service, nothing on the network at demo time.
 
 ## 3. The 90 second demo
 
 | # | Time | What the judge sees |
 | --- | --- | --- |
-| 1 | 0:00 | A grey point cloud of a plant room, rotating slowly. No colour, no labels. On screen: "a scan is a picture without meaning". |
-| 2 | 0:08 | Click **Understand**. Points take colour by class: floor, wall, pipe, pump, tank, valve. 40 assets get tags, and the count appears: "40 assets, 12 classes, 4.2 s". |
-| 3 | 0:22 | Click **Needs attention**. Six assets light red, each with an interval and a due date from the register. The rest stay grey. |
-| 4 | 0:34 | Photograph a plate with the laptop webcam. The app matches the asset and the camera flies to that exact machine in the plant model, which pulses. The physical plate and the model are now the same object. |
-| 5 | 0:48 | Ask for a route from the door to that asset. A straight line is drawn first and visibly cuts through a tank; the real route threads around it, 23 m with 0 collisions against 14 m with 2. |
-| 6 | 1:05 | Click the asset and ask why it needs attention. The answer cites the manual section, the page and the VMR003 interval, and the camera highlights the two neighbours that share the same spare. |
-| 7 | 1:20 | Closing card: the number from section 6, and the sentence "the scan was synthetic, the pipeline is not". |
+| 1 | 0:00 | Four photos of the room on the table, taken with a laptop or phone. Click **Scan**. A point cloud builds in front of them, grey, colours off. |
+| 2 | 0:15 | The cloud rotates. Points take colour: floor, wall, pipe, machine. Labels appear on the machines. Count and time on screen. |
+| 3 | 0:28 | Click **Needs attention**. Three machines light red, each with its service interval and due date from the register. The rest stay grey. |
+| 4 | 0:40 | Hold a printed plate to the camera. OCR reads it, the twin finds the same asset, the camera flies to it and pulses. The plate on the table and the machine in the model are the same object. |
+| 5 | 0:55 | Ask for a route from the door to that machine. The straight line is drawn first and visibly cuts through a bench; the real route threads around it, with clearance in centimetres and 0 collisions against 2. |
+| 6 | 1:12 | Ask why it needs attention. The answer cites the manual section, the page, the quote, and the VMR003 interval, and highlights the neighbour that shares the spare. |
+| 7 | 1:25 | The numbers from section 6, then one line: "four photos, one laptop, no scanner". |
 
-The moment that proves it works is step 5: a planned path that visibly avoids a machine is something no dashboard can fake, and it is the brief's own "how people or robots could move between them".
+The moment that proves it: step 5. A path that visibly avoids an object is the brief's own "how people or robots could move between them", and nothing can fake it.
 
-## 4. What is real, what is synthetic
+## 4. What is real, what is not
 
 | | |
 | --- | --- |
-| Real | the manual corpus and its anchors, the OCR and the gate, the asset register, the semantic classes and their geometry rules, the navigation mesh and the path solver, the citations, the offline run, the measured times |
-| Synthetic | the point cloud (sampled from a modelled room), the machine shapes, the tags and positions, the scan noise and occlusion we add on purpose |
-| Not attempted | photogrammetry or LiDAR capture, a real mill, physics simulation, robot control |
+| Real | the photographs, the depth model, the guided filter, the camera scale from the ArUco card, the point cloud, the floor plane, the semantic rules, the instance extraction, the path solver, the printed plates and OCR, the corpus and its page anchors, the timing, the offline run |
+| Synthetic | the asset register, the tag numbers, the service intervals, the plate text, the door and the "plant" framing. The room is the venue room, not a mill. |
+| Not attempted | LiDAR, photogrammetry bundle adjustment, a real facility, physics simulation, robot control, a production digital twin platform |
 
-The honesty rules: the README names the synthetic scan in its first paragraph; the demo says it at step 1 and step 7; no screenshot implies a real facility.
+The honesty sentence for the README and the closing card: **the room is real, the plant is a stand-in; every stage of the pipeline is the one that would run on a real site.**
 
 ## 5. Technical design
 
-**Scan.** A procedural plant room, modelled in code: 12 by 8 metres, machines placed on a grid, pipes overhead, a door and a corridor. Sample it into 60k points with normals, add scanner noise, dropout and an occlusion shadow behind large objects. Store as a compact binary or JSON in `data/` (gitignored) and generate it with `make scan`. Ship a 20k point sample as a fixture so a clean clone runs without the full scan.
+**Capture.** `scripts/scan.py` and `fieldplate/capture.py`, already in the repo: depth, refinement, ArUco scale, back-projection, clamping (sky and the far field are dropped, or z runs to kilometres), voxel downsample, RANSAC floor. Multi-photo: align two or three clouds by the marker pose when it is visible in more than one frame; if alignment is flaky, each photo is its own fragment and the viewer shows fragments side by side. Start with one photo, add the second only if time is left.
 
-**Semantics.** Because the scan is generated, the class labels are known by construction; the interesting part is the rules that recover them: height bands for floor and ceiling, planarity for walls, cylinder fitting for pipes, bounding box plus aspect ratio for tanks, pump and valve. That is a real geometric segmentation pipeline, and it is what would run on a real cloud. Each detected instance becomes an asset candidate; the register supplies its tag, interval and position error.
+**Semantics.** Three layers, weakest to strongest, in this order:
+1. **Geometry**: floor from RANSAC, walls from vertical planes, pipes from cylinder runs, machines as boxes above the floor. Cheap, deterministic, explainable.
+2. **Appearance**: CLIP (ONNX, open weights) over object proposals to label each box as valve, pump, tank, cabinet, bench or pipe. This is the "AI-grounded" layer.
+3. **Tags**: the printed plate on a machine is recognised by OCR and matched to the register. Tags beat guesses: a tagged machine is certain, an untagged one is a hypothesis, and the UI shows the difference.
 
-**Navigation.** Project the cloud to a 2D occupancy grid at 5 cm, mark machine footprints as obstacles, compute a distance field, and run A* from the door to the asset. Draw both the naive straight line and the path, with clearance in centimetres. A moving marker walks the path, which reads as a person or a robot without pretending to be one.
+If CLIP is too slow or too vague on the venue photos, layer 2 is cut and the demo runs on geometry plus tags. Say which is running on screen.
 
-**Anchor.** The existing OCR path, unchanged: plate to fields to register row to a position in the model. This is the only physical input and it is real.
+**Navigation.** Occupancy grid at 5 cm from points between 0.2 and 1.5 m above the floor, machine boxes as obstacles, A* from the door to the asset, clearance reported in centimetres, and the naive straight line drawn for contrast.
 
-**Assistant.** The existing corpus search, unchanged: question plus asset, top sections with page anchors, a quote, and the VMR003 row. No LLM on the answer path; the citation is the product.
+**Answer.** The existing corpus and register: question plus asset, top three sections with page anchors, a quote, and the VMR003 interval. No LLM on the answer path.
 
-**Rendering.** three.js with 60k points, render on demand rather than per frame, orbit plus scripted fly-to. If WebGL is unavailable on the demo laptop, a canvas 2D orthographic projection of the same points is the fallback, and an isometric SVG plan is the last resort. The camera must never be the reason the demo dies.
+**Rendering.** three.js, one buffer of points, render on demand. Fallback: canvas 2D projection of the same buffer. Last resort: isometric SVG plan. WebGL is tested at 19:45 on the demo laptop.
 
 ## 6. The proof number
 
-Primary claim: **from a plate in frame to the asset located and highlighted in the plant model, median under 12 seconds, against 95 seconds finding the same asset by scrolling a 40 row CMMS table on the same laptop.** Same stopwatch protocol as before, 15 trials per arm, target set fixed in advance.
+Primary: **four photos to a labelled, navigable cloud in under 12 seconds, measured on screen**, and **from a plate in frame to that machine highlighted, median under 10 seconds, against 95 seconds finding the same asset by scrolling a 40 row CMMS table.**
 
-Supporting numbers, all printed on screen and in the README:
+Supporting, printed on screen and in the README: depth time per frame (1.7 s measured), point count, scale error against a tape measure on the scale card (target under 5 percent), semantic recall on a hand-labelled set of 20 objects in the room (target 15 of 20), and path clearance plus collision count against the straight line.
 
-- **Semantic pass**: 60k points to 40 labelled assets in under 5 seconds, with instance recall against the known ground truth of the generated room (a real number, because the generator knows every object).
-- **Navigation**: path clearance minimum in centimetres, and 0 collisions against the 2 that the straight line produces.
+If a number misses, the claim is rewritten to what was measured.
 
-If the semantic recall or the timing misses, the claim is rewritten to what was measured, not the other way round.
-
-## 7. Scope, cuts, and the two gates
-
-The build window is unchanged: H+0 is 19:30, freeze is Saturday 22:00, sleep 02:45 to 07:45.
+## 7. Gates and cuts
 
 | Gate | Time | Must be true |
 | --- | --- | --- |
-| G1 | 02:00 | A grey cloud renders and rotates; clicking Understand colours it and lists detected assets; one plate flies the camera to its asset. This is the demo without the path. |
-| G2 | 07:45 | The path, the attention layer and the citation answer work in one flow, offline |
-| G3 | 12:30 | The 90 seconds runs three times in a row on the demo laptop |
-| G4 | 16:00 | The numbers from section 6 measured; video script locked |
-| Freeze | 22:00 | No code change after this |
+| G0 | 19:45 | WebGL runs on the demo laptop, and one venue photo becomes a cloud on screen |
+| G1 | 02:00 | Three photos to a cloud, coloured by height and geometry, machines boxed, one plate flies the camera to its asset |
+| G2 | 07:45 | Attention layer, path with clearance, cited answer, all in one flow, offline |
+| G3 | 12:30 | The 90 seconds runs three times in a row |
+| G4 | 16:00 | Numbers from section 6 measured, video script locked |
+| Freeze | 22:00 | No code changes after this |
 
-Cut order, decided now: the straight-line comparison at 07:45 if the path solver is late; the assistant citations at 10:00, keeping one static cited card instead of a live query; the fly-to animation at 12:00, keeping a cut; the point cloud density down to 25k at any time it makes the laptop stutter. Never cut: the grey-to-semantic toggle, the plate anchor, the path, the number.
+Cut order: multi-photo alignment at 02:00 if it fights back; CLIP labels at 07:45, keeping geometry plus tags; the straight-line comparison at 10:00; the fly-to animation at 12:00, keeping a cut; point density down to 50k at any stutter. Never cut: the photos-to-cloud moment, the plate anchor, the path, the number.
 
-## 8. The four seats, re-cut
+## 8. The four seats
 
 | Seat | Owns | First handover |
 | --- | --- | --- |
-| A Scan and semantics | the generator, the class rules, instance extraction, the cloud in the browser | grey cloud by 22:30, coloured by 02:00 |
-| B Navigation and geometry | occupancy grid, A*, clearance, the path and the marker | grid and A* by 02:00, clearance numbers by 12:30 |
-| C View and interaction | three.js scene, fly-to, attention layer, the six states, the on-screen copy | cloud view by 22:30, the whole 90 seconds by 12:30 |
-| D Lead | merges, the plate anchor, the assistant wiring, the proof harness, the video, README, submission | anchor working by 02:00, numbers by 16:00 |
+| A Capture | depth, refinement, ArUco scale, multi-photo, cloud format | venue photo to cloud by 22:30 |
+| B Semantics | geometry classes, instance boxes, CLIP labels, plate matching | boxes by 02:00, labels by 07:45 |
+| C View and navigation | three.js scene, attention layer, route and marker, the six states | cloud on screen by 22:30, path by 07:45 |
+| D Lead | integration, assistant wiring, proof harness, the demo run and video, README, submission | plumbed photo to screen by 22:30 |
 
-The old plan's rule stands: one writer per file, the lead merges, no automerge.
+One writer per file, the lead merges, no automerge.
 
 ## 9. Risks
 
-1. **WebGL on the demo laptop.** Test at 19:45 on the actual machine. Fallbacks as in section 5. If none works, the demo becomes the isometric plan with the same interactions, which still answers locate, identify, navigate and explain.
-2. **The scan looks fake to a 3D person.** Mitigation: noise, dropout, occlusion shadows, and a textureless grey start; the fidelity that matters is the semantics, and we say so.
-3. **Too much to build in one night.** G1 is deliberately a complete demo by 02:00 without the path, so a bad night still ships something off-brief rather than on-brief but broken.
-4. **A judge asks "is this a real scan?"** The answer is written above and in the README: synthetic, and the pipeline is what we claim.
+1. **Depth on flat, low-texture surfaces** (white walls, glass) comes out blobby. Mitigation: photograph with texture in frame, keep the guided filter, and lean on the tag where a machine matters.
+2. **Scale error.** A misprinted card makes every metre wrong. Mitigation: measure the printed card with a ruler and pass the real length to `scan.py`; the number is one field.
+3. **Semantics look confident and are wrong.** Mitigation: tags are certain, geometry is probable, CLIP is a hypothesis, and the UI says which. Never merge the three into one unlabelled number.
+4. **WebGL on the venue laptop.** Tested at 19:45 with two fallbacks.
+5. **Too much for one night.** G1 is a complete demo without the path, so a bad night still ships on-brief.
 
-## 10. What we do not build
+## 10. Not building
 
-Photogrammetry, LiDAR capture, a real facility, physics simulation, robot control, a full digital twin platform, multi-room sites, VR, mobile AR, a login, a cloud service, an LLM on the answer path.
+LiDAR or photogrammetry capture, a real facility scan, physics simulation, robot control, a multi-room twin platform, VR or AR, a login, a cloud service, an LLM on the answer path.
 
 ## 11. The 20 minutes at 19:30
 
-1. Read the full brief in the app and check it against section 0 of this document. If it adds a scored criterion we have not covered, name it and re-cut there, not later.
-2. Confirm the demo path of section 3 with the room, out loud, once.
+1. Check the brief against section 0; name any scored criterion we are missing and re-cut there.
+2. Confirm the demo of section 3 out loud once.
 3. Assign the four seats by name.
-4. Freeze the data contracts: cloud format, asset record with position, path request and response, plate response.
-5. Test WebGL on the demo laptop. If it fails, the fallback is chosen at 19:45, not at midnight.
+4. Freeze contracts: photo upload, cloud buffer, asset with position and label source, route request and response.
+5. WebGL test on the demo laptop. Fallback chosen at 19:45, not at midnight.

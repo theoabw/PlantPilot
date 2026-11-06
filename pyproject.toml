@@ -8,6 +8,8 @@ dependencies = [
   "uvicorn[standard]>=0.30",
   "python-multipart>=0.0.9",
   "pillow>=10.4",
+  "opencv-contrib-python-headless>=5.0.0.93",
+  "onnxruntime>=1.31.1",
 ]
 
 [dependency-groups]

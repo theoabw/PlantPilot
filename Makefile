@@ -1,6 +1,6 @@
 PY := uv run
 
-.PHONY: demo web web-build corpus register plates proof test check clean
+.PHONY: demo web web-build corpus models register plates scan proof test check clean
 
 ## demo: build the register, then serve the API and the built web page
 demo: register
@@ -21,6 +21,16 @@ corpus:
 register:
 	$(PY) python scripts/make_register.py
 	$(PY) -c "from fieldplate import register; from pathlib import Path; print(register.build(Path('data/register.db'), Path('fixtures/register/assets.csv')), 'assets indexed')"
+
+## models: fetch the monocular depth model (27 MB) into data/models/
+models:
+	mkdir -p data/models
+	curl -sL -o data/models/depth_anything_v2_small_q.onnx \
+	  https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model_quantized.onnx
+
+## scan: photo to point cloud, PHOTO=path/to.jpg
+scan:
+	$(PY) python scripts/scan.py "$(PHOTO)"
 
 ## plates: write a printable A4 sheet of synthetic nameplates into data/plates/
 plates:

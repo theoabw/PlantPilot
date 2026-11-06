@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +43,14 @@ PLATES = [
 ]
 
 
-def draw_plate(brand: str, code: str, dn: str, pn: str, body: str, serial: str, damaged: bool = False) -> Image.Image:
+def marker_image(marker_id: int, px: int) -> Image.Image:
+    """A 4x4 ArUco marker, used for the metre scale on a photo."""
+    dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+    grid = cv2.aruco.generateImageMarker(dictionary, marker_id, px)
+    return Image.fromarray(grid).convert("RGB")
+
+
+def draw_plate(brand: str, code: str, dn: str, pn: str, body: str, serial: str, damaged: bool = False, marker_id: int = 0) -> Image.Image:
     img = Image.new("RGB", PLATE, (238, 238, 232))
     d = ImageDraw.Draw(img)
     # 40 px bold at 300 dpi is about 3.4 mm cap height, in the range of a real plate.
@@ -59,6 +68,11 @@ def draw_plate(brand: str, code: str, dn: str, pn: str, body: str, serial: str, 
         d.text((130, baseline), shown, font=f_field, fill=(20, 20, 20), anchor="ls")
         y += 66
     d.text((28, PLATE[1] - 34), "SYNTHETIC DEMO ASSET", font=f_small, fill=(150, 60, 40))
+    if marker_id is not None:
+        mark = marker_image(marker_id, 104)
+        img.paste(mark, (PLATE[0] - 104 - 20, PLATE[1] - 104 - 40))
+        d.rectangle([PLATE[0] - 104 - 22, PLATE[1] - 104 - 42,
+                     PLATE[0] - 16, PLATE[1] - 36], outline=(40, 40, 40), width=2)
     return img
 
 
@@ -70,15 +84,32 @@ def main() -> None:
         sheet = Image.new("RGB", A4, (255, 255, 255))
         for offset, plate in enumerate(PLATES[start : start + per_page]):
             damaged = (start + offset) % 8 == 5
-            tile = draw_plate(*plate, damaged=damaged)
+            tile = draw_plate(*plate, damaged=damaged, marker_id=(start + offset) % 50)
             col, row = offset % 3, offset // 3
             x = MARGIN + col * (PLATE[0] + 20)
             y = MARGIN + row * (PLATE[1] + 40)
             sheet.paste(tile, (x, y))
         pages.append(sheet)
+    scale_page = Image.new("RGB", A4, (255, 255, 255))
+    d = ImageDraw.Draw(scale_page)
+    f_big = ImageFont.truetype(BOLD, 44)
+    f_small = ImageFont.truetype(PLAIN, 30)
+    d.text((MARGIN, MARGIN), "SCALE CARD 150 mm", font=f_big, fill=(20, 20, 20))
+    big_px = int(150 / 25.4 * DPI)
+    big = marker_image(48, big_px)
+    scale_page.paste(big, (MARGIN, MARGIN + 80))
+    d.text((MARGIN, MARGIN + 110 + big_px), "SCALE CARD 100 mm", font=f_big, fill=(20, 20, 20))
+    small_px = int(100 / 25.4 * DPI)
+    small = marker_image(49, small_px)
+    scale_page.paste(small, (MARGIN, MARGIN + 190 + big_px))
+    d.text((MARGIN + small_px + 60, MARGIN + 250 + big_px), "print at 100 percent,", font=f_small, fill=(60, 60, 60))
+    d.text((MARGIN + small_px + 60, MARGIN + 300 + big_px), "measure one edge with a ruler,", font=f_small, fill=(60, 60, 60))
+    d.text((MARGIN + small_px + 60, MARGIN + 350 + big_px), "and pass the real length to scan.py", font=f_small, fill=(60, 60, 60))
+    pages.append(scale_page)
+
     pdf = OUT / "plates-a4.pdf"
     pages[0].save(pdf, "PDF", resolution=DPI, save_all=True, append_images=pages[1:])
-    print(f"wrote {pdf.relative_to(ROOT)}: {len(PLATES)} plates on {len(pages)} pages at {DPI} dpi")
+    print(f"wrote {pdf.relative_to(ROOT)}: {len(PLATES)} plates plus a scale card on {len(pages)} pages at {DPI} dpi")
     print("print on matte stock at 100 percent, no fit to page, then cut along the borders")
 
 

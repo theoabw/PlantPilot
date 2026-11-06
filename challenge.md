@@ -65,10 +65,10 @@ The moment that proves it works (output, number, before/after): a path that visi
 
 ## Data and privacy
 
-- What data we use: a synthetic point cloud of a modelled plant room, a 48 row synthetic asset register with positions, two public Valmet PDFs (the Flow control manual and VMR003), 16 printed synthetic plates, and photographs of our own objects.
+- What data we use: photographs of the venue room, turned into a point cloud with monocular depth; a 48 row synthetic asset register with positions; two public Valmet PDFs (the Flow control manual and VMR003); 16 printed plates with ArUco markers; and a printed scale card.
 - Where it comes from and where it goes: the PDFs are fetched by script into the gitignored `data/` folder and never committed; neither the PDFs nor the extracted text nor the photographs leave the laptop. The PDFs are all rights reserved, so only section numbers, titles and quotes of 1 to 3 lines ship.
-- What is mocked: the point cloud and the plant room it was sampled from, the machine shapes, the positions, the asset register, the tag numbers, the overdue flags, and the plates. Every plate carries SYNTHETIC DEMO ASSET.
-- What is real: the geometric segmentation rules, the instance extraction, the occupancy grid and the path solver, the two documents and their page anchors, the VMR003 intervals, the OCR, the retrieval, the gate, the timing and the offline run.
+- What is mocked: the asset register, the tag numbers, the service intervals, the plate text and the plant framing. The room and the photographs are real; the plant is a stand-in. Every plate carries SYNTHETIC DEMO ASSET.
+- What is real: the photographs, the depth model (Depth Anything V2, Apache-2.0, 27 MB, 1.7 s per frame on CPU), the OpenCV guided filter, the ArUco scale card, the point cloud, the geometric classes, the occupancy grid and the path solver, the two documents and their page anchors, the VMR003 intervals, the OCR, the retrieval, the timing and the offline run.
 - Third-party services and keys (names only, never values): Gemini API (optional, one cached call, cut at H+18), everything else local. No Elisa, no Valmet API, no cloud on the demo path.
 
 ## Questions for the partner Q&A
