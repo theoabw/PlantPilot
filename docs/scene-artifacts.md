@@ -37,6 +37,12 @@ declared, sane and rendered counts, the detected up axis and the timing.
 the voxel size, the component and object counts, the largest object share, the
 class counts and the extraction time.
 
+Both `scene` and `objects` render their preview PNGs with the native splat
+renderer (below). `SPLAT_GAUSSIANS`, `PREVIEW_WIDTH` and `PREVIEW_HEIGHT` set
+how much of the capture goes into a preview: the default draws 500,000
+gaussians at 1400 by 900 in about 15 seconds, and `SPLAT_GAUSSIANS=0` draws all
+of them for a still. `--mode points` keeps the old fast debug view.
+
 Both stages are deterministic: the decimation seed, the plane sampler and the
 splitter are fixed. Two runs on one input produce the same planes, floor,
 objects and counts; only the `timing_s` field differs.
@@ -57,6 +63,29 @@ Both numbers are in `parameters`, and `make objects` prints them:
 - `parameters.voxel_m_effective`: the size used for this capture.
 - `parameters.spacing`: `spacing_m`, `floor_points`, `floor_area_m2`,
   `density_per_m2` and the method, or a reason when it could not be measured.
+
+## Rendering the room
+
+A gaussian is an anisotropic ellipsoid. A renderer projects its 3D covariance
+`R diag(size) diag(size)^T R^T` through the camera Jacobian to a 2D covariance,
+draws `alpha * exp(-0.5 * d^T covariance_2d^-1 * d)` per pixel and blends back
+to front. That is how the web splat viewers draw a capture, and it is what turns
+a cloud of points into textured surfaces.
+
+`plantpilot/splat_render.py` is that renderer in numpy. It is the CPU reference
+used for the preview PNGs, the deck and the stills, not the product viewer,
+which draws the same artifact on the GPU:
+
+- it reads the artifact, so it uses the per-gaussian orientation, size, opacity
+  and DC colour the ingest stored;
+- the camera's up vector comes from the artifact's `up_axis`, so a capture
+  whose frame is y-down renders upright;
+- metre-wide low-opacity gaussians (the capture's fog) are culled, because they
+  cover whole image regions and wash the render out;
+- colour is blended in display space, with no gamma conversion.
+
+The supplied captures do not share an up axis: the boiler room is `+y`, the
+improved equipment room is `-y`. Nothing in the renderer assumes either.
 
 ## Why the plane band is 4 cm
 
@@ -211,7 +240,7 @@ Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
 | Points inside objects | 37.0 percent | `make objects` |
 | Largest object share | 3.7 percent of points | `make objects` |
 | Median points per object | 431 | `make objects` |
-| Extraction time | 2.7 s | `make objects` |
+| Extraction time | 2.9 s | `make objects` |
 | Floor to next horizontal plane | 1.95 m (floor -0.877, next plane +1.074) | `make objects` |
 
 The 1.95 m clear height is the distance to the next strong horizontal plane, not
@@ -247,6 +276,43 @@ shell; the check asks that a box contain the asset's centre and stay inside
 three times its footprint, not that the box be the whole asset. And the asset
 classes on this scene are weaker than on the delivered capture (a pump is
 framed as `motor`), which the check does not score.
+
+## The improved capture
+
+Valmet delivered a second, complete export, `Equipment Room.ply`, on Friday
+night. It is the same 3DGS schema and it is not damaged: 1,676,481 declared
+vertices, every row sane, no tail. It is a different, larger room, so it is a
+second scene in its own right, and it is the better demo material.
+
+| Number | Value | Printed by |
+| --- | --- | --- |
+| Declared vertices | 1,676,481 | `make scene` |
+| Sane prefix | 1,676,481, none dropped | `make scene` |
+| Up axis | `-y`, floor slab at +1.167 (15.5 percent of points) | `make scene` |
+| Dense bounds | x -4.84 to 4.16, y -1.29 to 1.26, z -3.76 to 3.49 | `make scene` |
+| Floor | +1.173 in the scene frame, rms 0.016 | `make objects` |
+| Point spacing on the floor | 0.016 m | `make objects` |
+| Points removed as planes | 705,418 (42.1 percent) | `make objects` |
+| Components at 3 cm | 73,673 | `make objects` |
+| Objects framed | 150 (capped from 380 clusters) | `make objects` |
+| Points inside objects | 47.4 percent | `make objects` |
+| Largest object share | 1.2 percent of points | `make objects` |
+| Extraction time | 10.2 s | `make objects` |
+
+Run it with its own paths, so the boiler room artifacts stay where the other
+stages expect them:
+
+```
+make scene PLY="data/supplied/Equipment Room.ply" SCENE=data/equipment/scene.npz \
+  PREVIEW=data/equipment/preview.png
+make objects SCENE=data/equipment/scene.npz OBJECTS=data/equipment/objects.json \
+  OBJECTS_TOP=data/equipment/objects_top.png OBJECTS_VIEW=data/equipment/objects_view.png
+```
+
+Both captures are in `data/supplied/`, and both are gitignored. Switching the
+demo to the equipment room is a team decision: the mapping, route and diagnosis
+stages read the artifact paths, so it is a change of `SCENE` and `OBJECTS`, not
+of code.
 
 ## Not in these artifacts
 

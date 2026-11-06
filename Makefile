@@ -11,6 +11,13 @@ PREVIEW ?= data/scene/preview.png
 OBJECTS_TOP ?= data/scene/objects_top.png
 OBJECTS_VIEW ?= data/scene/objects_view.png
 
+# The preview renderer draws native gaussian splats, which is slower than the
+# point debug view and is what makes the room read as surfaces. This is the
+# number of gaussians drawn for the preview PNGs, not what the artifact holds.
+SPLAT_GAUSSIANS ?= 500000
+PREVIEW_WIDTH ?= 1400
+PREVIEW_HEIGHT ?= 900
+
 # The second scene for the scene-agnostic check: the synthetic reference plant,
 # written as a 3DGS PLY so the same stages run on it unchanged.
 PLANT_PLY ?= data/plant/plant.ply
@@ -22,13 +29,15 @@ PLANT_OBJECTS ?= data/plant/objects.json
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
 	$(PY) python -m plantpilot.splat --ply "$(PLY)" --out $(SCENE)
-	$(PY) python -m plantpilot.render --scene $(SCENE) --out $(PREVIEW)
+	$(PY) python -m plantpilot.render --scene $(SCENE) --out $(PREVIEW) --mode splats \
+	  --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT)
 
 ## objects: extract framed objects from the scene into data/scene/objects.json
 objects:
 	$(PY) python -m plantpilot.segment --scene $(SCENE) --out $(OBJECTS)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out $(OBJECTS_TOP)
-	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW)
+	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW) \
+	  --mode splats --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT)
 
 ## pack: convert the supplied builder workbook into data/scene/pack.json
 pack:
