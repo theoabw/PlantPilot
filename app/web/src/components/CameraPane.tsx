@@ -179,7 +179,7 @@ export default function CameraPane({ busy, onFrame, onLoadSample }: CameraPanePr
         type="button"
         onClick={() => void handleScan()}
         disabled={busy || cameraState !== 'live'}
-        className="flex w-full items-center justify-center gap-3 rounded-lg border-2 border-blue-900 bg-blue-800 px-4 py-3 text-xl font-bold text-white hover:bg-blue-900 disabled:cursor-not-allowed disabled:border-slate-400 disabled:bg-slate-400"
+        className="flex w-full items-center justify-center gap-3 rounded-lg border-2 border-blue-900 bg-blue-800 px-4 py-3 text-xl font-bold text-white hover:bg-blue-900 disabled:cursor-not-allowed disabled:border-slate-500 disabled:bg-slate-300 disabled:text-slate-800"
       >
         {busy ? (
           <>
