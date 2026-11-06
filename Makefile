@@ -24,7 +24,7 @@ PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects pack map generality proof route test check clean
+.PHONY: demo web web-build corpus models register plates plant scan scene objects pack map diagnose generality proof route test check clean
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -46,6 +46,10 @@ pack:
 ## map: assign builder-pack assets to distinct extracted objects
 map: pack objects
 	$(PY) python -m plantpilot.mapping --pack data/scene/pack.json --objects $(OBJECTS) --out data/scene/mapped.json
+
+## diagnose: build an evidence-backed diagnosis for P-005
+diagnose: pack
+	$(PY) python -m plantpilot.diagnose --pack data/scene/pack.json --out data/scene/diagnosis.json
 
 ## generality: run the same stages on the reference plant, score the boxes
 generality: plant

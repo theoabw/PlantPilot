@@ -6,6 +6,7 @@ Generated artifacts are written into `data/` and never committed:
 | --- | --- | --- |
 | `data/scene/pack.json` | `make pack` (`plantpilot.pack`) | mapping, diagnosis, API |
 | `data/scene/mapped.json` | `make map` (`plantpilot.mapping`) | route, diagnosis, API, viewer |
+| `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer, preview renderer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
 
@@ -18,6 +19,7 @@ parallel and a silent change to a key breaks another seat's work.
 ```
 make pack                           # convert the supplied builder workbook
 make map                            # assign pack assets to distinct scene objects
+make diagnose                       # build the P-005 evidence panel
 make scene                          # ingest the capture as delivered
 make objects                        # extract the framed objects
 make scene PLY=path/to/other.ply    # the same code on another capture
@@ -33,6 +35,12 @@ diagnosis, merges the asset master, scene anchors and current state into
 assignment records its object id, class proposal, mapping method, confidence,
 and current state. The target mapping is exposed as `target_object_id`; no
 scene-anchor coordinates are used as physical positions.
+
+`make diagnose` reads `pack.json` and writes `diagnosis.json`. It joins P-005's
+condition, telemetry, alarms, maintenance history, data-quality cases and
+knowledge documents. Findings refer only to stable row evidence IDs, confidence
+is reduced when data-quality cases touch the target, and the next safe check is
+cited to `DOC-FIELD-SAFETY`.
 
 `make scene` reads the file it is given and filters it itself, so the counts it
 prints are the counts in the delivered file. The supplied capture declares
