@@ -1,0 +1,122 @@
+[
+  {
+    "id": "1",
+    "title": "INTRODUCTION TO PIPELINE FLOW",
+    "page": 8,
+    "quote": ""
+  },
+  {
+    "id": "1.1.1",
+    "title": "Turbulent and laminar flow in pipes",
+    "page": 8,
+    "quote": "1.1 General This section presents several complicated flow problems in very simple form: firstly, flow behaviour in common fluid systems; and secondly pressure behaviour in different piping components and flow induced dy"
+  },
+  {
+    "id": "1.1.3",
+    "title": "Flow separation",
+    "page": 10,
+    "quote": "1.1.3 Flow separation After an abrupt increase in flow area, static pressure at the pipe wall may increase in the direction of flow."
+  },
+  {
+    "id": "1.2",
+    "title": "Throttling process for incompressible flow",
+    "page": 13,
+    "quote": "The disturbances caused by large-scale vortices due to flow separation can be elimi- nated or significantly reduced by increasing micro turbulence, or by shaping the flow path."
+  },
+  {
+    "id": "1.4",
+    "title": "Pressure loss behaviour of piping components",
+    "page": 16,
+    "quote": "1.4 Pressure loss behaviour of piping components the pipe itself have their own typical pressure loss versus flow rate behaviour."
+  },
+  {
+    "id": "2",
+    "title": "CONTROL VALVE INSTALLED PERFORMANCE",
+    "page": 19,
+    "quote": ""
+  },
+  {
+    "id": "2.2",
+    "title": "Operating conditions",
+    "page": 19,
+    "quote": "2.1 General This chapter introduces a process pipeline model and calculation procedure that make it possible to predict control valve installed performance accurately and quickly using a valve sizing and selection softwa"
+  },
+  {
+    "id": "2.4",
+    "title": "Control valve flow characteristics",
+    "page": 20,
+    "quote": ""
+  },
+  {
+    "id": "2.4.2",
+    "title": "Installed flow characteristic",
+    "page": 22,
+    "quote": "Quickopening inherent flow characteristic A flow characteristic in which a flow close to a maximum flow is reached with a very small opening."
+  },
+  {
+    "id": "2.4.4",
+    "title": "Calculation methods",
+    "page": 27,
+    "quote": "Figure 21 shows a sample installed gain curve for a new type of eccentric rotary plug control valve."
+  },
+  {
+    "id": "2.4.6",
+    "title": "Control valve characterization",
+    "page": 32,
+    "quote": "A control valve is the final control element, a mechanical device that effects the changes in flow or pressure deemed necessary by the rest of the system."
+  },
+  {
+    "id": "3.1",
+    "title": "General",
+    "page": 39,
+    "quote": "The flow of incompressible fluids through control valves has been well defined by uni- the basic fluid mechanics of incompressible flows forms the first half of this chapter."
+  },
+  {
+    "id": "3.3",
+    "title": "Cavitation and flashing",
+    "page": 47,
+    "quote": ""
+  },
+  {
+    "id": "3.3.2",
+    "title": "Investigating the existence of cavitation",
+    "page": 50,
+    "quote": "The value of exponent n in equation (33) can be as high as 7 in cases of erosion related to cavitation corrosion."
+  },
+  {
+    "id": "3.4",
+    "title": "Cavitation and hydrodynamic noise abatement",
+    "page": 55,
+    "quote": "k = ratio of specific heats M = molecular weight N14 = 91 for SI units = 223 for US units In practice, it is recommended that the valve downstream piping length is minimized in flashing flow applications by locating the"
+  },
+  {
+    "id": "3.6",
+    "title": "Hydrodynamic noise prediction for baffle and orifice plates",
+    "page": 64,
+    "quote": "In short the IEC hydrodynamic noise prediction can be presented in the five following 1."
+  },
+  {
+    "id": "4",
+    "title": "GAS AND STEAM FLOW",
+    "page": 66,
+    "quote": ""
+  },
+  {
+    "id": "4.2",
+    "title": "Sizing equations for gas and steam flow",
+    "page": 68,
+    "quote": "Interrelation of flow and pressure drop ratio in gas or steam valves."
+  },
+  {
+    "id": "4.3.1",
+    "title": "Aerodynamic noise generation",
+    "page": 71,
+    "quote": "where pc = thermodynamic critical pressure (SI units: [barA]; US units: Tc = thermodynamic critical temperature (SI units: [K]; US units: 4.3 Aerodynamic noise 4.3.1 Aerodynamic noise generation The noise created by thro"
+  },
+  {
+    "id": "4.4",
+    "title": "Atmospheric venting",
+    "page": 76,
+    "quote": "4.4 Atmospheric venting Venting gas or steam to the atmosphere usually generates high noise levels around the vent exit."
+  }
+]
