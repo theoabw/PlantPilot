@@ -1771,6 +1771,68 @@
         "summary": "Scan"
       }
     },
+    "/api/scene/assets": {
+      "get": {
+        "description": "The coherent equipment assets of the capture, from make assets.",
+        "operationId": "scene_assets_api_scene_assets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Assets Api Scene Assets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Assets"
+      }
+    },
     "/api/scene/mapped": {
       "get": {
         "description": "The builder assets mapped onto the extracted objects, from make map.",

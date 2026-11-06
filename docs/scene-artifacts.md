@@ -14,6 +14,7 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer, preview renderer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
+| `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (the default object layer) |
 | `data/viewer/room.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
@@ -131,9 +132,14 @@ the `scene lab` button.
 - `make splat-asset` writes `data/viewer/room.ply`: the sane prefix with the 14
   core properties only, 28 MB for the supplied capture instead of 355 MB, so the
   browser loads it in seconds.
-- `GET /api/splat` serves that file, `GET /api/scene/objects` serves the
-  extraction artifact and `GET /api/scene/mapped` serves the mapping when
-  `make map` has run. Everything is local, so the demo makes no network calls.
+- `GET /api/splat` serves that file, `GET /api/scene/assets` serves the
+  refined object layer, `GET /api/scene/objects` serves the raw extraction and
+  `GET /api/scene/mapped` serves the mapping when `make map` has run. Everything
+  is local, so the demo makes no network calls.
+- The room view draws the refined assets by default, as thin outlines, and
+  shows labels, class and confidence only on selection. The raw extraction stays
+  one toggle away in the Objects panel, which is where a reviewer should look
+  when judging a selection rather than the room.
 - `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` point the room view at another
   capture, for example `PLANTPILOT_SCENE=data/equipment
   PLANTPILOT_SPLAT=data/viewer/equipment.ply`. The supplied boiler-room delivery
@@ -295,6 +301,38 @@ The class is a proposal, not an identification. The challenge does not score
 label accuracy against a labelled reference, so the rule is geometric and says
 so. The mapping stage decides which proposal a package record may use, and the
 interface shows the confidence next to the class.
+
+## `assets.json`
+
+The refined object layer. The raw extraction is a segmentation of point
+clusters, and a cluttered room merges neighbouring machines into long boxes and
+splits equipment into fragments. This artifact is the representation the room
+view draws by default.
+
+Top level: `artifact` (`assets`), `version` (1), `source` (scene and objects
+paths), `counts` (`raw_objects`, `colour_instances`, `geometry_candidates`,
+`suppressed`, `assets`, `verified`), and `assets`.
+
+Each asset:
+
+| Key | Meaning |
+| --- | --- |
+| `id` | `AS-` plus eight hex characters of a hash over the centimetre-rounded centre and extents, so the id is stable across runs |
+| `class`, `label` | the equipment class and the human label, for example `red pressure vessel` |
+| `confidence` | 0 to 1, from the support, compactness and colour evidence; documented in the module |
+| `verified` | whether the instance passed the colour or geometry gates, and so may be drawn by default |
+| `centre`, `axes`, `extents` | the oriented box, same convention as `objects.json` |
+| `points` | gaussians in the instance |
+| `rgb` | mean colour of those gaussians |
+| `source_object_ids` | the raw objects the instance was built from, so the mapping, the route and the raw layer still line up |
+| `method` | `colour_instance` or `geometry_box` |
+| `reason` | the sentence the interface can show |
+
+Colour instances are built by region-growing gaussians of one hue in a 5 cm
+voxel grid, which is what turns the painted vessels into single objects. The
+rest come from compact geometric boxes. Overlaps are resolved with a 3D
+oriented-box IoU rule, and a box whose centre falls inside a kept instance is
+suppressed. `assets.json` is additive: `objects.json` keeps every raw detection.
 
 ## Numbers from the supplied capture
 

@@ -123,6 +123,31 @@ def test_the_room_endpoints_serve_the_artifacts(monkeypatch, tmp_path):
     assert response.content.startswith(b"ply\n")
 
 
+def test_the_assets_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "ASSETS_FILE", tmp_path / "assets.json")
+    response = client.get("/api/scene/assets")
+    assert response.status_code == 404 and "make assets" in response.json()["detail"]
+
+
+def test_the_assets_endpoint_serves_the_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    payload = {
+        "artifact": "assets",
+        "version": 1,
+        "counts": {"assets": 1, "verified": 1},
+        "assets": [{"id": "AS-0001", "class": "pump", "confidence": 0.8, "verified": True}],
+    }
+    path = tmp_path / "assets.json"
+    path.write_text(json.dumps(payload))
+    monkeypatch.setattr(main, "ASSETS_FILE", path)
+    body = client.get("/api/scene/assets").json()
+    assert body["artifact"] == "assets"
+    assert body["assets"][0]["id"] == "AS-0001"
+
+
 def test_the_route_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 
