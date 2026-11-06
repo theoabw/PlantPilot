@@ -6,19 +6,35 @@ PY := uv run
 PLY ?= data/supplied/Industrial Boiler Room (1).ply
 SCENE ?= data/scene/scene.npz
 OBJECTS ?= data/scene/objects.json
+PREVIEW ?= data/scene/preview.png
+OBJECTS_TOP ?= data/scene/objects_top.png
+OBJECTS_VIEW ?= data/scene/objects_view.png
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects proof route test check clean
+# The second scene for the scene-agnostic check: the synthetic reference plant,
+# written as a 3DGS PLY so the same stages run on it unchanged.
+PLANT_PLY ?= data/plant/plant.ply
+PLANT_SCENE ?= data/plant/scene.npz
+PLANT_OBJECTS ?= data/plant/objects.json
+
+.PHONY: demo web web-build corpus models register plates plant scan scene objects generality proof route test check clean
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
 	$(PY) python -m plantpilot.splat --ply "$(PLY)" --out $(SCENE)
-	$(PY) python -m plantpilot.render --scene $(SCENE) --out data/scene/preview.png
+	$(PY) python -m plantpilot.render --scene $(SCENE) --out $(PREVIEW)
 
 ## objects: extract framed objects from the scene into data/scene/objects.json
 objects:
 	$(PY) python -m plantpilot.segment --scene $(SCENE) --out $(OBJECTS)
-	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out data/scene/objects_top.png
-	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out data/scene/objects_view.png
+	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out $(OBJECTS_TOP)
+	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW)
+
+## generality: run the same stages on the reference plant, score the boxes
+generality: plant
+	$(PY) python scripts/make_plant_ply.py --ply $(PLANT_PLY)
+	$(PY) python -m plantpilot.splat --ply $(PLANT_PLY) --out $(PLANT_SCENE)
+	$(PY) python -m plantpilot.segment --scene $(PLANT_SCENE) --out $(PLANT_OBJECTS)
+	$(PY) python scripts/plant_generality.py --objects $(PLANT_OBJECTS)
 
 ## demo: build the register, then serve the API and the built web page
 demo: register
