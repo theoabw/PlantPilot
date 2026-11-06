@@ -28,6 +28,12 @@ from .splat import Scene, load_scene
 
 OBJECTS_VERSION = 1
 
+# A 26-connected voxel graph only holds a surface together when the voxel is at
+# least as large as the distance between neighbouring points. Captures differ in
+# density, so the stage measures the spacing on the floor and coarsens the voxel
+# to it. The factor is a margin for the uneven spacing of a real capture.
+VOXEL_PER_SPACING = 1.4
+
 # Defaults chosen from the supplied capture and kept as parameters so another
 # scene can override them. They are spatial scales, not measurements of this
 # room; `make objects` prints the values in force.
@@ -192,6 +198,57 @@ def floor_plane(planes: list[Plane], up: np.ndarray) -> Plane | None:
     return max(candidates, key=lambda p: p.inliers)
 
 
+def estimate_spacing(
+    xyz: np.ndarray,
+    planes: list[Plane],
+    up: np.ndarray,
+    *,
+    threshold: float,
+    cell: float = 0.05,
+) -> dict:
+    """Estimate the distance between neighbouring points from the floor.
+
+    The largest flat surface in a capture is the most reliable density sample it
+    contains: its area can be measured directly by counting occupied cells, so
+    points divided by area gives a density and the square root of its inverse is
+    the spacing. Returns a record with the numbers and the method, so the voxel
+    size chosen from it can be explained.
+    """
+    floor = floor_plane(planes, up)
+    if floor is None:
+        return {"spacing_m": None, "method": "no floor plane, the requested voxel size stands"}
+    normal = np.asarray(floor.normal, dtype=np.float64)
+    distance = np.abs(xyz @ normal + floor.offset)
+    mask = distance < max(threshold, 0.03)
+    points = xyz[mask]
+    if points.shape[0] < 500:
+        return {
+            "spacing_m": None,
+            "floor_points": int(points.shape[0]),
+            "method": "too few floor points to measure a spacing",
+        }
+    helper = np.array([1.0, 0.0, 0.0]) if abs(normal[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    tangent = np.cross(normal, helper)
+    tangent = tangent / float(np.linalg.norm(tangent))
+    second = np.cross(normal, tangent)
+    u = points @ tangent
+    v = points @ second
+    cells_u = np.floor((u - u.min()) / cell).astype(np.int64)
+    cells_v = np.floor((v - v.min()) / cell).astype(np.int64)
+    keys = np.unique(cells_u * (int(cells_v.max()) + 1) + cells_v)
+    area = float(keys.size) * cell * cell
+    density = float(points.shape[0]) / max(area, 1e-9)
+    spacing = 1.0 / math.sqrt(density)
+    return {
+        "spacing_m": round(spacing, 4),
+        "floor_points": int(points.shape[0]),
+        "floor_area_m2": round(area, 2),
+        "density_per_m2": round(density, 1),
+        "cell_m": cell,
+        "method": "points within 3 cm of the floor plane, divided by the occupied cell area",
+    }
+
+
 def height_above_plane(points: np.ndarray, plane: Plane, up: np.ndarray) -> np.ndarray:
     """Signed height above a plane, positive on the up side."""
     normal = np.asarray(plane.normal, dtype=np.float64)
@@ -269,8 +326,40 @@ def component_points(keys: np.ndarray, dims: np.ndarray, inverse: np.ndarray) ->
     return groups
 
 
+def _tighten_pair(points: np.ndarray, axes: np.ndarray, first: int, second: int) -> np.ndarray:
+    """Rotate two box axes in their plane to the tightest rectangle.
+
+    The third axis is untouched, so this is a rotation about it. Returns the
+    axes with the better pair. Used only when the covariance cannot choose the
+    rotation itself, which is exactly the square cross section case.
+    """
+    local = points @ axes.T
+    best: tuple[float, float] | None = None
+    for theta in np.linspace(0.0, np.pi / 2.0, 181, endpoint=False):
+        cosine, sine = math.cos(theta), math.sin(theta)
+        first_coord = local[:, first] * cosine + local[:, second] * sine
+        second_coord = -local[:, first] * sine + local[:, second] * cosine
+        area = float((first_coord.max() - first_coord.min()) * (second_coord.max() - second_coord.min()))
+        if best is None or area < best[0] - 1e-12:
+            best = (area, theta)
+    if best is None:
+        return axes
+    _, theta = best
+    cosine, sine = math.cos(theta), math.sin(theta)
+    tightened = axes.copy()
+    tightened[first] = cosine * axes[first] + sine * axes[second]
+    tightened[second] = -sine * axes[first] + cosine * axes[second]
+    return tightened
+
+
 def _extents(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """PCA frame plus robust extents (2nd to 98th percentile) of a point set."""
+    """PCA frame plus robust extents (2nd to 98th percentile) of a point set.
+
+    A box with a square cross section has two equal eigenvalues, so its PCA
+    frame is degenerate: the two equal axes are free to spin and the box comes
+    out wider than the points in it. When a pair of eigenvalues is that close,
+    that pair is rotated to the tightest rectangle around the points instead.
+    """
     centroid = points.mean(axis=0)
     centred = points - centroid
     covariance = centred.T @ centred / max(1, points.shape[0] - 1)
@@ -278,6 +367,12 @@ def _extents(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     order = np.argsort(values)[::-1]
     values = values[order]
     axes = vectors[:, order].T
+
+    if values[0] > 0 and (values[0] - values[1]) / values[0] < 0.1:
+        axes = _tighten_pair(points - centroid, axes, 0, 1)
+    if values[1] > 0 and (values[1] - values[2]) / values[1] < 0.1:
+        axes = _tighten_pair(points - centroid, axes, 1, 2)
+
     # sign convention: the largest extent points along the dominant direction
     for row in range(3):
         dominant = int(np.argmax(np.abs(axes[row])))
@@ -548,7 +643,13 @@ def segment(
     if remaining.shape[0] < 3:
         raise ValueError("every point was removed as a plane; the plane threshold is too wide")
 
-    keys, inverse, dims = voxel_indices(remaining, float(options["voxel_m"]))
+    spacing = estimate_spacing(xyz, planes, up, threshold=float(options["plane_distance_m"]))
+    voxel = float(options["voxel_m"])
+    if spacing["spacing_m"]:
+        voxel = max(voxel, VOXEL_PER_SPACING * float(spacing["spacing_m"]))
+    voxel = round(voxel, 4)
+
+    keys, inverse, dims = voxel_indices(remaining, voxel)
     groups = component_points(keys, dims, inverse)
     component_count = len(groups)
 
@@ -599,7 +700,11 @@ def segment(
             "up_axis": frame.get("up_axis"),
             "units": frame.get("units"),
         },
-        "parameters": {name: (round(value, 4) if isinstance(value, float) else value) for name, value in options.items()},
+        "parameters": {
+            **{name: (round(value, 4) if isinstance(value, float) else value) for name, value in options.items()},
+            "voxel_m_effective": voxel,
+            "spacing": spacing,
+        },
         "planes": {
             "removed": len(planes),
             "removed_points": removed_points,
@@ -649,13 +754,22 @@ def format_report(payload: dict) -> str:
     planes = payload["planes"]
     floor = payload["floor"]
     scale = payload["scale_check"]
+    parameters = payload["parameters"]
+    spacing = parameters["spacing"]
+    voxel = parameters["voxel_m_effective"]
     by_class = ", ".join(f"{name} {count}" for name, count in counts["objects_by_class"].items())
     lines = [
         f"points            {payload['source']['points']:,} in, {planes['removed_points']:,} removed as planes "
         f"({planes['removed_fraction']:.1%})",
         f"planes removed    {planes['removed']}",
         f"floor             " + (f"at {floor['height']:+.3f} ({floor['inliers']:,} inliers, rms {floor['rms_m']:.3f} m)" if floor["detected"] else "not detected"),
-        f"components        {counts['components']:,} at {payload['parameters']['voxel_m'] * 100:.0f} cm, {counts['components_split']} split",
+        f"point spacing     " + (
+            f"{spacing['spacing_m']:.3f} m on the floor, voxel {voxel:.3f} m"
+            if spacing.get("spacing_m") else
+            f"not measured, voxel {voxel:.3f} m"
+        )
+        + f" (requested {parameters['voxel_m']:.3f} m)",
+        f"components        {counts['components']:,} at {voxel * 100:.1f} cm, {counts['components_split']} split",
         f"objects framed    {counts['objects']:,} from {counts['clusters']:,} clusters"
         + (f", {counts['capped']} capped" if counts["capped"] else ""),
         f"points in objects {counts['points_in_objects']:,} ({counts['points_in_objects_fraction']:.1%}), "

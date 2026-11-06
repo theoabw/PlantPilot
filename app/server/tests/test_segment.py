@@ -131,6 +131,36 @@ def test_extraction_is_deterministic(scene, tmp_path):
     assert first["counts"] == second["counts"]
 
 
+def test_the_voxel_follows_the_measured_point_spacing(scene, tmp_path):
+    payload = seg.segment(scene, tmp_path / "objects.json", params=FAST)
+    parameters = payload["parameters"]
+    spacing = parameters["spacing"]
+    assert spacing["spacing_m"] is not None
+    assert spacing["floor_points"] > 100
+    assert parameters["voxel_m_effective"] >= parameters["voxel_m"]
+    assert parameters["voxel_m_effective"] == pytest.approx(
+        max(parameters["voxel_m"], seg.VOXEL_PER_SPACING * spacing["spacing_m"]), rel=1e-3
+    )
+
+
+def test_point_spacing_is_measured_from_a_flat_surface():
+    up = UP
+    cells = np.arange(0.0, 2.0, 0.05)
+    gx, gz = np.meshgrid(cells, cells, indexing="ij")
+    points = np.stack([gx.ravel(), np.zeros(gx.size), gz.ravel()], axis=1)
+    plane = Plane(normal=[0.0, 1.0, 0.0], offset=0.0, inliers=points.shape[0], rms_m=0.0, horizontal=True)
+    result = seg.estimate_spacing(points, [plane], up, threshold=0.025)
+    assert result["spacing_m"] == pytest.approx(0.05, rel=0.1)
+    assert result["floor_area_m2"] > 3.0
+
+
+def test_a_capture_without_a_floor_keeps_the_requested_voxel():
+    points = np.random.default_rng(3).uniform(-1.0, 1.0, size=(500, 3))
+    result = seg.estimate_spacing(points, [], UP, threshold=0.025)
+    assert result["spacing_m"] is None
+    assert "floor" in result["method"]
+
+
 def test_the_artifact_carries_the_contract(scene, tmp_path):
     out = tmp_path / "objects.json"
     seg.segment(scene, out, params=FAST)
@@ -139,6 +169,7 @@ def test_the_artifact_carries_the_contract(scene, tmp_path):
         assert key in payload
     assert payload["artifact"] == "objects"
     assert payload["source"]["up_axis"] == "+y"
+    assert payload["parameters"]["voxel_m_effective"] > 0
     assert payload["planes"]["removed"] >= 1
     assert "class" in payload["objects"][0]
     assert "method" not in payload["objects"][0]  # mapping is the next stage, not this one

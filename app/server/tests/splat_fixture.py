@@ -101,15 +101,15 @@ def box_shell(origin, size, spacing: float = 0.025, jitter: float = 0.002) -> np
 def room(seed: int = 0) -> np.ndarray:
     """A floor, two blocks standing on it, a pipe run, and a few stray points."""
     rng = np.random.default_rng(seed)
-    axis_x = np.arange(-1.5, 1.5, 0.05)
-    axis_z = np.arange(-1.0, 1.0, 0.05)
+    axis_x = np.arange(-1.5, 1.5, 0.02)
+    axis_z = np.arange(-1.0, 1.0, 0.02)
     gx, gz = np.meshgrid(axis_x, axis_z, indexing="ij")
     floor = np.stack([gx.ravel(), np.zeros(gx.size), gz.ravel()], axis=1)
     floor += rng.normal(scale=0.001, size=floor.shape)
 
-    first = box_shell((0.10, 0.02, -0.30), (0.40, 0.40, 0.40), 0.025)
-    second = box_shell((0.95, 0.02, 0.25), (0.35, 0.55, 0.35), 0.025)
-    fourth = box_shell((-0.95, 0.02, 0.30), (0.30, 0.30, 0.30), 0.025)
+    first = box_shell((0.10, 0.02, -0.30), (0.40, 0.40, 0.40), 0.02)
+    second = box_shell((0.95, 0.02, 0.25), (0.35, 0.55, 0.35), 0.02)
+    fourth = box_shell((-0.95, 0.02, 0.30), (0.30, 0.30, 0.30), 0.02)
 
     pipe_x = np.arange(-1.4, 1.4, 0.01)
     pipe = np.stack([pipe_x, np.full(pipe_x.size, 0.95), np.full(pipe_x.size, -0.1)], axis=1)
