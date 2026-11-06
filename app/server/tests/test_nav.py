@@ -73,8 +73,11 @@ def test_grid_from_cloud_and_clearance():
     # Build point cloud with an obstacle at center (0, 0)
     rng = np.random.default_rng(42)
     floor_pts = rng.uniform(low=[-4.0, -0.02, -4.0], high=[4.0, 0.02, 4.0], size=(2000, 3))
-    # Obstacle pillar from x in [-0.5, 0.5], z in [-0.5, 0.5], y in [0.2, 1.5]
-    obs_pts = rng.uniform(low=[-0.5, 0.2, -0.5], high=[0.5, 1.5, 0.5], size=(500, 3))
+    # Obstacle pillar from x in [-0.5, 0.5], z in [-0.5, 0.5], y in [0.2, 1.5].
+    # 40000 points is about 108 per 0.1 m cell inside the robot band, dense
+    # enough for the structural layer: 500 points in the same volume was about
+    # 1.3 per cell, which is a sparse cloud, not a pillar.
+    obs_pts = rng.uniform(low=[-0.5, 0.2, -0.5], high=[0.5, 1.5, 0.5], size=(40000, 3))
     pts = np.vstack([floor_pts, obs_pts])
 
     grid = nav.Grid.from_cloud(pts, floor_y=0.0, up_axis=1)
@@ -301,7 +304,8 @@ def test_a_y_down_capture_gets_its_path_in_scene_coordinates():
 def test_objects_become_obstacles_when_the_point_grid_saturates():
     # a band of points in every cell is what a cluttered capture looks like; the
     # old code fell back to an empty grid, which is how a route went through a
-    # pump. The extracted box has to become the obstacle instead.
+    # pump. The extracted box has to become the obstacle instead, and the
+    # structural layer is always part of the union now.
     rng = np.random.default_rng(3)
     dense = rng.uniform(low=[-3.0, 0.2, -3.0], high=[3.0, 1.4, 3.0], size=(20000, 3))
     box = {
@@ -310,8 +314,137 @@ def test_objects_become_obstacles_when_the_point_grid_saturates():
         "extents": [1.0, 1.0, 1.0],
     }
     grid = nav.Grid.from_cloud(dense, floor_y=0.0, up_axis=1, objects=[box], agent_radius_m=0.2)
-    assert grid.obstacles_from == "objects"
+    assert grid.obstacles_from == "objects+structure"
     row, column = grid.to_cell((0.0, 0.0))
     assert not grid.walkable(row, column)
     corner_row, corner_column = grid.to_cell((2.5, 2.5))
     assert grid.walkable(corner_row, corner_column)
+
+
+# ---------------------------------------------------------------------------
+# Structural layer: the capture's own points have to block walls, not noise
+# ---------------------------------------------------------------------------
+
+def room_cloud() -> np.ndarray:
+    """A closed box room with one doorway, plus a sparse noise band.
+
+    The four perimeter walls are dense vertical surfaces in the robot band, the
+    internal wall blocks everything except a doorway at 0.8 < z < 2.0, and the
+    noise lattice puts at most two points in any 0.1 m cell so that it stays
+    below the measured structural minimum.
+    """
+
+    def vertical_wall(x: float, z_values: np.ndarray, y_values: np.ndarray) -> np.ndarray:
+        z_grid, y_grid = np.meshgrid(z_values, y_values, indexing="ij")
+        return np.stack(
+            [np.full(z_grid.size, x), y_grid.ravel(), z_grid.ravel()], axis=1
+        )
+
+    y_wall = np.arange(0.10, 0.50 + 1e-9, 0.02)
+    along = np.arange(-2.0, 2.0 + 1e-9, 0.02)
+    parts = []
+    for x in (-2.0, 2.0):
+        parts.append(vertical_wall(x, along, y_wall))
+    for z in (-2.0, 2.0):
+        z_grid, y_grid = np.meshgrid(along, y_wall, indexing="ij")
+        parts.append(np.stack([z_grid.ravel(), y_grid.ravel(), np.full(z_grid.size, z)], axis=1))
+    # internal wall at x = 0 from z = -2.0 to 0.8: the doorway is 1.2 m wide
+    parts.append(vertical_wall(0.0, np.arange(-2.0, 0.8 + 1e-9, 0.02), y_wall))
+
+    axis = np.arange(-2.0, 2.0 + 1e-9, 0.1)
+    floor_x, floor_z = np.meshgrid(axis, axis, indexing="ij")
+    parts.append(np.stack([floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1))
+
+    noise_axis = np.arange(-1.9, 1.9 + 1e-9, 0.2)
+    noise_x, noise_z = np.meshgrid(noise_axis, noise_axis, indexing="ij")
+    for height in (0.15, 0.50):
+        parts.append(np.stack([noise_x.ravel(), np.full(noise_x.size, height), noise_z.ravel()], axis=1))
+    return np.vstack(parts)
+
+
+def test_a_dense_wall_blocks_the_route_while_sparse_noise_does_not():
+    cloud = room_cloud()
+    grid = nav.Grid.from_cloud(cloud, floor_y=0.0, up_axis=1, agent_radius_m=0.15)
+
+    assert grid.obstacles_from == "structure"
+    assert grid.structural_cells > 0
+    # the internal wall is solid at z = -0.5, and must not be walkable
+    wall_cell = grid.to_cell((0.0, -0.5))
+    assert not grid.walkable(*wall_cell)
+    # two noise points per cell are below the measured minimum: this cell is free
+    noise_cell = grid.to_cell((-1.5, -1.5))
+    assert grid.walkable(*noise_cell)
+
+    start = (-1.5, -0.5)
+    goal = (1.5, -0.5)
+    route = nav.astar(grid, start, goal)
+    assert route["reachable"] is True
+    # the direct line is 3 m; going through the doorway is longer
+    assert route["distance_m"] > 4.0
+    assert route["clearance_m"] > 0.0
+    # the route must not pass through the internal wall: its solid part is
+    # x = 0 from z = -2.0 to 0.8, inflated by the agent radius
+    for point in route["path"]:
+        assert not (abs(point[0]) < 0.35 and point[1] < 0.95), point
+
+
+def test_the_grid_reports_what_each_source_blocked():
+    cloud = room_cloud()
+    box = {
+        "centre": [1.2, 0.3, -1.2],
+        "axes": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        "extents": [0.5, 0.5, 0.5],
+    }
+    grid = nav.Grid.from_cloud(cloud, floor_y=0.0, up_axis=1, objects=[box], agent_radius_m=0.15)
+
+    assert grid.obstacles_from == "objects+structure"
+    assert grid.object_cells > 0
+    assert grid.structural_cells > 0
+    assert grid.structure_min_points == nav.STRUCTURE_MIN_POINTS
+    # the object footprint and the wall are both blocked, the doorway is not
+    assert not grid.walkable(*grid.to_cell((1.2, -1.2)))
+    assert not grid.walkable(*grid.to_cell((0.0, -0.5)))
+    assert grid.walkable(*grid.to_cell((0.0, 1.6)))
+
+
+def test_a_saturated_grid_is_kept_and_reported_not_emptied():
+    # every 0.1 m cell of the robot band holds 125 points: a room with walls all
+    # the way through. The union must stand and say it is saturated; the old
+    # failure mode was to fall back to a free grid.
+    axis = np.arange(-2.0, 2.0 + 1e-9, 0.025)
+    x_grid, z_grid = np.meshgrid(axis, axis, indexing="ij")
+    heights = np.array([0.10, 0.20, 0.30, 0.40, 0.50])
+    parts = [np.stack([x_grid.ravel(), np.full(x_grid.size, h), z_grid.ravel()], axis=1)
+             for h in heights]
+    grid = nav.Grid.from_cloud(np.vstack(parts), floor_y=0.0, up_axis=1, agent_radius_m=0.15)
+
+    assert grid.obstacles_from == "structure"
+    assert grid.saturated is True
+    assert grid.occupancy_fallback is False
+    assert grid.blocked_fraction > nav.MAX_BLOCKED_FRACTION
+    # the dense band does not reach the padded grid corners, so a few isolated
+    # cells stay free; the grid is still saturated, not emptied
+    assert int(grid.blocked.sum()) >= int(0.99 * grid.rows * grid.cols)
+    assert int(grid.free.sum()) <= int(0.01 * grid.rows * grid.cols)
+
+
+def test_obstacle_raster_writes_a_png_with_the_route(tmp_path):
+    from PIL import Image
+
+    cloud = room_cloud()
+    grid = nav.Grid.from_cloud(cloud, floor_y=0.0, up_axis=1, agent_radius_m=0.15)
+    route = nav.astar(grid, (-1.5, -0.5), (1.5, -0.5))
+    document = {
+        "up_axis": "+y",
+        "start": [route["path"][0][0], 0.05, route["path"][0][1]],
+        "target_waypoint": [route["path"][-1][0], 0.05, route["path"][-1][1]],
+        "path": [[x, 0.05, z] for x, z in route["path"]],
+    }
+    out = nav.write_obstacle_png(grid, tmp_path / "grid.png", route=document, px_per_cell=6)
+
+    image = np.asarray(Image.open(out).convert("RGB"))
+    assert image.shape == (grid.rows * 6, grid.cols * 6, 3)
+    assert int(image.min()) < 60  # blocked cells stay dark
+    assert int(image.max()) > 200  # free cells stay light
+    red = (image[:, :, 0] > 180) & (image[:, :, 1] < 90) & (image[:, :, 2] < 90)
+    assert int(red.sum()) > 0
