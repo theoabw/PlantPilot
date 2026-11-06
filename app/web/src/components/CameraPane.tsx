@@ -12,6 +12,8 @@ type CameraPaneProps = {
 type CameraState = 'starting' | 'live' | 'unavailable'
 
 export default function CameraPane({ busy, onFrame, onLoadSample }: CameraPaneProps) {
+  // getUserMedia needs a secure context: localhost and https qualify, a LAN http number does not.
+  const secure = typeof window === 'undefined' ? true : window.isSecureContext
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const previewUrlRef = useRef<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -152,7 +154,7 @@ export default function CameraPane({ busy, onFrame, onLoadSample }: CameraPanePr
         </span>
       </header>
 
-      <div className="relative min-h-[200px] flex-1 overflow-hidden rounded-lg border-2 border-slate-900 bg-slate-900">
+      <div className="relative min-h-[120px] flex-1 overflow-hidden rounded-lg border-2 border-slate-900 bg-slate-900">
         <video
           ref={videoRef}
           autoPlay
@@ -194,12 +196,20 @@ export default function CameraPane({ busy, onFrame, onLoadSample }: CameraPanePr
         )}
       </button>
 
+      {!secure ? (
+        <p className="rounded-lg border-2 border-amber-600 bg-amber-50 px-3 py-2 text-base font-semibold text-amber-900">
+          This page is open on a network address, not a secure one, so the browser
+          will not give it the live camera. Take a photo with the phone camera and
+          upload it here. The laptop on localhost keeps the live camera.
+        </p>
+      ) : null}
+
       <div>
         <label
           htmlFor={fileInputId}
-          className="block w-full cursor-pointer rounded-lg border-2 border-slate-900 bg-white px-4 py-3 text-center text-lg font-bold text-slate-900 hover:bg-slate-100"
+          className={`block w-full cursor-pointer rounded-lg border-2 border-slate-900 px-4 py-3 text-center text-lg font-bold hover:bg-slate-100 ${secure ? 'bg-white text-slate-900' : 'bg-blue-800 text-white hover:bg-blue-900'}`}
         >
-          or upload a photo
+          {secure ? 'or upload a photo' : 'take a photo, then upload it'}
         </label>
         <input
           id={fileInputId}
@@ -229,18 +239,18 @@ export default function CameraPane({ busy, onFrame, onLoadSample }: CameraPanePr
         </div>
       ) : null}
 
-      {import.meta.env.DEV ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 px-3 py-2">
-          <span className="text-base font-semibold text-slate-700">dev only, sample data</span>
-          <button
-            type="button"
-            onClick={onLoadSample}
-            className="rounded-md border-2 border-slate-900 bg-white px-3 py-1.5 text-base font-bold text-slate-900 hover:bg-slate-100"
-          >
-            load sample
-          </button>
-        </div>
-      ) : null}
+      <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 px-3 py-1.5">
+        <span className="text-base font-semibold text-slate-700">
+          demo safety net, sample data
+        </span>
+        <button
+          type="button"
+          onClick={onLoadSample}
+          className="rounded-md border-2 border-slate-900 bg-white px-3 py-1 text-base font-bold text-slate-900 hover:bg-slate-100"
+        >
+          load sample
+        </button>
+      </div>
     </section>
   )
 }
