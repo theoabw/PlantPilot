@@ -168,6 +168,21 @@ class HealthResponse(ApiModel):
     version: str
 
 
+class DiagnosisResponse(ApiModel):
+    """Evidence-backed diagnosis, or why the generated artifact is unavailable."""
+
+    available: bool
+    reason: str | None = None
+    artifact: str | None = None
+    target: dict | None = None
+    issue: dict | None = None
+    health_score: int | None = None
+    data_quality: dict | None = None
+    findings: list[dict] | None = None
+    next_safe_check: dict | None = None
+    citations: list[dict] | None = None
+
+
 class ScanResponse(ApiModel):
     """Everything one scan yields: the plate, the asset, the cited sections, the action."""
 

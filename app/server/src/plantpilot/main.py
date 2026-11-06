@@ -17,6 +17,7 @@ from . import __version__, corpus, nav, ocr, register
 from .models import (
     AssetGraphResponse,
     CloudMetaResponse,
+    DiagnosisResponse,
     ExplainRequest,
     ExplainResponse,
     HealthResponse,
@@ -84,8 +85,8 @@ def health() -> HealthResponse:
     }
 
 
-@app.get("/api/diagnosis", response_model=dict)
-def diagnosis() -> dict:
+@app.get("/api/diagnosis", response_model=DiagnosisResponse)
+def diagnosis() -> DiagnosisResponse:
     if not DIAGNOSIS_FILE.exists():
         return {
             "available": False,
