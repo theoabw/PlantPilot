@@ -3,6 +3,29 @@
 Changes to the scene lab demo frontend, tracked against
 [`Feedback.md`](Feedback.md).
 
+## 2026-11-06 - The real capture
+
+Branch: `feat/spark-room`
+
+### Features
+
+- **The room is the supplied capture.** The default view now renders the actual
+  gaussian splat with Spark inside the existing three.js scene, so the room and
+  the 130 extracted boxes share one camera and depth order. Clicking a box opens
+  its class proposal, confidence and size; the scene lab stays available from
+  the info tab as the provisional room.
+- The camera opens at standing height inside the room, from a stand position
+  chosen for clearance, and the capture's own up axis decides which way is up.
+- The up axis detection now signs the axis from the two slabs of a room: the
+  floor is the brighter one, so the pipes end up overhead instead of under the
+  floor. Both supplied captures are y-down 3DGS frames.
+
+### Verification
+
+- `pnpm typecheck`, `pnpm build`, `uv run pytest` and `node scripts/sinceai_check.mjs`.
+- Loaded in Chromium against `GET /api/splat` and `GET /api/scene/objects`;
+  screenshot in the pull request.
+
 ## 2026-11-06 - Feedback round 1
 
 Branch: `feat/web-demo-ui`
