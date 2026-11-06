@@ -34,8 +34,8 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make objects` runs,
 **then** it writes boxes for the objects it extracted, and each box has an id, an oriented frame, a size in metres and a class proposal.
 
-**Pass:** at least 40 objects framed, no single object holds more than 40 percent of the points, floor and dominant walls are removed, the viewer draws every box, and selecting one box isolates that object from the room without losing the box.
-**Check:** `make objects`; the box overlay in the viewer; click a box and isolate it.
+**Pass:** at least 40 objects framed normally, or a disclosed fallback of at least 30, which is the number of mapped records; below 30 the check fails, because the mapping cannot be complete. No single object holds more than 40 percent of the points, floor and dominant walls are removed, every box has a size and a class proposal, and the viewer draws every box.
+**Check:** `make objects`; the box overlay in the viewer.
 
 ### 3. The pack is mapped onto the objects
 
@@ -43,8 +43,8 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make map` runs,
 **then** 30 asset records are assigned to 30 distinct objects, each with a method, a confidence and the state from `Current_State`, and P-005 is assigned to a pump-like object.
 
-**Pass:** 30 mapped, all with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record.
-**Check:** `make map`; the asset card for P-005.
+**Pass:** 30 mapped, all with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record. Selecting P-005 turns it red and opens its card with the mapped state, method and confidence.
+**Check:** `make map`; select P-005 in the viewer.
 
 ### 4. The avatar reaches the faulty device without clipping
 
@@ -52,8 +52,8 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make route` runs,
 **then** a path is returned with a length in metres and a minimum clearance, and the path crosses no blocked cell.
 
-**Pass:** route exists, length over 2 m, clearance at least 0.3 m, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell.
-**Check:** `make route`; replay the path in the viewer.
+**Pass:** route exists, length over 2 m, clearance at least 0.3 m, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn as floor arrows, with the length and clearance visible.
+**Check:** `make route`; replay the path in the viewer and follow the arrows.
 
 ### 5. Nearby objects are shown as the avatar moves
 
@@ -79,10 +79,12 @@ Each criterion is written so a person who did not build the feature can check it
 **when** the 120 second sequence runs three times in a row with the network unplugged,
 **then** every beat plays in order and the numbers do not change between runs.
 
-**Pass:** three clean runs, no manual retry, no network request, the same counts and route length each time.
+**Pass:** every mandatory beat plays in order: the room, the frames, P-005 turning red with its card and the route, the avatar travelling with proximity labels, the diagnosis, and the end card that names the scene source, the mapping method and the offline status. The isolate view is P1; if it is cut, the script selects a nearby asset instead. Three clean runs, no manual retry, no network request, the same counts and route length each time.
 **Check:** unplug, run three times, note the numbers.
 
 ### 8. The same command runs on a second scene
+
+**Required whenever the plan, the README or the pitch claims scene-agnostic generality.** If the second-scene run is cut, the claim is downgraded everywhere to "designed for compatible 3DGS PLY inputs, tested on one scene", and this check is not claimed.
 
 **Given** the reference plant written as a `.ply` with the same gaussian schema,
 **when** `make pipeline PLY=... PACK=...` runs on it with no code change,

@@ -35,7 +35,7 @@ Rules: A, B and D write disjoint modules. C owns `app/web/`. Nobody edits anothe
 | 22:30 to 00:30 | class proposals, object counts, tests | A* to the target waypoint, smoothing, length and clearance | path arrows, avatar marker, follow camera | diagnosis template, evidence IDs, confidence |
 | 00:30 to 02:00 | integration fixes, numbers | proximity query along the path | nearby-asset labels, diagnosis panel | end-to-end wiring, `make pipeline` green |
 
-Gate G1 at 01:00: `make pipeline` produces all six artifacts from the supplied files, and the viewer shows the room, the boxes and a route to P-005. If the boxes are missing at 01:00, ship the route and the diagnosis on the raw points and keep extraction as a second layer for Saturday morning.
+Gate G1 at 01:00: `make pipeline` produces all six artifacts from the supplied files, and the viewer shows the room, the boxes and a route to P-005. If the boxes are missing at 01:00, G1 has failed: ship the route and the diagnosis on the raw points so the demo can start Saturday, and put extraction first on Saturday morning. Do not record G1 as passed.
 
 02:00: commit, clean run, no half-merged state. Sleep.
 
@@ -75,8 +75,8 @@ Sunday: wake 07:00, clean clone, `make test`, `make demo`, submission saved by 0
 
 | Risk | Trigger | Response |
 | --- | --- | --- |
-| Segmentation collapses the room | measured Friday evening: 74 percent of points in one component at 3 cm; fewer than 15 objects after splitting | split every component over 20 k points with k-means, lower the frame target to 25, and say the real count. Never ship 5 boxes and call it density |
-| The floor plane is wrong | the occupancy grid blocks the whole room | fall back to a hand-checked floor polygon drawn once, and disclose it as manual preparation |
+| Segmentation collapses the room | measured Friday evening: 74 percent of points in one component at 3 cm; fewer than 15 objects after splitting | split every component over 20 k points with k-means. Set a disclosed fallback of 30 framed objects, the mapping count, and never go below 30; below 30 the mapping is incomplete and the check fails |
+| The floor plane is wrong | the occupancy grid blocks the whole room | a disclosed per-scene override: a hand-checked floor polygon, with the run labelled assisted. An assisted run does not count toward the scene-agnostic check |
 | The target is unreachable | A* returns no path | remap P-005 to the pump-like object with the best clearance |
 | The viewer drops frames | under 20 fps on the demo laptop | render a 400 k point subset for the demo and say the number honestly |
 | Valmet never sends a clean export | no reply by Saturday 12:30 | ship what the sane prefix shows, and say it on screen and in the limitations |

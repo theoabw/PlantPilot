@@ -2,7 +2,7 @@
 
 The plan we build against, rewritten Friday evening after the Valmet material arrived. This is the only plan document in the repository. It replaces the synthetic-plant plan from 16:40.
 
-One line: **the supplied Gaussian splat becomes a semantic plant, and the pipeline is scene-agnostic.** Many objects are extracted and 3D-framed, the builder pack's metadata is mapped onto them, an avatar walks a collision-free route to the faulty device, and an evidence-backed diagnosis explains it. The same command runs on any 3D Gaussian splat with the standard PLY properties.
+One line: **the supplied Gaussian splat becomes a semantic plant, and the pipeline is scene-agnostic.** Many objects are extracted and 3D-framed, the builder pack's metadata is mapped onto them, an avatar walks a collision-free route to the faulty device, and an evidence-backed diagnosis explains it. The same command is designed to run on any compatible 3D Gaussian splat with the standard PLY properties.
 
 ## 1. What changed when the material arrived
 
@@ -26,9 +26,9 @@ The two supplied inputs are not committed. Place them in `data/supplied/` (gitig
 | `..._Builder_Pack.xlsx` | 30 assets (12 control valves, 6 pumps, 6 motors, 3 pressure transmitters, 3 vibration sensors), 20,160 telemetry records, 1,000 events, 300 work orders, 38 documents, 120 data quality cases | The diagnostic layer is a lookup and a computation over these tables, not an LLM guess |
 | Same, `Scene_Anchors` | 30 anchor rows on a synthetic 30 by 16 m grid, `mapping_status = placeholder_until_valmet_scene_received` | The anchors cannot be used as scene positions. Our extracted boxes are the positions; the mapping is procedural and says so |
 | Same, `Current_State` | Faulty candidates with high urgency: P-002 cavitation risk (health 45), P-005 fouling (44), M-006 overheating (45), CV-003 position deviation (52) | We designate **P-005 (ASSET-017, PROCESS_PUMP, fouling, health 44)** as the pre-determined faulty device and map it to a pump-like object that is reachable |
-| `semantic extraction demo 1.mp4` | 5.1 s, refinery scene, objects pulled out of the scene, framed and labelled | The expected output is per-object instances with frames, not a segmentation mask overlay |
-| `semantic extraction demo 2.mp4` | 9.7 s, warehouse with racking, IBC tanks, a wall of valves, a forklift | Same idea at room scale. Objects stay in place; frames and labels identify them |
-| `Industrial Boiler Room (1).mp4` | 111.8 s, 1080p walkthrough of the real room | Reference footage for the pitch and for sanity-checking the splat. Not part of the demo path |
+| `semantic extraction demo 1.mp4` | refinery scene, objects pulled out of the scene, framed and labelled | The expected output is per-object instances with frames, not a segmentation mask overlay |
+| `semantic extraction demo 2.mp4` | warehouse with racking, IBC tanks, a wall of valves, a forklift | Same idea at room scale. Objects stay in place; frames and labels identify them |
+| `Industrial Boiler Room (1).mp4` | 1080p walkthrough of the real room | Reference footage for the pitch and for sanity-checking the splat. Not part of the demo path |
 
 The challenge brief also states that mapping may be random or procedural, that an easy UI is preferred over a polished mobile app, and that the evaluation is 30 percent extraction density, 25 percent navigation and proximity, 20 percent diagnostics and grounding, 15 percent backend, 10 percent demo clarity.
 
@@ -58,9 +58,9 @@ Package: `app/server/src/plantpilot/`. Stages run as commands and as `make pipel
 
 Reuse from the 16:40 code: the `Grid`, `astar`, inflation and clearance code in `nav.py` behind a new constructor that takes a blocked mask instead of a plant spec; the FastAPI shape in `main.py`; the viewer shell. Everything built on `fixtures/plant/plant.json`, the printed plates, OCR identity and the PDF corpus comes off the demo path and is not claimed in the README; the reference plant is kept only as the generality fixture for the second-scene run.
 
-**Scene-agnostic is the keyword.** The answer to "one room is not impressive" is not a bigger fake plant, it is a pipeline that takes any plant. Every stage takes a path to a Gaussian splat and derives the rest: bounds, up axis, floor, occupancy, objects, waypoints. No constant from this boiler room lives in the code. The command is `make pipeline PLY=path/to/scene.ply PACK=path/to/pack.xlsx`. The loader accepts the standard 3DGS PLY property set (position, scale, rotation, SH DC, opacity, optional SH rest); a file with a different schema fails loudly instead of silently.
+**Scene-agnostic is the keyword.** The answer to "one room is not impressive" is not a bigger fake plant, it is a pipeline that takes any compatible plant capture. Every stage takes a path to a Gaussian splat and derives the rest: bounds, up axis, floor, occupancy, objects, waypoints. No constant from this boiler room lives in the code. The command is `make pipeline PLY=path/to/scene.ply PACK=path/to/pack.xlsx`. The loader accepts the standard 3DGS PLY property set (position, scale, rotation, SH DC, opacity, optional SH rest); a file with a different schema fails loudly instead of silently.
 
-The generality is proven, not asserted: after G2, convert the old reference plant (`scripts/make_plant.py`, 10 assets, 141 k points, per-object ground truth) to a `.ply` with the same gaussian schema and run the same command on it. That run gives one honest number nobody else will have: objects framed against known ground truth. It is a 90 minute item and a 5 second clip in the video, not a second product.
+The generality claim is conditional. It holds only if the second-scene run passes by G3: convert the old reference plant (`scripts/make_plant.py`, 10 assets, 141 k points, per-object ground truth) to a `.ply` with the same gaussian schema and run the same command on it. That run gives one honest number nobody else will have: objects framed against known ground truth. It is a 90 minute item and a 5 second clip in the video, not a second product. If it is cut, the plan, the README and the pitch say "designed for compatible 3DGS PLY inputs, tested on one scene".
 
 ## 5. The 120 second demo
 
@@ -71,7 +71,7 @@ The generality is proven, not asserted: after G2, convert the old reference plan
 | 30 to 45 s | Select the faulty pump P-005. It turns red. The route appears as floor arrows with length and clearance | Metadata mapped to space, and navigation under way |
 | 45 to 80 s | The avatar walks. Nearby objects light up with tag, class and state as it passes. The camera follows | Proximity display, 25 percent |
 | 80 to 100 s | Arrival. The diagnosis panel: condition, health, issue, telemetry evidence, alarms, cited documents, confidence, next safe check | Diagnostics and grounding, 20 percent |
-| 100 to 115 s | Select a framed object, lift it out of the room, show what the mapping knows and what it does not | Per-object framing in the spirit of demo 1, and honest confidence |
+| 100 to 115 s | P1: select a framed object, lift it out of the room, show what the mapping knows and what it does not. If the isolate view is cut, select a nearby asset and show its card | Per-object framing in the spirit of demo 1, and honest confidence |
 | 115 to 120 s | End card: repository, stack, offline | Clarity, 10 percent |
 
 No interactive blocker, no printed tag, no photo capture, no second screen.
@@ -80,7 +80,7 @@ No interactive blocker, no printed tag, no photo capture, no second screen.
 
 Every number comes from a command or from the app, never typed by hand.
 
-- Ingest: total gaussians, sane gaussians, rendered gaussians, ingest seconds.
+- Ingest: total gaussians, sane gaussians, rendered gaussians, bounding box, axis percentiles, median gaussian size, alpha percentiles, ingest seconds. This is also what makes the measured scene numbers in section 2 reproducible.
 - Extraction: objects framed, median points per object, extraction seconds, how many were removed as floor and wall planes.
 - Mapping: records mapped, mapping confidence, faulty target id.
 - Route: length in metres, minimum clearance in centimetres, A* milliseconds, grid cells blocked and free.
@@ -101,4 +101,4 @@ No Android app, no emulator, no AR. No 3D Gaussian rasteriser: points with size 
 | Floor is poorly captured | the camera rarely looks down | Estimate the floor from the lowest dense band and disclose it; the occupancy grid only needs obstacles, not floor texture |
 | The faulty target lands on an unreachable object | A* returns no path | Choose the pump-like object with the best clearance as the mapping for P-005, and record the choice |
 | The tail of the .ply crashes the viewer | NaN or 1e26 in the buffer | The filter is mandatory, and the loader asserts finite bounds |
-| Time | nothing end to end by 01:00 | Cut the proximity labels to the nearest object only, then the follow camera, then the avatar animation. Never cut the frames or the route |
+| Time | nothing end to end by 01:00 | Cut the follow camera, then the walking animation (the avatar still slides), then proximity labels to the nearest two. Never cut the frames, the route, the moving avatar or the diagnosis evidence |
