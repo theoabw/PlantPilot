@@ -1,6 +1,6 @@
 PY := uv run
 
-.PHONY: demo web web-build corpus models register plates plant scan proof test check clean
+.PHONY: demo web web-build corpus models register plates plant scan proof route test check clean
 
 ## demo: build the register, then serve the API and the built web page
 demo: register
@@ -43,6 +43,10 @@ plates:
 ## proof: summarise the timed trials into proof/metrics.json
 proof:
 	$(PY) python scripts/proof.py
+
+## route: compute collision-free route to target asset with proximity samples
+route:
+	$(PY) python scripts/make_route.py
 
 test:
 	$(PY) pytest

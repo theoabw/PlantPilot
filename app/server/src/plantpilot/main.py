@@ -22,6 +22,7 @@ INDEX_DB = DATA / "index.db"
 REGISTER_DB = DATA / "register.db"
 PLANT_SPEC = FIXTURES / "plant" / "plant.json"
 PLANT_CLOUD = DATA / "plant" / "cloud.npz"
+ROUTE_FILE = DATA / "scene" / "route.json"
 
 app = FastAPI(title="PlantPilot", version=__version__)
 
@@ -196,6 +197,16 @@ def explain(payload: dict) -> dict:
     sections = corpus.search(INDEX_DB, query, limit=2)
     action = _next_action(ocr.family_of({"type": asset.get("type", "")}) if asset.get("type") else "NelesAce")
     return {"asset": asset, "request": {**order, "symptom": symptom}, "sections": sections, "action": action}
+
+
+@app.get("/api/route")
+def get_route() -> dict:
+    if ROUTE_FILE.exists():
+        try:
+            return json.loads(ROUTE_FILE.read_text())
+        except Exception as e:
+            return {"reachable": False, "reason": f"failed to read route.json: {e}", "path": []}
+    return {"reachable": False, "reason": "no route generated, run make route", "path": []}
 
 
 @app.post("/api/route")
