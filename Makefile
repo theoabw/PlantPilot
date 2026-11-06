@@ -24,7 +24,7 @@ PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects pack map diagnose generality proof route test check clean
+.PHONY: demo web web-build corpus models register plates plant scan scene objects pack map diagnose generality proof route openapi test check clean
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -103,6 +103,10 @@ proof:
 ## route: compute collision-free route to target asset with proximity samples
 route:
 	$(PY) python scripts/make_route.py
+
+## openapi: write the OpenAPI schema the API serves to docs/openapi.json
+openapi:
+	$(PY) python scripts/make_openapi.py
 
 test:
 	$(PY) pytest

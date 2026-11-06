@@ -40,7 +40,7 @@ make scan PHOTO=path/to/room.jpg   # photo to metric point cloud
 make demo               # http://127.0.0.1:8000
 ```
 
-Front end development: `make web` runs Vite on 5173 and proxies `/api` to 8000. `make web-build` writes `app/web/dist`, which `make demo` serves. Tests: `make test`. Submission hygiene: `make check`. Printable tags and a scale card: `make plates`.
+Front end development: `make web` runs Vite on 5173 and proxies `/api` to 8000. `make web-build` writes `app/web/dist`, which `make demo` serves. Tests: `make test`. Submission hygiene: `make check`. Printable tags and a scale card: `make plates`. API contract: `make openapi` writes `docs/openapi.json`, which the running app also serves at `/openapi.json`.
 
 No API keys are required. `.env.example` documents the one optional override.
 

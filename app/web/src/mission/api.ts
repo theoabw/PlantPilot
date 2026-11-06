@@ -1,5 +1,5 @@
 // Types and fetchers for the mission view. The backend contract lives in
-// app/server/src/plantpilot/main.py.
+// app/server/src/plantpilot/models.py.
 
 export type Asset = {
   id: string
