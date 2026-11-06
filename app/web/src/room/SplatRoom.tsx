@@ -23,6 +23,10 @@ type Motion = {
 
 type Props = {
   objects: RoomObject[]
+  frameObjects: RoomObject[]
+  selectedLabel: string
+  frameKey: string
+  subtle: boolean
   upAxis: string | undefined
   floorHeight: number | null
   resetToken: number
@@ -87,7 +91,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, cameraPose, maxSplats, splatUrl, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, cameraPose, maxSplats, splatUrl, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -112,6 +116,8 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     centre: THREE.Vector3
     radius: number
   } | null>(null)
+  const selectedRef = useRef(selectedId)
+  selectedRef.current = selectedId
   const selectRef = useRef(onSelect)
   selectRef.current = onSelect
   const tripRef = useRef(onTrip)
@@ -122,6 +128,10 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
   nearbyRef.current = onNearby
   // The framed camera is kept so the toolbar's overview and reset can restore it.
   const frameRef = useRef<{ eye: THREE.Vector3; target: THREE.Vector3 } | null>(null)
+  // Switching between validated assets and raw detections rebuilds the boxes;
+  // it must not move the camera, so the last framed capture is remembered.
+  const framedKeyRef = useRef<string>('')
+  const labelRef = useRef<HTMLDivElement | null>(null)
 
   // One effect owns the canvas and the render loop; the others only add content.
   useEffect(() => {
@@ -355,6 +365,25 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
           })
         }
         controls.update()
+        const label = labelRef.current
+        if (label) {
+          const chosen = selectedRef.current
+          const object = chosen ? objects.find((candidate) => candidate.id === chosen) : null
+          const live = stateRef.current
+          if (object && live) {
+            const worldPoint = new THREE.Vector3(...object.centre).applyQuaternion(live.world.quaternion)
+            const projected = worldPoint.clone().project(camera)
+            if (projected.z > 0 && projected.z < 1) {
+              label.style.left = `${(projected.x * 0.5 + 0.5) * host.clientWidth}px`
+              label.style.top = `${(-projected.y * 0.5 + 0.5) * host.clientHeight}px`
+              label.style.display = 'block'
+            } else {
+              label.style.display = 'none'
+            }
+          } else {
+            label.style.display = 'none'
+          }
+        }
         if (needsRender || stateRef.current?.motion.active || now < warmupUntil) {
           needsRender = false
           const start = perfEnabled ? performance.now() : 0
@@ -498,7 +527,11 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       const material = new THREE.LineBasicMaterial({
         color: boxColour(object, new Set(mappedIds), targetId),
         transparent: true,
-        opacity: QUIET_CLASSES.has(object.class) && !mappedIds.includes(object.id) ? 0.16 : 0.9,
+        opacity: QUIET_CLASSES.has(object.class) && !mappedIds.includes(object.id)
+          ? 0.16
+          : subtle
+            ? 0.5
+            : 0.9,
       })
       const lines = new THREE.LineSegments(edges, material)
       lines.position.set(...object.centre)
@@ -533,8 +566,14 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
       boxMaxs.push(new THREE.Vector3().copy(centre).add(worldHalf))
     }
 
+    const sameFrame = framedKeyRef.current === frameKey && frameRef.current !== null
+    framedKeyRef.current = frameKey
     // The extraction ships the view its previews use, a hero camera standing
     // inside the room. Prefer it, so the browser and the rendered stills agree.
+    if (cameraPose && sameFrame) {
+      renderRef.current()
+      return
+    }
     if (cameraPose) {
       const eye = new THREE.Vector3(...cameraPose.eye).applyQuaternion(state.world.quaternion)
       const target = new THREE.Vector3(...cameraPose.target).applyQuaternion(state.world.quaternion)
@@ -559,6 +598,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     // the floor, and look across the room. A handful of dust objects sit far
     // outside the walls, so the room is the 5th to 95th percentile of the
     // per-object extents, not the bounding box of everything.
+    const frameSet = frameObjects.length > 0 ? frameObjects : objects
     const percentile = (values: number[], fraction: number): number => {
       const sorted = [...values].sort((a, b) => a - b)
       const index = Math.min(sorted.length - 1, Math.max(0, Math.round(fraction * (sorted.length - 1))))
@@ -620,7 +660,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     }
     const clearanceAt = (point: THREE.Vector3): number => {
       let best = Number.POSITIVE_INFINITY
-      for (const object of objects) {
+      for (const object of frameSet) {
         const quaternion = boxQuaternion(object.axes)
         const local = point.clone().sub(new THREE.Vector3(...object.centre)).applyQuaternion(quaternion.clone().invert())
         const outside = new THREE.Vector3(
@@ -658,7 +698,7 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     state.centre.copy(uprightTarget)
     state.radius = Math.max(1.5, size.length() / 2)
     renderRef.current()
-  }, [objects, floorHeight, upAxis, mappedIds, targetId, cameraPose])
+  }, [objects, frameObjects, frameKey, subtle, floorHeight, upAxis, mappedIds, targetId, cameraPose])
 
   useEffect(() => {
     const state = stateRef.current
@@ -671,6 +711,12 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
     state.controls.update()
     renderRef.current()
   }, [resetToken])
+
+  useEffect(() => {
+    if (labelRef.current) {
+      labelRef.current.textContent = selectedLabel
+    }
+  }, [selectedLabel])
 
   useEffect(() => {
     const state = stateRef.current
@@ -697,11 +743,13 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
               : 0.08
             : QUIET_CLASSES.has(object.class) && !isMapped
               ? 0.16
-              : 0.9
+              : subtle
+                ? 0.5
+                : 0.9
       }
     }
     renderRef.current()
-  }, [selectedId, objects, mappedIds, targetId, focus])
+  }, [selectedId, objects, mappedIds, targetId, focus, subtle])
 
   // The route artifact is in scene coordinates and its heights are in the up
   // axis, so the viewer puts the path on the detected floor instead of trusting
@@ -848,6 +896,10 @@ export default function SplatRoom({ objects, upAxis, floorHeight, resetToken, se
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border-2 border-slate-900 bg-slate-950">
       <div ref={hostRef} className="h-full w-full" />
+      <div
+        ref={labelRef}
+        className="pointer-events-none absolute z-20 hidden -translate-x-1/2 -translate-y-[125%] whitespace-nowrap rounded border border-white/60 bg-slate-950/90 px-1.5 py-0.5 text-[10px] font-black text-white"
+      />
       {perf ? (
         <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-md border border-slate-700 bg-slate-950/85 px-2 py-1 text-[10px] font-bold text-slate-300">
           {perf.draws === 0 ? 'idle' : `${perf.draws} draws/s`} | cpu {perf.ms.toFixed(1)} ms | {perf.calls} calls | {perf.splats.toLocaleString()} splats

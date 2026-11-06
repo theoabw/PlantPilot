@@ -3,13 +3,14 @@ import {
   CLASS_COLOURS,
   STATE_COLOURS,
   STATE_LABEL,
+  fetchRoomAssets,
   fetchRoomMapped,
   fetchDiagnosis,
   fetchRoomObjects,
   fetchRoomRoute,
   splatAssetUrl,
 } from './api'
-import type { Diagnosis, MappedAsset, RoomMapped, RoomObjects, RoomRoute } from './api'
+import type { Diagnosis, MappedAsset, RoomAsset, RoomAssets, RoomMapped, RoomObjects, RoomObject, RoomRoute } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
 import ViewToolbar from '../components/ViewToolbar'
 
@@ -19,6 +20,9 @@ type Props = {
 
 export default function RoomLab({ onLeave }: Props) {
   const [data, setData] = useState<RoomObjects | null>(null)
+  const [assets, setAssets] = useState<RoomAssets | null>(null)
+  const [showRaw, setShowRaw] = useState(false)
+  const [minConfidence, setMinConfidence] = useState(0.5)
   const [mapped, setMapped] = useState<RoomMapped | null>(null)
   const [route, setRoute] = useState<RoomRoute | null>(null)
   const [trip, setTrip] = useState<TripState>({ mode: 'idle', travelled: 0, total: 0 })
@@ -50,15 +54,15 @@ export default function RoomLab({ onLeave }: Props) {
     fetchRoomRoute()
       .then((value) => alive && setRoute(value))
       .catch(() => undefined)
+    // The refined assets are additive: without make assets the room falls back
+    // to the raw extraction rather than breaking.
+    fetchRoomAssets()
+      .then((value) => alive && setAssets(value))
+      .catch(() => undefined)
     return () => {
       alive = false
     }
   }, [])
-
-  const selected = useMemo(
-    () => data?.objects.find((object) => object.id === selectedId) ?? null,
-    [data, selectedId],
-  )
 
   const mappedByObject = useMemo(() => {
     const byObject = new Map<string, MappedAsset>()
@@ -72,6 +76,70 @@ export default function RoomLab({ onLeave }: Props) {
 
   const mappedIds = useMemo(() => [...mappedByObject.keys()], [mappedByObject])
 
+  const visibleAssets = useMemo<RoomObject[]>(() => {
+    const list = assets?.assets ?? []
+    return list
+      .filter((asset) => asset.verified && asset.confidence >= minConfidence)
+      .map((asset: RoomAsset): RoomObject => ({
+        id: asset.id,
+        centre: asset.centre,
+        axes: asset.axes,
+        extents: asset.extents,
+        points: asset.points,
+        class: asset.class,
+        class_confidence: asset.confidence,
+        class_reason: asset.reason,
+        height_above_floor: 0,
+        volume_m3: asset.extents[0] * asset.extents[1] * asset.extents[2],
+        planarity: 0,
+        label: asset.label,
+        verified: asset.verified,
+        confidence: asset.confidence,
+        source_object_ids: asset.source_object_ids,
+        method: asset.method,
+      }))
+  }, [assets, minConfidence])
+
+  const assetsActive = assets !== null && visibleAssets.length > 0 && !showRaw
+  const displayObjects = assetsActive ? visibleAssets : (data?.objects ?? [])
+
+  const mappedByAsset = useMemo(() => {
+    const byAsset = new Map<string, MappedAsset>()
+    for (const asset of assets?.assets ?? []) {
+      for (const source of asset.source_object_ids) {
+        const mapping = mappedByObject.get(source)
+        if (mapping) {
+          byAsset.set(asset.id, mapping)
+          break
+        }
+      }
+    }
+    return byAsset
+  }, [assets, mappedByObject])
+
+  const displayMappedIds = assetsActive
+    ? visibleAssets.filter((asset) => mappedByAsset.has(asset.id)).map((asset) => asset.id)
+    : mappedIds
+  const displayTargetId = assetsActive
+    ? visibleAssets.find((asset) => (asset.source_object_ids ?? []).includes(mapped?.target_object_id ?? ''))?.id ?? null
+    : (mapped?.target_object_id ?? null)
+
+  const assetBySource = useMemo(() => {
+    const bySource = new Map<string, RoomObject>()
+    for (const asset of visibleAssets) {
+      for (const source of asset.source_object_ids ?? []) {
+        bySource.set(source, asset)
+      }
+    }
+    return bySource
+  }, [visibleAssets])
+
+  const selectObjectId = (rawId: string) => {
+    const asset = assetsActive ? assetBySource.get(rawId) : undefined
+    setSelectedId(asset ? asset.id : rawId)
+    setPanelOpen(true)
+  }
+
   const attention = useMemo(
     () => (mapped?.mappings ?? []).filter((mapping) => mapping.state !== 'healthy'),
     [mapped],
@@ -82,7 +150,31 @@ export default function RoomLab({ onLeave }: Props) {
     [mapped],
   )
 
-  const selectedMapping = selectedId ? mappedByObject.get(selectedId) ?? null : null
+  const selected = useMemo(() => {
+    const found = displayObjects.find((object) => object.id === selectedId)
+    return found ?? data?.objects.find((object) => object.id === selectedId) ?? null
+  }, [displayObjects, data, selectedId])
+
+  const selectedMapping = useMemo(() => {
+    if (!selectedId) {
+      return null
+    }
+    const direct = mappedByObject.get(selectedId)
+    if (direct) {
+      return direct
+    }
+    const asset = assets?.assets.find((candidate) => candidate.id === selectedId)
+    if (!asset) {
+      return null
+    }
+    for (const source of asset.source_object_ids) {
+      const mapping = mappedByObject.get(source)
+      if (mapping) {
+        return mapping
+      }
+    }
+    return null
+  }, [selectedId, mappedByObject, assets])
 
   const routeReady = Boolean(route?.reachable && (route.path?.length ?? 0) > 1)
 
@@ -104,12 +196,27 @@ export default function RoomLab({ onLeave }: Props) {
     }
   }, [trip.mode, diagnosis])
 
-  const nearbyAssets = useMemo(
-    () => nearby
-      .map((id) => mappedByObject.get(id))
-      .filter((mapping): mapping is MappedAsset => Boolean(mapping)),
-    [nearby, mappedByObject],
-  )
+  const nearbyAssets = useMemo(() => {
+    const seen = new Set<string>()
+    const result: MappedAsset[] = []
+    const push = (mapping: MappedAsset | undefined) => {
+      if (mapping && !seen.has(mapping.tag)) {
+        seen.add(mapping.tag)
+        result.push(mapping)
+      }
+    }
+    for (const id of nearby) {
+      if (assetsActive) {
+        const asset = visibleAssets.find((candidate) => candidate.id === id)
+        for (const source of asset?.source_object_ids ?? []) {
+          push(mappedByObject.get(source))
+        }
+      } else {
+        push(mappedByObject.get(id))
+      }
+    }
+    return result
+  }, [nearby, assetsActive, visibleAssets, mappedByObject])
 
   const sendRobot = () => {
     if (!routeReady) {
@@ -162,12 +269,24 @@ export default function RoomLab({ onLeave }: Props) {
             <div className="absolute inset-0">
               {data ? (
                 <SplatRoom
-                  objects={data.objects}
+                  objects={displayObjects}
+                  frameObjects={data.objects}
+                  selectedLabel={
+                    selected
+                      ? `${selected.id} · ${selected.label ?? selected.class}${
+                          selected.verified === undefined
+                            ? ''
+                            : ` · ${Math.round((selected.confidence ?? selected.class_confidence) * 100)}%`
+                        }`
+                      : ''
+                  }
+                  frameKey={`${data.source.scene}:${data.source.points}`}
+                  subtle={assetsActive}
                   upAxis={data.source.up_axis}
                   floorHeight={data.floor.height}
                   resetToken={resetToken}
-                  mappedIds={mappedIds}
-                  targetId={mapped?.target_object_id ?? null}
+                  mappedIds={displayMappedIds}
+                  targetId={displayTargetId}
                   cameraPose={data.camera ?? null}
                   maxSplats={data.source.points + 20_000}
                   splatUrl={splatAssetUrl(data.source.points)}
@@ -195,7 +314,13 @@ export default function RoomLab({ onLeave }: Props) {
                 Real capture
               </span>
               <span className="rounded-md border border-slate-600/70 bg-slate-950/70 px-2 py-1 text-xs font-bold text-slate-300 backdrop-blur">
-                {data ? `${data.source.points.toLocaleString()} gaussians · ${data.counts.objects} framed objects` : 'loading'}
+                {data
+                  ? `${data.source.points.toLocaleString()} gaussians · ${
+                      assetsActive
+                        ? `${visibleAssets.length} validated of ${data.counts.objects} objects`
+                        : `${data.counts.objects} raw objects`
+                    }`
+                  : 'loading'}
               </span>
               <span className="rounded-md border border-slate-600/70 bg-slate-950/70 px-2 py-1 text-xs font-bold text-slate-300 backdrop-blur">
                 click a box to inspect
@@ -283,6 +408,95 @@ export default function RoomLab({ onLeave }: Props) {
 
                 <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
                   <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Objects</span>
+                    <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      {assets ? `${assets.counts.assets} clean · ${data?.counts.objects ?? 0} raw` : 'raw extraction'}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowRaw(false)}
+                      disabled={!assets}
+                      className={`rounded-md border px-2 py-1 text-[11px] font-black uppercase tracking-wide ${
+                        !showRaw && assets
+                          ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
+                          : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'
+                      } ${!assets ? 'cursor-not-allowed opacity-40' : ''}`}
+                    >
+                      Validated
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRaw(true)}
+                      className={`rounded-md border px-2 py-1 text-[11px] font-black uppercase tracking-wide ${
+                        showRaw
+                          ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
+                          : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      Raw detections
+                    </button>
+                  </div>
+                  {assets ? (
+                    <label className="mt-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                      Minimum confidence {Math.round(minConfidence * 100)} %
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={minConfidence}
+                        onChange={(event) => setMinConfidence(Number(event.target.value))}
+                        className="mt-1 w-full accent-cyan-400"
+                      />
+                    </label>
+                  ) : null}
+                  <p className="mt-2 text-[11px] font-semibold leading-snug text-slate-400">
+                    {showRaw
+                      ? 'Raw geometric boxes, shown for debugging. Switch to Validated for the demo layer.'
+                      : assetsActive
+                        ? 'Validated equipment instances only. Raw geometric boxes stay available for debugging.'
+                        : assets
+                          ? 'No instance passes the confidence filter, showing the raw extraction.'
+                          : 'Showing the raw extraction because no refined asset artifact exists yet.'}
+                  </p>
+                </section>
+
+                {assetsActive ? (
+                  <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Validated objects</p>
+                      <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        {visibleAssets.length}
+                      </span>
+                    </div>
+                    <div className="mt-2 max-h-44 space-y-0.5 overflow-y-auto pr-1">
+                      {[...visibleAssets]
+                        .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+                        .slice(0, 16)
+                        .map((asset) => (
+                          <button
+                            key={asset.id}
+                            type="button"
+                            onClick={() => selectObjectId(asset.id)}
+                            className="flex w-full items-center justify-between gap-2 rounded px-1.5 py-1 text-left hover:bg-slate-800/70"
+                          >
+                            <span className="truncate text-[11px] font-black text-slate-200">
+                              {asset.id}{' '}
+                              <span className="font-bold text-slate-400">{asset.label ?? asset.class}</span>
+                            </span>
+                            <span className="shrink-0 text-[10px] font-black text-cyan-300">
+                              {Math.round((asset.confidence ?? 0) * 100)}%
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                <section className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+                  <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Capture</span>
                     <span className="rounded-full border border-slate-600 bg-slate-950 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">
                       offline
@@ -340,8 +554,7 @@ export default function RoomLab({ onLeave }: Props) {
                       type="button"
                       onClick={() => {
                         if (mapped.target_object_id) {
-                          setSelectedId(mapped.target_object_id)
-                          setPanelOpen(true)
+                          selectObjectId(mapped.target_object_id)
                         }
                       }}
                       className="mt-2 flex w-full items-center justify-between rounded-lg border border-red-500/60 bg-red-500/10 px-2.5 py-1.5 text-left hover:border-red-400"
@@ -374,7 +587,7 @@ export default function RoomLab({ onLeave }: Props) {
                             type="button"
                             onClick={() => {
                               if (mapping.object_id) {
-                                setSelectedId(mapping.object_id)
+                                selectObjectId(mapping.object_id)
                               }
                             }}
                             className="flex w-full items-center justify-between rounded px-1.5 py-1 text-left hover:bg-slate-800/70"
@@ -430,10 +643,14 @@ export default function RoomLab({ onLeave }: Props) {
                     <p className="mt-1 text-lg font-black text-white">
                       {selected.id}{' '}
                       <span className="font-bold" style={{ color: CLASS_COLOURS[selected.class] ?? CLASS_COLOURS.unknown }}>
-                        {selected.class}
+                        {selected.label ?? selected.class}
                       </span>
                     </p>
-                    <p className="text-xs font-semibold text-slate-400">{selected.class_reason}</p>
+                    <p className="text-xs font-semibold text-slate-400">
+                      {selected.method === 'colour_instance'
+                        ? 'Colour-seeded instance, one box around the gaussian cluster.'
+                        : selected.class_reason}
+                    </p>
                     {selectedMapping ? (
                       <div className="mt-2 rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1.5">
                         <div className="flex items-center justify-between">
@@ -459,7 +676,9 @@ export default function RoomLab({ onLeave }: Props) {
                       </div>
                       <div>
                         <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Confidence</dt>
-                        <dd className="font-black text-white">{Math.round(selected.class_confidence * 100)} %</dd>
+                        <dd className="font-black text-white">
+                          {Math.round((selected.confidence ?? selected.class_confidence) * 100)} %
+                        </dd>
                       </div>
                       <div>
                         <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Size</dt>
@@ -467,16 +686,28 @@ export default function RoomLab({ onLeave }: Props) {
                           {selected.extents.map((value) => value.toFixed(2)).join(' x ')}
                         </dd>
                       </div>
-                      <div>
-                        <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Above floor</dt>
-                        <dd className="font-black text-white">{selected.height_above_floor.toFixed(2)}</dd>
-                      </div>
+                      {selected.verified === undefined ? (
+                        <div>
+                          <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Above floor</dt>
+                          <dd className="font-black text-white">{selected.height_above_floor.toFixed(2)}</dd>
+                        </div>
+                      ) : (
+                        <div>
+                          <dt className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Status</dt>
+                          <dd className="font-black text-white">{selected.verified ? 'validated' : 'proposal'}</dd>
+                        </div>
+                      )}
                     </dl>
+                    {(selected.source_object_ids ?? []).length > 0 ? (
+                      <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        Source frames: {(selected.source_object_ids ?? []).join(', ')}
+                      </p>
+                    ) : null}
                   </section>
                 ) : (
                   <p className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm font-semibold text-slate-400">
-                    Click a box in the room. Every frame carries a geometric class proposal and a confidence, and
-                    the interface shows both rather than claiming an identification.
+                    Click an object in the room. Validated assets show one box per physical object; raw detections
+                    are available in the Objects panel and exist for debugging, not for the demo.
                   </p>
                 )}
 
