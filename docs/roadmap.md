@@ -10,6 +10,7 @@ The plan is in [plantpilot-plan.md](plantpilot-plan.md). This page is the execut
 | Supplied pack | 30 assets, 20,160 telemetry records, 1,000 events, 300 work orders, 38 documents, 120 data quality cases | converted to text and read Friday 19:50 |
 | Faulty target | P-005 (ASSET-017), pump, fouling, health 44, high urgency | `Current_State` |
 | Reusable code | `Grid`, `astar`, inflation, clearance in `nav.py`; FastAPI shape in `main.py`; viewer shell in `app/web/` | read Friday 19:55 |
+| Seat A extraction | `make scene` ingests the delivered file and `make objects` frames 111 objects: 1,506,136 declared, 502,483 sane, largest object 3.8 percent, extraction 3.5 s | measured Friday 20:47; artifact shape in [scene-artifacts.md](scene-artifacts.md) |
 | Off demo path | printed plates, OCR identity, register, photo capture, public PDF corpus, `fixtures/plant/plant.json` | the new rubric names none of them; the reference plant is kept only as the generality fixture |
 | Stale docs | `README.md`, `docs/submission-copy.md`, `docs/video-script.md` still describe the synthetic-plant product | rewrite on Saturday, before the video |
 
