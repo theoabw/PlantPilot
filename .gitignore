@@ -1,0 +1,59 @@
+# Secrets and credentials (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+credentials*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+out/
+.turbo/
+coverage/
+
+# Model weights and datasets (large binaries)
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.gguf
+*.ckpt
+data/
+!data/.gitkeep
+
+# Archives, dumps and documents (deliverables, not repo content)
+*.zip
+*.tar.gz
+*.tgz
+*.sql
+*.dump
+*.pdf
+*.pptx
+*.docx
+
+# Challenge material from company briefings
+challenge-material/
+restricted/
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
+
+# local working notes, not part of the project
+AGENTS.md
+.agents/
