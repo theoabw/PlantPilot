@@ -17,6 +17,7 @@ parallel and a silent change to a key breaks another seat's work.
 make scene                          # ingest the capture as delivered
 make objects                        # extract the framed objects
 make scene PLY=path/to/other.ply    # the same code on another capture
+make generality                     # the same stages on the reference plant, scored
 ```
 
 `make scene` reads the file it is given and filters it itself, so the counts it
@@ -25,12 +26,30 @@ prints are the counts in the delivered file. The supplied capture declares
 memory, and the loader keeps only the contiguous sane prefix. It prints the
 declared, sane and rendered counts, the detected up axis and the timing.
 
-`make objects` prints the planes removed, the floor, the component and object
-counts, the largest object share, the class counts and the extraction time.
+`make objects` prints the planes removed, the floor, the measured point spacing,
+the voxel size, the component and object counts, the largest object share, the
+class counts and the extraction time.
 
 Both stages are deterministic: the decimation seed, the plane sampler and the
 splitter are fixed. Two runs on one input produce the same planes, floor,
 objects and counts; only the `timing_s` field differs.
+
+## Voxel size follows the capture
+
+A voxel grid only holds a surface together when the voxel is at least as large
+as the distance between neighbouring points, and captures differ in density by
+an order of magnitude. So the stage measures the spacing on the largest flat
+surface it found (the floor: points on the plane divided by the occupied cell
+area it covers) and uses `max(voxel_m, 1.4 * spacing)` for the connected
+component pass. The requested `voxel_m` is a minimum resolution, not a claim
+about this room.
+
+Both numbers are in `parameters`, and `make objects` prints them:
+
+- `parameters.voxel_m`: the requested voxel size.
+- `parameters.voxel_m_effective`: the size used for this capture.
+- `parameters.spacing`: `spacing_m`, `floor_points`, `floor_area_m2`,
+  `density_per_m2` and the method, or a reason when it could not be measured.
 
 ## The frame
 
@@ -95,7 +114,7 @@ Top level:
 | --- | --- |
 | `artifact`, `version` | `objects`, 1 |
 | `source` | the scene path, point count, up axis, units note |
-| `parameters` | every threshold in force, so a run can be reproduced |
+| `parameters` | every threshold in force, plus `voxel_m_effective` and the `spacing` measurement, so a run can be reproduced |
 | `planes` | `removed`, `removed_points`, `removed_fraction`, `items` (normal, offset, inliers, rms, horizontal, kind) |
 | `floor` | `detected`, `height` (signed, in the up axis), `normal`, `inliers`, `rms_m` |
 | `counts` | `components`, `components_split`, `clusters`, `objects`, `capped`, `points_in_objects`, `points_in_objects_fraction`, `largest_object_share`, `median_points_per_object`, `objects_by_class` |
@@ -140,6 +159,32 @@ Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
 | Objects framed | 111 | `make objects` |
 | Largest object share | 3.8 percent of points | `make objects` |
 | Extraction time | 3.4 s | `make objects` |
+
+## The second scene
+
+`make generality` writes the synthetic reference plant (16 by 12 by 5 m, 10
+assets with ground truth) as a 3DGS PLY, runs the same ingest and segmentation
+on it, and scores the boxes against the asset positions. The plant is our own
+synthetic capture, labelled as such; it is not a Valmet asset.
+
+Run on the plant, Friday evening:
+
+| Number | Value |
+| --- | --- |
+| Points in the capture | 141,575 |
+| Measured spacing on the floor | 0.042 m |
+| Effective voxel size | 0.058 m (requested 0.030 m) |
+| Components | 1,448 |
+| Objects framed | 86 |
+| Largest object share | 4.2 percent of points |
+| Extraction time | 0.9 s |
+| Assets framed against ground truth | 9 of 10, bar is 8 |
+| Command result | PASS |
+
+The tank at T-501 is the one asset not framed: its shell merges with the pipe
+run and the split that brings the merged component under the box limits cuts it
+where the tank centre is not inside any piece. The check reports that rather
+than hiding it.
 
 ## Not in these artifacts
 
