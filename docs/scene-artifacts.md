@@ -5,6 +5,7 @@ Generated artifacts are written into `data/` and never committed:
 | File | Written by | Read by |
 | --- | --- | --- |
 | `data/scene/pack.json` | `make pack` (`plantpilot.pack`) | mapping, diagnosis, API |
+| `data/scene/mapped.json` | `make map` (`plantpilot.mapping`) | route, diagnosis, API, viewer |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer, preview renderer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
 
@@ -16,6 +17,7 @@ parallel and a silent change to a key breaks another seat's work.
 
 ```
 make pack                           # convert the supplied builder workbook
+make map                            # assign pack assets to distinct scene objects
 make scene                          # ingest the capture as delivered
 make objects                        # extract the framed objects
 make scene PLY=path/to/other.ply    # the same code on another capture
@@ -26,6 +28,11 @@ make generality                     # the same stages on the reference plant, sc
 `data/scene/pack.json`. It preserves the tables needed by mapping and
 diagnosis, merges the asset master, scene anchors and current state into
 `assets`, and records P-005 (`ASSET-017`) as the fixed demo target.
+
+`make map` reads the pack and object artifacts and writes `mapped.json`. Each
+assignment records its object id, class proposal, mapping method, confidence,
+and current state. The target mapping is exposed as `target_object_id`; no
+scene-anchor coordinates are used as physical positions.
 
 `make scene` reads the file it is given and filters it itself, so the counts it
 prints are the counts in the delivered file. The supplied capture declares
