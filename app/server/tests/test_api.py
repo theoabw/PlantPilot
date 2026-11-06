@@ -36,3 +36,29 @@ def test_scan_returns_the_whole_card_chain():
     assert body["asset"]["tag"] == "K-102"
     assert body["action"]["part"] == "Limit switches"
     assert body["action"]["interval"] == "1 year"
+
+
+def test_plant_endpoint_lists_assets_and_a_start():
+    body = client.get("/api/plant").json()
+    assert len(body["assets"]) == 10
+    assert body["start"] == [2.0, 0.8]
+    assert any(a["id"] == "P-204" for a in body["assets"])
+
+
+def test_route_to_an_asset_by_id():
+    body = client.post("/api/route", json={"to": "V-203"}).json()
+    assert body["reachable"] is True
+    assert body["distance_m"] > 5
+    assert body["path"]
+
+
+def test_route_with_the_west_aisle_closed_is_longer():
+    plain = client.post("/api/route", json={"to": "V-203"}).json()
+    blocked = client.post("/api/route", json={"to": "V-203", "blockers": [[0.0, 4.8, 4.6, 7.2]]}).json()
+    assert blocked["reachable"] is True
+    assert blocked["distance_m"] > plain["distance_m"] + 4
+
+
+def test_unknown_asset_is_a_reason_not_a_crash():
+    body = client.post("/api/route", json={"to": "ZZ-999"}).json()
+    assert body["reachable"] is False and "unknown asset" in body["reason"]
