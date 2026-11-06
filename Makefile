@@ -42,10 +42,10 @@ demo: register
 
 ## web: vite dev server on 5173, proxying /api to 8000
 web:
-	cd app/web && npm run dev
+	cd app/web && pnpm run dev
 
 web-build:
-	cd app/web && npm run build
+	cd app/web && pnpm run build
 
 ## corpus: fetch the two public PDFs into data/ and build the local index
 corpus:

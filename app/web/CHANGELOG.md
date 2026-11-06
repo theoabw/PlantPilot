@@ -33,3 +33,30 @@ Branch: `feat/web-demo-ui`
 - `pnpm build`
 - Exercised in headless Chromium at 1440x900: open panel, select an asset, run
   the fault demo, confirm the robot arrives at P-005 with the drawer closed.
+
+## 2026-11-06 - Feedback round 2
+
+Branch: `feat/web-demo-ui`
+
+### Fixes
+
+- **Raleway is now the UI font.** The normal and italic variable fonts are
+  bundled under `app/web/public/fonts` with the SIL OFL licence, so the demo
+  keeps the typeface offline. The Tailwind sans stack falls back to system
+  fonts if the files are unavailable.
+- **The main header and demo switcher are gone from the scene.** The scene view
+  fills the viewport with no top chrome. Brand, offline state and workspace
+  links live in the new Info tab of the mission panel.
+- **Legacy views keep a compact bar.** Plant mission and plate scan use a slim
+  workspace bar with a back link to the scene lab, instead of the old PlantPilot
+  header and tab row.
+- **The Makefile uses pnpm.** `make web` and `make web-build` now call `pnpm run`
+  instead of `npm run`.
+
+### Verification
+
+- `pnpm typecheck`
+- `make web-build`
+- Headless Chromium at 1440x900 and 390x844: no header or tab row in the scene,
+  Raleway reported by the computed body font, Info tab exposes Plant mission and
+  Plate scan, navigation and the back link both work.

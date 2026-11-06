@@ -18,9 +18,10 @@ type ScenePanelProps = {
   onClose: () => void
   onSend: () => void
   onFaultDemo: () => void
+  onNavigate: (view: 'plant' | 'plate') => void
 }
 
-type Tab = 'mission' | 'machines'
+type Tab = 'mission' | 'machines' | 'info'
 
 export default function ScenePanel({
   assets,
@@ -30,6 +31,7 @@ export default function ScenePanel({
   onClose,
   onSend,
   onFaultDemo,
+  onNavigate,
 }: ScenePanelProps) {
   const [tab, setTab] = useState<Tab>('mission')
 
@@ -58,11 +60,12 @@ export default function ScenePanel({
         </button>
       </header>
 
-      <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-800 bg-slate-900/70 p-1">
+      <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg border border-slate-800 bg-slate-900/70 p-1">
         {(
           [
             ['mission', 'Mission'],
             ['machines', `Machines (${assets.length})`],
+            ['info', 'Info'],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -135,7 +138,7 @@ export default function ScenePanel({
             </p>
           </section>
         </div>
-      ) : (
+      ) : tab === 'machines' ? (
         <div className="mt-3 space-y-2">
           <p className="text-xs font-semibold text-slate-500">Pick a machine to inspect. The robot waits for a send command.</p>
           <div className="space-y-1.5">
@@ -155,6 +158,59 @@ export default function ScenePanel({
           >
             Send robot to {selected.id}
           </button>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          <section className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">PlantPilot</p>
+              <span className="rounded-full border border-slate-600 bg-slate-950 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-400">
+                offline
+              </span>
+            </div>
+            <h3 className="mt-2 text-2xl font-black leading-tight text-white">Industrial scene lab</h3>
+            <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-400">
+              Inspection missions in a scanned plant. This build uses a provisional room and mock assets
+              until the splat and object pipeline lands.
+            </p>
+          </section>
+
+          <section className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Workspace</p>
+            <div className="mt-2 space-y-1.5">
+              <button
+                type="button"
+                onClick={() => onNavigate('plant')}
+                className="flex w-full items-center justify-between rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-left hover:border-slate-500 hover:bg-slate-900"
+              >
+                <span>
+                  <span className="block text-sm font-black text-white">Plant mission</span>
+                  <span className="block text-xs font-semibold text-slate-500">Route, clearance and evidence</span>
+                </span>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('plate')}
+                className="flex w-full items-center justify-between rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-left hover:border-slate-500 hover:bg-slate-900"
+              >
+                <span>
+                  <span className="block text-sm font-black text-white">Plate scan</span>
+                  <span className="block text-xs font-semibold text-slate-500">OCR and asset lookup</span>
+                </span>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+            </div>
+          </section>
+
+          <p className="text-[11px] font-semibold leading-relaxed text-slate-500">
+            Scene navigation lives on the toolbar. The header and demo switcher are intentionally kept
+            here so the 3D view stays unobstructed.
+          </p>
         </div>
       )}
 

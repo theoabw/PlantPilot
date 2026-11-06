@@ -14,7 +14,7 @@ const EMPTY_PROGRESS: LabProgress = {
   waypoints: 0,
 }
 
-export default function SceneLab() {
+export default function SceneLab({ onNavigate }: { onNavigate: (view: 'plant' | 'plate') => void }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const worldRef = useRef<LabWorld | null>(null)
   const [selectedId, setSelectedId] = useState<string>('P-005')
@@ -103,8 +103,8 @@ export default function SceneLab() {
   }
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden p-3">
-      <section className="relative h-full min-h-[420px] overflow-hidden rounded-xl border-2 border-slate-900 bg-slate-950">
+    <div className="relative h-screen w-full overflow-hidden bg-slate-950">
+      <section className="relative h-full w-full overflow-hidden">
         {error ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
             <p className="text-xl font-black text-white">3D view unavailable</p>
@@ -159,6 +159,7 @@ export default function SceneLab() {
                 onClose={() => setPanelOpen(false)}
                 onSend={send}
                 onFaultDemo={runFaultDemo}
+                onNavigate={onNavigate}
               />
             ) : null}
           </>
