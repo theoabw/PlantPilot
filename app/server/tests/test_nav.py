@@ -289,3 +289,29 @@ def test_build_route_unreachable_with_full_wall_blocker(tmp_path):
     if not result["reachable"]:
         assert result["reason"]
         assert result["path"] == []
+
+
+def test_a_y_down_capture_gets_its_path_in_scene_coordinates():
+    # the boiler room and the equipment room are y down; the floor height is
+    # negative, and the path must sit slightly above the floor in scene y
+    assert nav.path_height(-1.181, -1) == pytest.approx(1.131, abs=0.001)
+    assert nav.path_height(-1.181, 1) == pytest.approx(-1.131, abs=0.001)
+
+
+def test_objects_become_obstacles_when_the_point_grid_saturates():
+    # a band of points in every cell is what a cluttered capture looks like; the
+    # old code fell back to an empty grid, which is how a route went through a
+    # pump. The extracted box has to become the obstacle instead.
+    rng = np.random.default_rng(3)
+    dense = rng.uniform(low=[-3.0, 0.2, -3.0], high=[3.0, 1.4, 3.0], size=(20000, 3))
+    box = {
+        "centre": [0.0, 0.5, 0.0],
+        "axes": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        "extents": [1.0, 1.0, 1.0],
+    }
+    grid = nav.Grid.from_cloud(dense, floor_y=0.0, up_axis=1, objects=[box], agent_radius_m=0.2)
+    assert grid.obstacles_from == "objects"
+    row, column = grid.to_cell((0.0, 0.0))
+    assert not grid.walkable(row, column)
+    corner_row, corner_column = grid.to_cell((2.5, 2.5))
+    assert grid.walkable(corner_row, corner_column)

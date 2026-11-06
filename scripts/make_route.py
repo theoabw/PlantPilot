@@ -31,8 +31,9 @@ def main() -> int:
                         help="Destination route.json path")
     parser.add_argument("--floor-y", type=float, default=None,
                         help="Manual floor height override in metres")
-    parser.add_argument("--agent-radius", type=float, default=nav.DEFAULT_AGENT_RADIUS_M,
-                        help="Agent radius in metres for inflation")
+    parser.add_argument("--agent-radius", type=float, default=0.20,
+                        help="Agent radius in metres for inflation. 0.20 is the demo robot's "
+                             "half width; a person would be 0.35")
     args = parser.parse_args()
 
     print(f"Generating route for target {args.target}...")

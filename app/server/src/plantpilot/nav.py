@@ -23,6 +23,16 @@ DEFAULT_AGENT_RADIUS_M = 0.35
 SAFETY_MARGIN_M = 0.10
 WALKABLE_HEIGHT_MIN_M = 0.10
 WALKABLE_HEIGHT_MAX_M = 2.00
+# The route is for a mobile robot, not a person: its body is what collides with
+# equipment. A supplied capture is cluttered enough that the walkable band fills
+# with pipes and cables, so obstacles come from the extracted boxes when they
+# exist, and an object only blocks when it reaches into the robot's body height.
+ROBOT_HEIGHT_M = 0.55
+OBSTACLE_MIN_HEIGHT_M = 0.08
+LARGE_FOOTPRINT_SHARE = 0.5
+# The extracted boxes are already conservative axis aligned footprints of an
+# oriented box, so the route needs only a small extra margin on top of them.
+ROUTE_SAFETY_MARGIN_M = 0.02
 DEFAULT_CLEARANCE_TARGET_M = 0.90
 MIN_WAYPOINT_DISTANCE_M = 0.60
 PROXIMITY_RADIUS_M = 2.50
@@ -51,6 +61,17 @@ def asset_footprint(asset: dict) -> Rect:
         sx, sz = 1.0, 1.0
     return Rect(x - float(sx) / 2.0, z - float(sz) / 2.0,
                 x + float(sx) / 2.0, z + float(sz) / 2.0)
+
+
+def _blocks_the_robot(obj: dict, floor_y: float, up_axis: int, up_axis_sign: int) -> bool:
+    """True when the object reaches into the robot's body height above the floor."""
+    centre = np.asarray(obj.get("centre", [0.0, 0.0, 0.0]), dtype=float)
+    axes = np.asarray(obj.get("axes", np.eye(3)), dtype=float)
+    extents = np.asarray(obj.get("extents", [0.0, 0.0, 0.0]), dtype=float)
+    half = float(np.abs(axes[up_axis, :]) @ (extents / 2.0))
+    height = float(centre[up_axis]) * float(up_axis_sign)
+    low, high = height - half, height + half
+    return not (high < floor_y + OBSTACLE_MIN_HEIGHT_M or low > floor_y + ROBOT_HEIGHT_M)
 
 
 def object_footprint(obj: dict, up_axis: int = 1) -> Rect:
@@ -117,8 +138,10 @@ class Grid:
         agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
         area: dict | None = None,
         blocked_mask: np.ndarray | None = None,
+        safety_margin_m: float | None = None,
     ):
         self.agent_radius_m = agent_radius_m
+        self.safety_margin_m = SAFETY_MARGIN_M if safety_margin_m is None else float(safety_margin_m)
         if spec is not None:
             area_spec = spec["area"]
             self.x0 = float(area_spec["x0"])
@@ -161,19 +184,26 @@ class Grid:
         agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
         objects: list[dict] | None = None,
         bounds_pad_m: float = 0.5,
-        walkable_height_max_m: float = WALKABLE_HEIGHT_MAX_M,
+        walkable_height_max_m: float = ROBOT_HEIGHT_M,
+        safety_margin_m: float = SAFETY_MARGIN_M,
     ) -> "Grid":
-        """Build occupancy grid directly from point cloud and extracted objects."""
-        # Horizontal axes: for up_axis=1 (y up), horizontal axes are x (0) and z (2)
+        """Build the occupancy grid for the capture.
+
+        Obstacles come from the extracted object boxes when they are supplied:
+        a real room saturates a point grid (every cell holds a pipe, a cable or
+        a cable tray somewhere in the walkable band), and a saturated grid used
+        to fall back to an empty one, which drew routes straight through the
+        equipment. With no objects, points are rasterised as before.
+        """
         if up_axis == 1:
             h_x, h_z = points[:, 0], points[:, 2]
-            y_pts = points[:, 1] * up_axis_sign
+            heights = points[:, 1] * up_axis_sign
         else:
             h_x, h_z = points[:, 0], points[:, 1]
-            y_pts = points[:, 2] * up_axis_sign
+            heights = points[:, 2] * up_axis_sign
 
-        valid = np.isfinite(h_x) & np.isfinite(h_z) & np.isfinite(y_pts)
-        h_x, h_z, y_pts = h_x[valid], h_z[valid], y_pts[valid]
+        valid = np.isfinite(h_x) & np.isfinite(h_z) & np.isfinite(heights)
+        h_x, h_z = h_x[valid], h_z[valid]
 
         q01_x, q99_x = np.percentile(h_x, [0.5, 99.5])
         q01_z, q99_z = np.percentile(h_z, [0.5, 99.5])
@@ -186,52 +216,46 @@ class Grid:
         cols = max(10, int(math.ceil((x1 - x0) / CELL_M)))
         rows = max(10, int(math.ceil((z1 - z0) / CELL_M)))
         blocked = np.zeros((rows, cols), dtype=np.uint8)
-
-        # Border walls
         blocked[0, :] = 1
         blocked[-1, :] = 1
         blocked[:, 0] = 1
         blocked[:, -1] = 1
 
-        # Obstacle points: standing above the floor between min and max clearance height
-        is_obstacle = (y_pts >= (floor_y + WALKABLE_HEIGHT_MIN_M)) & (
-            y_pts <= (floor_y + walkable_height_max_m)
-        )
-        obs_x = h_x[is_obstacle]
-        obs_z = h_z[is_obstacle]
+        room_area = max(1e-6, (x1 - x0) * (z1 - z0))
+        obstacles_from = "points"
+        if objects:
+            obstacles_from = "objects"
+            for obj in objects:
+                if not _blocks_the_robot(obj, floor_y, up_axis, up_axis_sign):
+                    continue
+                footprint = object_footprint(obj, up_axis=up_axis)
+                area = max(0.0, footprint.x1 - footprint.x0) * max(0.0, footprint.z1 - footprint.z0)
+                if area <= 0.0 or area > LARGE_FOOTPRINT_SHARE * room_area:
+                    continue
+                c0 = int(math.floor((footprint.x0 - x0) / CELL_M))
+                c1 = int(math.ceil((footprint.x1 - x0) / CELL_M))
+                r0 = int(math.floor((footprint.z0 - z0) / CELL_M))
+                r1 = int(math.ceil((footprint.z1 - z0) / CELL_M))
+                blocked[max(0, r0):min(rows, r1), max(0, c0):min(cols, c1)] = 1
+        else:
+            is_obstacle = (heights[valid] >= floor_y + OBSTACLE_MIN_HEIGHT_M) & (
+                heights[valid] <= floor_y + walkable_height_max_m
+            )
+            obs_x = h_x[is_obstacle]
+            obs_z = h_z[is_obstacle]
+            col_indices = np.clip(np.floor((obs_x - x0) / CELL_M).astype(int), 0, cols - 1)
+            row_indices = np.clip(np.floor((obs_z - z0) / CELL_M).astype(int), 0, rows - 1)
+            blocked[row_indices, col_indices] = 1
 
-        col_indices = np.clip(
-            np.floor((obs_x - x0) / CELL_M).astype(int), 0, cols - 1
-        )
-        row_indices = np.clip(
-            np.floor((obs_z - z0) / CELL_M).astype(int), 0, rows - 1
-        )
-        blocked[row_indices, col_indices] = 1
-
-        # Rasterize extracted object bounding boxes
         grid_instance = cls(
             area={"x0": x0, "z0": z0, "x1": x1, "z1": z1},
             blocked_mask=blocked,
             agent_radius_m=agent_radius_m,
+            safety_margin_m=safety_margin_m,
         )
-        occupancy_fallback = not np.any(grid_instance.free == 1)
-        if occupancy_fallback:
-            grid_instance.blocked.fill(0)
-            grid_instance.blocked[0, :] = 1
-            grid_instance.blocked[-1, :] = 1
-            grid_instance.blocked[:, 0] = 1
-            grid_instance.blocked[:, -1] = 1
-            grid_instance.base_blocked = grid_instance.blocked.copy()
-            grid_instance._inflate()
-
-        if objects and not occupancy_fallback:
-            for obj in objects:
-                fp = object_footprint(obj, up_axis=up_axis)
-                grid_instance.add_rect(fp, hard=True)
-            grid_instance.base_blocked = grid_instance.blocked.copy()
-            grid_instance._inflate()
-        grid_instance.occupancy_fallback = occupancy_fallback
-
+        grid_instance.occupancy_fallback = False
+        grid_instance.obstacles_from = obstacles_from
+        grid_instance.base_blocked = grid_instance.blocked.copy()
         return grid_instance
 
     def _cells(self, rect: Rect) -> tuple[int, int, int, int]:
@@ -246,7 +270,8 @@ class Grid:
         self.blocked[r0:r1, c0:c1] = 1
 
     def _inflate(self) -> None:
-        radius_cells = (self.agent_radius_m + SAFETY_MARGIN_M) / CELL_M
+        margin = getattr(self, "safety_margin_m", SAFETY_MARGIN_M)
+        radius_cells = (self.agent_radius_m + margin) / CELL_M
         k = max(1, int(math.ceil(radius_cells)))
         yy, xx = np.mgrid[-k : k + 1, -k : k + 1]
         kernel = (((xx**2 + yy**2) ** 0.5) <= radius_cells).astype(np.uint8)
@@ -505,7 +530,10 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
     # The corridor clearance is what matters for traversal.
     docking_cells = max(1, int(round(DEFAULT_CLEARANCE_TARGET_M / CELL_M)))
     corridor_cells = cells[:-docking_cells] if len(cells) > docking_cells else cells[:1]
-    clearance = min(float(grid.clearance_m[r, c]) for r, c in corridor_cells)
+    # grid.clearance_m is the distance to the inflated obstacle boundary, so the
+    # inflation radius is added back to report the distance to the object itself.
+    inflation = float(grid.agent_radius_m) + float(getattr(grid, "safety_margin_m", SAFETY_MARGIN_M))
+    clearance = min(float(grid.clearance_m[r, c]) for r, c in corridor_cells) + inflation
 
     return {
         "reachable": True,
@@ -662,6 +690,16 @@ def plan(
     return astar(grid, start, goal)
 
 
+def path_height(floor_y: float, up_axis_sign: int) -> float:
+    """Scene y for a path drawn 5 cm above the floor.
+
+    The floor height is a coordinate along the up axis, and the artifact is in
+    scene coordinates, so the sign has to be applied. A y-down capture otherwise
+    gets a path under its floor.
+    """
+    return round(float(up_axis_sign) * (float(floor_y) + 0.05), 3)
+
+
 def build_route(
     scene_path: Path | None = None,
     objects_path: Path | None = None,
@@ -783,6 +821,7 @@ def build_route(
             agent_radius_m=agent_radius_m,
             objects=objects,
             walkable_height_max_m=walkable_height_max_m,
+            safety_margin_m=ROUTE_SAFETY_MARGIN_M,
         )
     else:
         # Fallback to synthetic reference plant
@@ -817,8 +856,10 @@ def build_route(
     # Compute A* path
     plan_result = astar(grid, start_2d, goal_2d)
 
-    # Format 3D path coordinates [x, y, z] with y snapped slightly above floor for floor arrows
-    y_render = round(floor_y + (0.05 * up_axis_sign), 3)
+    # The route document is in scene coordinates, so the height above the floor
+    # is multiplied by the sign of the up axis. Writing the height coordinate
+    # itself put a y-down capture's path under the floor.
+    y_render = path_height(floor_y, up_axis_sign)
     if plan_result["reachable"]:
         raw_path = plan_result["path"]
         smoothed_2d = smooth_path(grid, raw_path)
@@ -860,6 +901,9 @@ def build_route(
             "free_cells": free_count,
             "blocked_cells": blocked_count,
             "occupancy_fallback": bool(getattr(grid, "occupancy_fallback", False)),
+            "obstacles_from": getattr(grid, "obstacles_from", "points"),
+            "agent_radius_m": round(float(agent_radius_m), 3),
+            "safety_margin_m": round(float(getattr(grid, "safety_margin_m", SAFETY_MARGIN_M)), 3),
         },
     }
 
