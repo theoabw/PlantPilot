@@ -8,6 +8,7 @@ import CameraPane from './components/CameraPane'
 import DocumentCard from './components/DocumentCard'
 import GraphCard from './components/GraphCard'
 import TopBar from './components/TopBar'
+import MissionView from './mission/MissionView'
 import { GateAccepted, GateRefusal } from './components/GateBanner'
 
 function closestTypes(response: ScanResponse | null): string[] {
@@ -28,6 +29,7 @@ export default function App() {
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
   const [isSample, setIsSample] = useState(false)
+  const [view, setView] = useState<'plant' | 'plate'>('plant')
 
   // Health is a nicety: retry quietly while the backend is still starting up.
   useEffect(() => {
@@ -123,9 +125,37 @@ export default function App() {
 
   const state: ScanState = scanError ? 'error' : result ? 'done' : 'idle'
 
+  const tabs = (
+    <div className="flex items-center gap-2 border-b-2 border-slate-900 bg-white px-4 py-2">
+      {(['plant', 'plate'] as const).map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => setView(option)}
+          className={`rounded-md border-2 px-3 py-1 text-base font-bold ${
+            view === option ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-400 bg-white text-slate-900'
+          }`}
+        >
+          {option === 'plant' ? 'plant mission' : 'plate scan'}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (view === 'plant') {
+    return (
+      <div className="flex h-screen flex-col bg-slate-100 text-slate-900">
+        <TopBar health={health} />
+        {tabs}
+        <MissionView />
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen flex-col bg-slate-100 text-slate-900">
       <TopBar health={health} />
+      {tabs}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-2">
         <div className="min-h-0">
