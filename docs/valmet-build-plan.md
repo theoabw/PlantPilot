@@ -1,6 +1,6 @@
 # Valmet build plan, Friday 6 November
 
-Assumed selected Friday afternoon. The company materials open at 19:30 and only for the team that picked Valmet, so this plan is written from the public summary plus tonight's probes, and section 10 says exactly what changes if the real brief differs. Hours are counted from H+0 = Friday 19:30. Submission is Sunday 10:00.
+Assumed selected Friday afternoon. The company materials open at 19:30 and only for the team that picked Valmet, so this plan is written from the public summary plus tonight's probes, and section 10 says exactly what changes if the real brief differs. Hours are counted from H+0 = Friday 19:30. Submission is Sunday 10:00. Four team members and one shared sleep block, no night watch: section 6 is built around that, and the scope in sections 3 and 5 is sized for it.
 
 Read [plans/valmet.md](plans/valmet.md) first for the reasoning. This file is the execution plan: what we build, in what order, by whom, and how we prove it.
 
@@ -67,14 +67,14 @@ If OCR fails on the day, the fallback is not a different demo: it is the same de
 - 48 rows, 4 lines, schema shaped like a CMMS extract: tag, functional location, line, type, family, size, class, body material, serial, install date, last service, criticality, spare group.
 - Tags follow a line prefix: `K-102` (board machine, line 2), `P-011` (pump line), etc. 8 rows deliberately overdue.
 - The CSV import is documented in the README so a real row can replace a synthetic one in one command. That is the answer to "is this your fiction".
-- The four demo assets are chosen so the graph has something to show: one overdue neighbour, one shared spare, one unknown plate.
+- The three demo assets are chosen so the graph has something to show: one overdue neighbour, one shared spare, one unknown plate.
 
 ### 3.3 The plates
 
-- 24 labels, 60 by 40 mm matte stock, printed tonight. Fields: brand, family, type code, size (DN), class (PN), body material, serial, max temperature.
+- 16 labels, 60 by 40 mm matte stock, printed tonight. Fields: brand, family, type code, size (DN), class (PN), body material, serial, max temperature.
 - Three character heights (28, 20, 14 px cap height at camera distance) so the quality gate is a real interaction, not a staged one.
 - 12 percent carry one damaged character, so the failure path is physical. One label carries the words SYNTHETIC DEMO ASSET in 6 pt on every plate, so no video frame can be mistaken for a real mill.
-- Stuck on 12 real objects in the room: radiator valve, tap, fan, laptop lid, kettle, extinguisher bracket.
+- Stuck on 8 real objects in the room: radiator valve, tap, fan, laptop lid, kettle, extinguisher bracket.
 
 ### 3.4 Pre-existing versus built at the event
 
@@ -137,16 +137,17 @@ Five states, one page: camera, asset, document, action, graph. Plain SVG for the
 
 ## 5. The proof
 
-**Claim.** Median 11 s from plate in frame to the correct manual section and action row, against 64 s finding the same documents in a folder tree, over 20 timed trials per arm with two people who have not used the app.
+**Claim.** Median 11 s from plate in frame to the correct manual section and action row, against 64 s finding the same documents in a folder tree, over 20 timed trials per arm. The operators are the two team members who did not build the capture path. Nobody on a four person team is a naive user, so the README says so and the sample size is stated on screen.
 
-**Floor.** 18 of 20 trials reach the correct section (90 percent), and 0 of 20 show a wrong asset record without a warning. OCR: 95 percent field-level exact match on 60 held-out photos at 20 px or more.
+**Floor.** 16 of 20 trials reach the correct section (80 percent), and 0 of 20 show a wrong asset record without a warning. OCR: 95 percent field-level exact match on 40 held-out photos at 20 px or more. Twenty per arm is kept because the trials cost about 25 minutes of wall clock; it is the photo set that gets cut, not the timing.
 
 **Protocol.**
 
 - Baseline: a folder tree of the same PDFs on the same laptop, 4 line folders, 12 assets each, PDFs named by document code only.
 - Task worded identically both arms: "find the section that explains cavitation damage on this valve, and the service action due at one year".
 - One person holds the stopwatch and reads the task; one operates. Start on the last word of the task, stop when the target section title is on screen.
-- 20 trials per arm, the same 4 assets, alternated arms to spread fatigue.
+- 20 trials per arm, the same 3 assets, alternated arms to spread fatigue.
+- If someone from a neighbouring team will sit for ten minutes, their two trials are reported separately as n=2 and are the only genuinely naive run in the set.
 - Target set fixed in advance and kept in `proof/targets.csv`, so the operator cannot pick an easy section.
 
 **Output.** `make proof` prints median, IQR, percent correct, wrong-asset count, and OCR field accuracy, and writes `proof/metrics.json`. The video and the README read that file. Nobody types a number by hand.
@@ -157,31 +158,35 @@ Five states, one page: camera, asset, document, action, graph. Plain SVG for the
 
 | Mark | Clock | Work | Done when | Owner |
 | --- | --- | --- | --- | --- |
-| pre | now to 18:45 | Scaffold, corpus fetch, TOC parser probe, plates printed, camera test on the real laptop and both phones | `make demo` serves `/health` with the real section count, and one plate reads in the room's light | integrator |
-| briefing | 18:50 to 19:30 | Write the criteria verbatim, ask the 8 questions, decide the three contingencies in section 10 | `challenge.md` Choice and criteria filled | notetaker |
-| H+0 to H+1.5 | 19:30 to 21:00 | Read the brief, freeze scope and the API contract, assign the five seats | one page of scope, no open interface questions | lead |
-| M0 | 21:00 | One page served, `/scan` returns a fixture card, phone opens the page over LAN, 3 plates printed | network-off run shows a card | capture owner |
-| M1 | 01:30 | 10 of 12 scans resolve the right asset and the right section end to end, offline | the loop works three times in a row | capture + corpus |
-| commit | 02:00 | A commit that runs, plus a 60 s raw screen capture of the loop | `git log` has a runnable state | integrator |
-| sleep | 01:30 to 07:30 | 4 asleep, 1 on call, nothing merges to main overnight | everyone has 5 hours | lead |
-| M2 | 07:30 to 12:00 | Graph, failure path, 120 photos, register import | 5 states walk through with no dead end | UI owner |
-| proof | 12:00 to 16:30 | 20 trials per arm, 60 held-out photos, `make proof` | `metrics.json` has the median and the floors | proof owner |
-| M3 | 16:30 to 20:00 | 6 shots under 2 minutes, README with setup and numbers, clean-clone test | video plays on a phone, clean clone runs `make demo` | integrator |
+| pre | now to 18:45 | Scaffold, corpus fetch, TOC parser probe, plates printed, camera test on the real laptop and both phones | `make demo` serves `/health` with the real section count, and one plate reads in the room's light | lead |
+| briefing | 18:50 to 19:30 | Write the criteria verbatim, ask the 8 questions, decide the three contingencies in section 10 | `challenge.md` Choice and criteria filled | whoever is not driving |
+| H+0 to H+1.5 | 19:30 to 21:00 | Read the brief, freeze scope and the API contract, assign the four seats | one page of scope, no open interface questions | lead |
+| M0 | 22:30 | One page served, `/scan` returns a fixture card, phone opens the page over LAN, 8 plates printed | network-off run shows a card | A capture |
+| M1 | 02:00 | 10 of 12 scans resolve the right asset and the right section end to end, offline | the loop works three times in a row | A + B |
+| runnable commit | 02:40 | A commit that runs, plus a 60 s raw screen capture of the loop | `make demo` passes on a clean clone at 02:40 | lead |
+| sleep | 02:45 to 07:45 | All four sleep. Nobody is on call, so the state we leave has to stand on its own. | a clean clone runs after breakfast with no repair | all four |
+| M2 | 07:45 to 12:30 | Graph, failure path, 80 photos, register import | 5 states walk through with no dead end | C UI |
+| proof | 12:30 to 16:00 | 20 trials per arm, 40 held-out photos, `make proof` | `metrics.json` has the median and the floors | B proof |
+| M3 | 16:00 to 19:30 | 6 shots under 2 minutes, README with setup and numbers, clean-clone test | video plays on a phone, clean clone runs `make demo` | lead |
+| buffer | 19:30 to 22:00 | Fixes, final video render, submission text draft | nothing new starts here | lead |
 | freeze | 22:00 | Features frozen; only README, video, submission text afterwards | no code change after this | lead |
 
-Cut order, decided now so it is not argued at 03:00: the graph goes at H+9 (04:30) if the loop is not end to end; the photo claim drops to document-finding time at H+14 (09:30) if photos score under 95 percent; the Gemini rewrite goes at H+18 (13:30); assets shrink from 4 to 2 at H+21 (16:30). Never cut: the offline run, `make demo`, the timed baseline, the video.
+Cut order, decided now so it is not argued at 03:00 and nobody has to make a scope call at 04:00 while the others sleep: if the loop is not end to end at breakfast, the graph dies that morning; the photo claim drops to document-finding time at 12:30 if photos score under 95 percent; the Gemini rewrite dies at 13:30; the demo drops to 2 assets at 16:00. Never cut: the offline run, `make demo`, the timed baseline, the video.
 
-## 7. The five seats
+## 7. The four seats
+
+Four people, so two seats carry a second job. It is written down here rather than discovered at breakfast.
 
 | Seat | Owns | Must hand over by |
 | --- | --- | --- |
-| Capture and OCR | camera page, gate math, tesseract, resolver | API contract at H+0.5, working loop at H+6 |
-| Corpus | TOC parser, index, retrieval, quotes, anchors | `sections.json` and FTS at H+2, routing at H+6 |
-| UI | five states, graph, the exact on-screen copy | first three states at H+4, all five at H+13 |
-| Proof | baseline tree, trials, photos, `make proof`, metrics | harness at H+4, numbers at H+17 |
-| Integrator | merges, demo script, README, video, submission, agent dispatch | a runnable commit every 4 hours |
+| A Capture and OCR | camera page, gate math, tesseract, field resolver | API contract at H+0.5, working loop at 02:00 |
+| B Corpus, then proof | TOC parser, index, retrieval, quotes, anchors; then the trial harness, the photos and the numbers | index at 21:30, routing at 02:00, harness at 08:00, numbers at 16:00 |
+| C UI | five states, graph, the exact on-screen copy | three states at 22:30, all five at 12:30 |
+| D Lead | merges, demo driver, video, README, submission, agent dispatch | a runnable commit every 4 hours, and `make demo` green at 02:40 |
 
-Two rules: one writer per file, and the integrator is the only person who merges to main. Tonight proved the cost of ignoring the first one: parallel writers silently overwrote each other's fixes three times in one hour.
+Two rules: one writer per file, and the lead is the only person who merges to main. With five people a clobbered file costs an hour; with four it costs the night, and Thursday showed the mechanism: three parallel writers silently overwrote each other's fixes inside one hour.
+
+With four people and no night watch there is no slack, so the handovers above are the arbitration point. If a seat misses its time, the lead cuts from the order in section 6 rather than extending the night.
 
 ## 8. Working with agents
 
@@ -191,6 +196,7 @@ Agents should do most of the typing and none of the deciding. Concretely:
 - **Never delegate:** the demo path, the numbers in the claim, the reply to a partner question, the decision to cut a feature.
 - **Verify, do not trust.** The owner runs the command that proves the work. A report is not evidence. Tonight's probes are the model: two corrected plan claims came from running `pdfinfo` and `pdftotext`, not from reading a summary.
 - **One writer per file.** Give each agent one file or one directory. Where two agents need the same file, order them and hand over, do not run them together.
+- **Four people is where agents earn their keep.** They hold the typing; the four of us hold the demo, the number and the Q&A. That is the trade the roster forces, and it works as long as the verification rule above is not skipped.
 - **Keep the checks cheap.** `make proof` and `make demo` are the two commands everything else is validated against.
 
 The briefs we will need, in order: corpus parser and index, synthetic register and plates, the capture page and resolver, the UI scaffold, the proof harness. Each is a self-contained spec with a command, which is why they can run in parallel while the humans do the demo and the Q&A.
@@ -239,5 +245,5 @@ Every decision tonight is subordinate to this: **a median under 15 seconds from 
 | Name | Fieldplate, Tagline, Page 47 | Fieldplate |
 | Register size | 48 assets versus 12 | 48 rows, 4 in the demo path |
 | Plate count | 24 versus 12 | 24, because damaged tags need spares |
-| Photo claim | 120 photos with 60 held out, versus document-only | 120, cut at H+14 if under 95 percent |
-| Night shift | 4 sleep 1 on call, versus all night | 4 sleep, one on call, swap at 07:30 |
+| Photo claim | 80 photos with 40 held out, versus document-only | 80, cut at 12:30 if under 95 percent |
+| Sleep block | all four sleep 02:45 to 07:45, versus staggered pairs | all four sleep together; nobody is on call |

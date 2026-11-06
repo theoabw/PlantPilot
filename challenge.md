@@ -63,7 +63,7 @@ The moment that proves it works (output, number, before/after): median seconds f
 
 ## Data and privacy
 
-- What data we use: two public Valmet PDFs (the Flow control manual and VMR003), a 48 row synthetic asset register, 24 printed synthetic plates, and photographs of our own objects.
+- What data we use: two public Valmet PDFs (the Flow control manual and VMR003), a 48 row synthetic asset register, 16 printed synthetic plates, and photographs of our own objects.
 - Where it comes from and where it goes: the PDFs are fetched by script into the gitignored `data/` folder and never committed; neither the PDFs nor the extracted text nor the photographs leave the laptop. The PDFs are all rights reserved, so only section numbers, titles and quotes of 1 to 3 lines ship.
 - What is mocked: the asset register, the tag numbers, the place names on the plates, the line graph and the overdue neighbour. Every plate carries SYNTHETIC DEMO ASSET.
 - What is real: the two documents, the section and page anchors, the VMR003 interval rows, the OCR, the retrieval, the gate, the timing and the offline run.
