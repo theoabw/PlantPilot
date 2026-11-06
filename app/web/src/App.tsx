@@ -126,17 +126,17 @@ export default function App() {
   const state: ScanState = scanError ? 'error' : result ? 'done' : 'idle'
 
   const tabs = (
-    <div className="flex items-center gap-2 border-b-2 border-slate-900 bg-white px-4 py-2">
+    <div className="tabs" role="tablist" aria-label="View">
       {(['plant', 'plate'] as const).map((option) => (
         <button
           key={option}
           type="button"
+          role="tab"
+          aria-selected={view === option}
           onClick={() => setView(option)}
-          className={`rounded-md border-2 px-3 py-1 text-base font-bold ${
-            view === option ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-400 bg-white text-slate-900'
-          }`}
+          className="tab"
         >
-          {option === 'plant' ? 'plant mission' : 'plate scan'}
+          {option === 'plant' ? 'Plant mission' : 'Plate scan'}
         </button>
       ))}
     </div>
@@ -144,7 +144,7 @@ export default function App() {
 
   if (view === 'plant') {
     return (
-      <div className="flex h-screen flex-col bg-slate-100 text-slate-900">
+      <div className="app-shell">
         <TopBar health={health} />
         {tabs}
         <MissionView />
@@ -153,7 +153,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-slate-100 text-slate-900">
+    <div className="app-shell">
       <TopBar health={health} />
       {tabs}
 

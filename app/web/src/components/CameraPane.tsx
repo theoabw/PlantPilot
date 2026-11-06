@@ -239,18 +239,18 @@ export default function CameraPane({ busy, onFrame, onLoadSample }: CameraPanePr
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 px-3 py-1.5">
-        <span className="text-base font-semibold text-slate-700">
-          demo safety net, sample data
-        </span>
-        <button
-          type="button"
-          onClick={onLoadSample}
-          className="rounded-md border-2 border-slate-900 bg-white px-3 py-1 text-base font-bold text-slate-900 hover:bg-slate-100"
-        >
-          load sample
-        </button>
-      </div>
+      {import.meta.env.DEV ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-dashed border-slate-400 bg-slate-50 px-3 py-1.5">
+          <span className="text-base font-semibold text-slate-700">sample data</span>
+          <button
+            type="button"
+            onClick={onLoadSample}
+            className="rounded-md border-2 border-slate-900 bg-white px-3 py-1 text-base font-bold text-slate-900 hover:bg-slate-100"
+          >
+            load sample
+          </button>
+        </div>
+      ) : null}
     </section>
   )
 }

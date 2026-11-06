@@ -24,3 +24,110 @@
     outline-offset: 2px;
   }
 }
+
+/* ------------------------------------------------------------------
+   Inspection record theme. The scan is the field instrument; the panel
+   is the paper work order. Safety amber marks what is due or blocked,
+   engineering blue belongs to the route and the current selection.
+   ------------------------------------------------------------------ */
+@layer components {
+  :root {
+    --ink: #0f1720;
+    --ink-2: #46565f;
+    --paper: #eef1f2;
+    --card: #ffffff;
+    --line: #d3dbe0;
+    --field: #080d12;
+    --amber: #9a5b00;
+    --amber-fill: #f0a202;
+    --blue: #1d4ed8;
+  }
+
+  .app-shell { display: flex; height: 100vh; flex-direction: column; background: var(--paper); color: var(--ink); }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  .masthead {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
+    padding: 12px 20px 10px; background: var(--card); border-bottom: 2px solid var(--ink);
+  }
+  .wordmark { font-size: 23px; font-weight: 800; letter-spacing: -0.035em; line-height: 1; }
+  .wordmark span { margin-left: 10px; font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--ink-2); }
+  .stats { display: flex; align-items: flex-end; }
+  .stat { padding: 0 14px; border-left: 1px solid var(--line); text-align: right; }
+  .stat:first-child { border-left: 0; }
+  .stat b { display: block; font-size: 21px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat i { font-style: normal; font-size: 12.5px; color: var(--ink-2); }
+  .source-stamp { border: 1.5px solid var(--ink); padding: 2px 8px; font-size: 12.5px; font-weight: 700; background: var(--paper); }
+
+  .tabs { display: flex; gap: 4px; padding: 0 20px; background: var(--card); border-bottom: 1.5px solid var(--line); }
+  .tab {
+    border: 0; background: none; padding: 9px 12px 8px; font-size: 15px; font-weight: 700;
+    color: var(--ink-2); border-bottom: 3px solid transparent; cursor: pointer;
+  }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .tab:hover { color: var(--ink); }
+
+  .mission { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 412px; }
+  .field { position: relative; min-height: 0; background: var(--field); }
+  .field-bar {
+    position: absolute; left: 0; right: 0; bottom: 0; display: flex;
+    background: rgba(8, 13, 18, 0.88); border-top: 1px solid #22303a;
+  }
+  .gauge { padding: 9px 16px 10px; border-right: 1px solid #22303a; }
+  .gauge b { display: block; font-size: 21px; font-weight: 800; color: #fff; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .gauge i { font-style: normal; font-size: 12.5px; color: #9fb2bf; }
+
+  .sheet { min-height: 0; overflow-y: auto; background: var(--card); border-left: 2px solid var(--ink); }
+  .block { padding: 13px 18px 15px; border-bottom: 1px solid var(--line); }
+  .label { font-size: 13.5px; font-weight: 700; color: var(--ink-2); }
+  .lede { font-size: 15.5px; color: var(--ink-2); }
+
+  .tag-id { font-size: 32px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .kind { margin-left: 8px; font-size: 15px; font-weight: 600; color: var(--ink-2); }
+  .due { margin-top: 8px; font-size: 30px; font-weight: 800; color: var(--amber); line-height: 1; font-variant-numeric: tabular-nums; }
+  .due span { font-size: 15px; font-weight: 700; }
+  .due.ok { color: var(--ink); }
+  .meta { margin-top: 6px; font-size: 14.5px; color: var(--ink-2); }
+
+  .primary {
+    margin-top: 12px; width: 100%; border: 0; background: var(--ink); color: #fff;
+    padding: 11px 14px; font-size: 16px; font-weight: 700; cursor: pointer;
+  }
+  .primary:hover { background: #1d2b36; }
+  .primary:disabled { background: #9aa8b1; cursor: not-allowed; }
+
+  .route-figures { display: flex; align-items: baseline; gap: 14px; margin-top: 6px; }
+  .route-figures b { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .route-figures span { font-size: 14.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .seg { display: flex; margin-top: 10px; border: 1.5px solid var(--ink); }
+  .seg button {
+    flex: 1; border: 0; border-left: 1.5px solid var(--ink); background: var(--card); color: var(--ink);
+    padding: 8px 6px; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .seg button:first-child { border-left: 0; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .reason { margin-top: 8px; font-size: 15px; font-weight: 700; color: var(--amber); }
+
+  .citation { margin-top: 8px; border-left: 3px solid var(--blue); padding-left: 10px; }
+  .citation b { display: block; font-size: 17px; font-weight: 800; line-height: 1.25; }
+  .citation .page { margin-top: 2px; font-size: 15px; font-weight: 700; color: var(--blue); font-variant-numeric: tabular-nums; }
+  .citation p { margin-top: 6px; font-size: 15px; color: var(--ink-2); }
+  .action-row { margin-top: 8px; font-size: 14.5px; color: var(--ink); }
+  .action-row b { font-weight: 700; }
+
+  .rows { margin-top: 4px; }
+  .row {
+    display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: 10px;
+    border: 0; border-bottom: 1px solid var(--line); background: none; padding: 8px 0;
+    font-size: 15px; text-align: left; cursor: pointer; color: var(--ink);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row:hover { background: #f6f8f9; }
+  .row[aria-current="true"] { box-shadow: inset 3px 0 0 var(--blue); padding-left: 8px; }
+  .row .row-id { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .row .row-kind { color: var(--ink-2); }
+  .row .row-due { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; }
+  .row .row-due.ok { color: var(--ink-2); font-weight: 600; }
+
+  .field-error { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 24px; color: #fff; }
+}

@@ -7,18 +7,13 @@ type Props = {
   cloud: Cloud | null
   assets: Asset[]
   selectedId: string | null
+  attention: Set<string>
   route: RouteResult | null
   blocked: boolean
   onSelect: (id: string) => void
 }
 
-const CRITICALITY: Record<string, number> = {
-  high: 0xdc2626,
-  medium: 0xd97706,
-  low: 0x64748b,
-}
-
-export default function PlantScene({ cloud, assets, selectedId, route, blocked, onSelect }: Props) {
+export default function PlantScene({ cloud, assets, attention, selectedId, route, blocked, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const sceneRef = useRef<{
@@ -49,7 +44,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(host.clientWidth, host.clientHeight)
-    renderer.setClearColor(0x0b1020, 1)
+    renderer.setClearColor(0x080d12, 1)
     host.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
@@ -69,7 +64,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
 
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(16, 12),
-      new THREE.MeshBasicMaterial({ color: 0x111a2e }),
+      new THREE.MeshBasicMaterial({ color: 0x0d151b }),
     )
     floor.rotation.x = -Math.PI / 2
     floor.position.set(8, -0.02, 6)
@@ -169,13 +164,16 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
     state.markers.clear()
     for (const asset of assets) {
       const selected = asset.id === selectedId
+      // Blue is the current selection, amber means the work order is overdue,
+      // grey is everything else. No other colour carries meaning.
+      const colour = selected ? 0x1d4ed8 : attention.has(asset.id) ? 0xf0a202 : 0x6b7c88
       const marker = new THREE.Mesh(
         new THREE.SphereGeometry(selected ? 0.26 : 0.15, 18, 14),
         new THREE.MeshStandardMaterial({
-          color: CRITICALITY[asset.criticality] ?? 0x64748b,
-          emissive: selected ? 0xffffff : 0x000000,
-          emissiveIntensity: selected ? 0.55 : 0,
-          roughness: 0.4,
+          color: colour,
+          emissive: selected ? 0x1d4ed8 : 0x000000,
+          emissiveIntensity: selected ? 0.7 : 0,
+          roughness: 0.45,
         }),
       )
       marker.position.set(asset.pos[0], 0.9, asset.pos[2])
@@ -192,7 +190,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
         )
       }
     }
-  }, [assets, selectedId])
+  }, [assets, selectedId, attention])
 
   useEffect(() => {
     const state = sceneRef.current
@@ -214,7 +212,7 @@ export default function PlantScene({ cloud, assets, selectedId, route, blocked, 
     const geometry = new THREE.TubeGeometry(curve, Math.max(32, points.length), 0.06, 6, false)
     const tube = new THREE.Mesh(
       geometry,
-      new THREE.MeshBasicMaterial({ color: blocked ? 0xf59e0b : 0x38bdf8 }),
+      new THREE.MeshBasicMaterial({ color: blocked ? 0xf0a202 : 0x3b82f6 }),
     )
     state.scene.add(tube)
     state.routeLine = tube
