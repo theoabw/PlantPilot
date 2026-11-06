@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils tesseract-ocr
+      - run: uv sync --locked
+      - run: uv run pytest
+      - run: node scripts/sinceai_check.mjs
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/web/package-lock.json
+      - run: npm ci
+        working-directory: app/web
+      - run: npm run build
+        working-directory: app/web
