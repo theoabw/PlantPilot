@@ -1,6 +1,6 @@
 PY := uv run
 
-.PHONY: demo web web-build corpus models register plates scan proof test check clean
+.PHONY: demo web web-build corpus models register plates plant scan proof test check clean
 
 ## demo: build the register, then serve the API and the built web page
 demo: register
@@ -27,6 +27,10 @@ models:
 	mkdir -p data/models
 	curl -sL -o data/models/depth_anything_v2_small_q.onnx \
 	  https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model_quantized.onnx
+
+## plant: generate the synthetic reference plant, points plus ground truth
+plant:
+	$(PY) python scripts/make_plant.py
 
 ## scan: photo to point cloud, PHOTO=path/to.jpg
 scan:

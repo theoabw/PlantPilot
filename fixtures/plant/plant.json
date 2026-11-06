@@ -1,0 +1,35 @@
+{
+  "name": "Pilot hall, bay 2",
+  "note": "Synthetic reference plant for the mission demo. Metres, y is up, origin at the south west floor corner.",
+  "area": {"x0": 0.0, "x1": 16.0, "z0": 0.0, "z1": 12.0, "height": 5.0},
+  "door": {"x0": 7.0, "x1": 9.0, "z": 0.0},
+  "aisles": [
+    {"id": "west", "points": [[3.0, 1.0], [3.0, 9.0]], "width": 2.0},
+    {"id": "east", "points": [[13.8, 1.0], [13.8, 9.0]], "width": 2.0},
+    {"id": "south", "points": [[1.5, 3.0], [14.5, 3.0]], "width": 2.2},
+    {"id": "north", "points": [[2.5, 9.8], [13.5, 9.8]], "width": 1.8}
+  ],
+  "assets": [
+    {"id": "P-201", "kind": "pump", "pos": [5.2, 0.0, 3.0], "size": [1.2, 0.9, 0.8], "waypoint": [5.2, 4.4], "tag": "P-201", "interval": "1 year", "last_service": "2024-09-12", "type": "MAP-150-4", "dn": "DN 150", "pn": "PN 40", "criticality": "medium"},
+    {"id": "P-204", "kind": "pump", "pos": [10.8, 0.0, 3.0], "size": [1.2, 0.9, 0.8], "waypoint": [10.8, 4.4], "tag": "P-204", "interval": "1 year", "last_service": "2025-02-03", "type": "MAP-150-4", "dn": "DN 150", "pn": "PN 40", "criticality": "high"},
+    {"id": "M-310", "kind": "motor", "pos": [8.0, 0.0, 3.0], "size": [1.0, 0.8, 0.8], "waypoint": [8.0, 4.3], "tag": "M-310", "interval": "4 years", "last_service": "2021-06-01", "type": "NEL-100-3", "dn": "DN 100", "pn": "PN 16", "criticality": "low"},
+    {"id": "V-102", "kind": "valve", "pos": [2.6, 0.0, 5.4], "size": [0.8, 1.4, 0.8], "waypoint": [2.6, 4.6], "tag": "V-102", "interval": "1 year", "last_service": "2025-08-19", "type": "JBS-080-2", "dn": "DN 80", "pn": "PN 16", "criticality": "medium"},
+    {"id": "T-501", "kind": "tank", "pos": [6.0, 0.0, 7.0], "size": [2.8, 4.0, 2.8], "shape": "cylinder", "waypoint": [6.0, 4.6], "tag": "T-501", "interval": "4 years", "last_service": "2022-04-11", "type": "NEL-250-4", "dn": "DN 250", "pn": "PN 25", "criticality": "high"},
+    {"id": "T-502", "kind": "tank", "pos": [10.0, 0.0, 7.0], "size": [2.8, 4.0, 2.8], "shape": "cylinder", "waypoint": [10.0, 4.6], "tag": "T-502", "interval": "4 years", "last_service": "2022-04-11", "type": "NEL-250-4", "dn": "DN 250", "pn": "PN 25", "criticality": "high"},
+    {"id": "S-410", "kind": "skid", "pos": [8.0, 0.0, 7.0], "size": [1.6, 0.9, 1.2], "waypoint": [8.0, 5.4], "tag": "S-410", "interval": "1 year", "last_service": "2023-11-30", "type": "FLX-300-5", "dn": "DN 300", "pn": "PN 40", "criticality": "medium"},
+    {"id": "C-701", "kind": "cabinet", "pos": [14.0, 0.0, 4.2], "size": [1.6, 2.0, 0.6], "waypoint": [12.9, 4.2], "tag": "C-701", "interval": "4 years", "last_service": "2020-05-05", "type": "JBS-150-3", "dn": "DN 150", "pn": "PN 40", "criticality": "low"},
+    {"id": "HX-450", "kind": "hx", "pos": [13.6, 0.0, 8.6], "size": [1.5, 1.2, 0.8], "waypoint": [12.4, 8.6], "tag": "HX-450", "interval": "1 year", "last_service": "2025-01-15", "type": "NEL-100-3", "dn": "DN 100", "pn": "PN 25", "criticality": "medium"},
+    {"id": "V-203", "kind": "valve", "pos": [8.0, 0.0, 10.0], "size": [0.9, 1.5, 0.9], "waypoint": [8.0, 9.0], "tag": "V-203", "interval": "1 year", "last_service": "2024-12-02", "type": "MAP-050-1", "dn": "DN 50", "pn": "PN 40", "criticality": "high"}
+  ],
+  "pipes": [
+    {"from": [2.0, 2.8, 5.0], "to": [15.0, 2.8, 5.0], "radius": 0.18},
+    {"from": [6.0, 4.0, 7.0], "to": [10.0, 4.0, 7.0], "radius": 0.15},
+    {"from": [5.2, 2.4, 5.0], "to": [5.2, 2.4, 3.0], "radius": 0.12},
+    {"from": [8.0, 2.4, 5.0], "to": [8.0, 2.4, 3.0], "radius": 0.12},
+    {"from": [10.8, 2.4, 5.0], "to": [10.8, 2.4, 3.0], "radius": 0.12},
+    {"from": [13.8, 2.6, 5.0], "to": [13.8, 2.6, 4.2], "radius": 0.12}
+  ],
+  "blockers": [
+    {"id": "B-1", "label": "west aisle blocked by a pallet", "pos": [3.0, 0.0, 6.0], "size": [2.0, 1.2, 2.4]}
+  ]
+}

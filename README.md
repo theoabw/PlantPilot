@@ -37,6 +37,7 @@ uv sync                 # Python environment
 make models             # monocular depth model, 27 MB, once
 make corpus             # the two public Valmet PDFs into data/ and the local index
 make register           # the synthetic asset register
+make plant              # the synthetic reference plant, points plus ground truth
 make scan PHOTO=path/to/room.jpg   # photo to metric point cloud
 make demo               # http://127.0.0.1:8000
 ```
@@ -71,7 +72,7 @@ Data: the Valmet *Flow control manual* (6th edition) and *VMR003* service recomm
 | | |
 | --- | --- |
 | Real | the photographs, the depth model, the guided filter, the ArUco scale, the point cloud, the floor and occupancy grid, the routes, the OCR, the corpus, the page anchors, the timing, the offline run |
-| Synthetic | the asset register, tag text, service intervals, the work orders, the plant framing. The room is the venue or a supplied scan standing in for a plant, and the screen says which |
+| Synthetic | the asset register, tag text, service intervals, the work orders, and the reference plant geometry in `fixtures/plant/plant.json` when it is used. The screen always says which source is loaded |
 | Not attempted | LiDAR or photogrammetry capture, physics simulation, robot control, a multi-room twin, predictive maintenance |
 
 ## Limitations
