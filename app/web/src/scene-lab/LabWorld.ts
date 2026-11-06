@@ -350,11 +350,13 @@ export class LabWorld {
     this.scene.background = new THREE.Color(0x0b1220)
     this.scene.fog = new THREE.Fog(0x0b1220, 22, 46)
 
-    this.camera = new THREE.PerspectiveCamera(50, (host.clientWidth || 1) / (host.clientHeight || 1), 0.1, 120)
-    this.camera.position.set(15, 10, 14.5)
+    const viewAspect = (host.clientWidth || 1) / (host.clientHeight || 1)
+    this.camera = new THREE.PerspectiveCamera(viewAspect < 1 ? 58 : 50, viewAspect, 0.1, 120)
+    const home = this.homeView()
+    this.camera.position.copy(home.position)
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
-    this.controls.target.set(7, 0.85, 4.5)
+    this.controls.target.copy(home.target)
     this.controls.enableDamping = true
     this.controls.dampingFactor = 0.08
     this.controls.minDistance = 3
@@ -766,9 +768,24 @@ export class LabWorld {
   }
 
   overview(): void {
-    this.camera.position.set(15, 10, 14.5)
-    this.controls.target.set(7, 0.85, 4.5)
+    const home = this.homeView()
+    this.camera.position.copy(home.position)
+    this.controls.target.copy(home.target)
     this.controls.update()
+  }
+
+  private homeView(): { position: THREE.Vector3; target: THREE.Vector3 } {
+    const aspect = (this.host.clientWidth || 1) / (this.host.clientHeight || 1)
+    if (aspect < 1) {
+      return {
+        position: new THREE.Vector3(20, 14, 19),
+        target: new THREE.Vector3(7, 1.0, 4.5),
+      }
+    }
+    return {
+      position: new THREE.Vector3(15, 10, 14.5),
+      target: new THREE.Vector3(7, 0.85, 4.5),
+    }
   }
 
   setFollow(value: boolean): void {
@@ -864,6 +881,7 @@ export class LabWorld {
     this.renderer.setSize(width, height)
     this.labelRenderer.setSize(width, height)
     this.camera.aspect = width / height
+    this.camera.fov = width / height < 1 ? 58 : 50
     this.camera.updateProjectionMatrix()
   }
 

@@ -87,3 +87,21 @@
   font-size: 10px;
   font-weight: 600;
 }
+
+.scene-panel {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+.scene-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scene-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scene-panel::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: #475569;
+}
