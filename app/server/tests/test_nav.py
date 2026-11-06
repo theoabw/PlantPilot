@@ -61,6 +61,14 @@ def test_detect_floor():
     assert y_min < floor_y <= y_max
 
 
+def test_detect_floor_honours_a_negative_up_axis():
+    points = np.array([[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]])
+
+    floor_y, _, _ = nav.detect_floor(points, up_axis=1, up_axis_sign=-1)
+
+    assert floor_y < -0.5
+
+
 def test_grid_from_cloud_and_clearance():
     # Build point cloud with an obstacle at center (0, 0)
     rng = np.random.default_rng(42)

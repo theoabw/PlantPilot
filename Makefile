@@ -3,7 +3,7 @@ PY := uv run
 # The supplied capture, as delivered. `make scene` reads this file and filters
 # it itself, so the counts it prints are the counts in the delivered file. A
 # second capture is `make scene PLY=path/to/other.ply`.
-PLY ?= data/supplied/Industrial Boiler Room (1).ply
+PLY ?= data/supplied/Equipment Room.ply
 PACK_XLSX ?= data/supplied/builder_pack.xlsx
 SCENE ?= data/scene/scene.npz
 OBJECTS ?= data/scene/objects.json
@@ -24,7 +24,7 @@ PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects pack map diagnose generality proof route openapi test check clean
+.PHONY: demo web web-build corpus models register plates plant scan scene objects pack map diagnose pipeline generality proof route openapi test check clean
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -50,6 +50,9 @@ map: pack objects
 ## diagnose: build an evidence-backed diagnosis for P-005
 diagnose: pack
 	$(PY) python -m plantpilot.diagnose --pack data/scene/pack.json --out data/scene/diagnosis.json
+
+## pipeline: build the complete supplied-scene demo artifact set
+pipeline: diagnose route
 
 ## generality: run the same stages on the reference plant, score the boxes
 generality: plant
@@ -101,7 +104,7 @@ proof:
 	$(PY) python scripts/proof.py
 
 ## route: compute collision-free route to target asset with proximity samples
-route:
+route: scene objects map
 	$(PY) python scripts/make_route.py
 
 ## openapi: write the OpenAPI schema the API serves to docs/openapi.json

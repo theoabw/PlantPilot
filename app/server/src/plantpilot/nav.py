@@ -71,6 +71,7 @@ def object_footprint(obj: dict, up_axis: int = 1) -> Rect:
 def detect_floor(
     points: np.ndarray,
     up_axis: int = 1,
+    up_axis_sign: int = 1,
     bin_size_m: float = 0.05,
     manual_override: float | None = None,
 ) -> tuple[float, float, float]:
@@ -80,10 +81,10 @@ def detect_floor(
         (floor_height, min_bound, max_bound) along the up-axis.
     """
     if manual_override is not None:
-        y_vals = points[:, up_axis]
+        y_vals = points[:, up_axis] * up_axis_sign
         return float(manual_override), float(np.min(y_vals)), float(np.max(y_vals))
 
-    y_vals = points[:, up_axis]
+    y_vals = points[:, up_axis] * up_axis_sign
     valid = np.isfinite(y_vals)
     if not np.any(valid):
         return 0.0, 0.0, 1.0
@@ -156,6 +157,7 @@ class Grid:
         points: np.ndarray,
         floor_y: float,
         up_axis: int = 1,
+        up_axis_sign: int = 1,
         agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
         objects: list[dict] | None = None,
         bounds_pad_m: float = 0.5,
@@ -165,10 +167,10 @@ class Grid:
         # Horizontal axes: for up_axis=1 (y up), horizontal axes are x (0) and z (2)
         if up_axis == 1:
             h_x, h_z = points[:, 0], points[:, 2]
-            y_pts = points[:, 1]
+            y_pts = points[:, 1] * up_axis_sign
         else:
             h_x, h_z = points[:, 0], points[:, 1]
-            y_pts = points[:, 2]
+            y_pts = points[:, 2] * up_axis_sign
 
         valid = np.isfinite(h_x) & np.isfinite(h_z) & np.isfinite(y_pts)
         h_x, h_z, y_pts = h_x[valid], h_z[valid], y_pts[valid]
@@ -212,13 +214,23 @@ class Grid:
             blocked_mask=blocked,
             agent_radius_m=agent_radius_m,
         )
+        occupancy_fallback = not np.any(grid_instance.free == 1)
+        if occupancy_fallback:
+            grid_instance.blocked.fill(0)
+            grid_instance.blocked[0, :] = 1
+            grid_instance.blocked[-1, :] = 1
+            grid_instance.blocked[:, 0] = 1
+            grid_instance.blocked[:, -1] = 1
+            grid_instance.base_blocked = grid_instance.blocked.copy()
+            grid_instance._inflate()
 
-        if objects:
+        if objects and not occupancy_fallback:
             for obj in objects:
                 fp = object_footprint(obj, up_axis=up_axis)
                 grid_instance.add_rect(fp, hard=True)
             grid_instance.base_blocked = grid_instance.blocked.copy()
             grid_instance._inflate()
+        grid_instance.occupancy_fallback = occupancy_fallback
 
         return grid_instance
 
@@ -685,9 +697,14 @@ def build_route(
                 _meta_str = str(_meta_bytes)
             if _meta_str:
                 scene_meta = _json.loads(_meta_str)
-                up_axis = int(scene_meta.get("frame", {}).get("up_axis_index", 1))
+                frame = scene_meta.get("frame", {})
+                up_axis = int(frame.get("up_axis_index", 1))
+                up_axis_sign = int(frame.get("up_axis_sign", 1))
         except Exception:
             up_axis = 1
+            up_axis_sign = 1
+    else:
+        up_axis_sign = 1
 
     # Load objects if available
     objects: list[dict] = []
@@ -752,11 +769,17 @@ def build_route(
     if scene_path and scene_path.exists():
         data = np.load(scene_path)
         points = data["xyz"] if "xyz" in data else data["points"]
-        floor_y, _, _ = detect_floor(points, up_axis=up_axis, manual_override=manual_floor_y)
+        floor_y, _, _ = detect_floor(
+            points,
+            up_axis=up_axis,
+            up_axis_sign=up_axis_sign,
+            manual_override=manual_floor_y,
+        )
         grid = Grid.from_cloud(
             points=points,
             floor_y=floor_y,
             up_axis=up_axis,
+            up_axis_sign=up_axis_sign,
             agent_radius_m=agent_radius_m,
             objects=objects,
             walkable_height_max_m=walkable_height_max_m,
@@ -795,7 +818,7 @@ def build_route(
     plan_result = astar(grid, start_2d, goal_2d)
 
     # Format 3D path coordinates [x, y, z] with y snapped slightly above floor for floor arrows
-    y_render = round(floor_y + 0.05, 3)
+    y_render = round(floor_y + (0.05 * up_axis_sign), 3)
     if plan_result["reachable"]:
         raw_path = plan_result["path"]
         smoothed_2d = smooth_path(grid, raw_path)
@@ -817,7 +840,7 @@ def build_route(
 
     route_doc: dict[str, Any] = {
         "floor_height_m": round(floor_y, 3),
-        "up_axis": "y" if up_axis == 1 else "z",
+        "up_axis": ("+" if up_axis_sign == 1 else "-") + ("y" if up_axis == 1 else "z"),
         "start": [round(start_2d[0], 3), y_render, round(start_2d[1], 3)],
         "target_asset_id": target_asset_id,
         "target_object_id": target_box.get("id") if target_box else None,
@@ -836,6 +859,7 @@ def build_route(
             "resolution_m": CELL_M,
             "free_cells": free_count,
             "blocked_cells": blocked_count,
+            "occupancy_fallback": bool(getattr(grid, "occupancy_fallback", False)),
         },
     }
 
