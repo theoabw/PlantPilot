@@ -60,7 +60,9 @@ export default function RoomLab({ onLeave }: Props) {
   const mappedByObject = useMemo(() => {
     const byObject = new Map<string, MappedAsset>()
     for (const mapping of mapped?.mappings ?? []) {
-      byObject.set(mapping.object_id, mapping)
+      if (mapping.object_id) {
+        byObject.set(mapping.object_id, mapping)
+      }
     }
     return byObject
   }, [mapped])
@@ -280,18 +282,20 @@ export default function RoomLab({ onLeave }: Props) {
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Builder assets</p>
                       <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                        {mapped.counts.mapped}/{mapped.counts.assets} mapped
+                        {mapped.counts.mapped}/{mapped.counts.assets} proposed
                       </span>
                     </div>
                     <p className="mt-1 text-sm font-semibold text-slate-300">
-                      {attention.length} of {mapped.counts.mapped} need attention
+                      {attention.length} of {mapped.counts.mapped} proposed need attention
                       {faults.length > 0 ? `, ${faults.length} attention required` : ''}
                     </p>
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedId(mapped.target_object_id)
-                        setPanelOpen(true)
+                        if (mapped.target_object_id) {
+                          setSelectedId(mapped.target_object_id)
+                          setPanelOpen(true)
+                        }
                       }}
                       className="mt-2 flex w-full items-center justify-between rounded-lg border border-red-500/60 bg-red-500/10 px-2.5 py-1.5 text-left hover:border-red-400"
                     >
@@ -319,9 +323,13 @@ export default function RoomLab({ onLeave }: Props) {
                         .filter((mapping) => mapping.state !== 'healthy')
                         .map((mapping) => (
                           <button
-                            key={mapping.object_id}
+                            key={mapping.tag}
                             type="button"
-                            onClick={() => setSelectedId(mapping.object_id)}
+                            onClick={() => {
+                              if (mapping.object_id) {
+                                setSelectedId(mapping.object_id)
+                              }
+                            }}
                             className="flex w-full items-center justify-between rounded px-1.5 py-1 text-left hover:bg-slate-800/70"
                           >
                             <span className="text-xs font-black text-slate-200">{mapping.tag}</span>
@@ -359,8 +367,9 @@ export default function RoomLab({ onLeave }: Props) {
                           </span>
                         </div>
                         <p className="text-[11px] font-semibold text-slate-400">
-                          {selectedMapping.class} · {selectedMapping.issue_code.toLowerCase()} · confidence{' '}
-                          {Math.round(selectedMapping.confidence * 100)} % via {selectedMapping.method}
+                          {selectedMapping.class} · {selectedMapping.issue_code.toLowerCase()} · match score{' '}
+                          {selectedMapping.match_score?.toFixed(2) ?? selectedMapping.confidence?.toFixed(2) ?? 'unresolved'} via{' '}
+                          {selectedMapping.method} (a proposal, not a confirmed identification)
                         </p>
                       </div>
                     ) : null}

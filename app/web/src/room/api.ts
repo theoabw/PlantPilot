@@ -56,22 +56,25 @@ export type RoomObjects = {
 export type MappedAsset = {
   asset_id: string
   tag: string
-  object_id: string
+  object_id: string | null
+  status?: 'proposed' | 'unresolved'
+  match_score?: number | null
+  reason?: string | null
   class: string
   state: 'healthy' | 'degraded' | 'watch' | 'attention_required'
   issue_code: string
   method: string
-  confidence: number
-  object_class_proposal: string
+  confidence: number | null
+  object_class_proposal: string | null
 }
 
 export type RoomMapped = {
   artifact: string
   version: number
-  counts: { assets: number; mapped: number; unmapped_objects: number }
+  counts: { assets: number; mapped: number; unresolved?: number; unmapped_objects: number }
   target_asset_id: string
   target_tag: string
-  target_object_id: string
+  target_object_id: string | null
   mappings: MappedAsset[]
   unmapped_object_ids: string[]
 }
