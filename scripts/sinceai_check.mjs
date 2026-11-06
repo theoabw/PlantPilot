@@ -33,7 +33,7 @@ const EVENT = {
 /** How long before the deadline the submit phase starts. */
 const SUBMIT_WINDOW_MS = 3 * 60 * 60 * 1000
 
-/** The phase doctrine, one rule per phase. Keep in sync with AGENTS.md. */
+/** The phase doctrine, one rule per phase. */
 const PHASES = {
   prep: {
     label: 'prep',

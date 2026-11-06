@@ -54,6 +54,5 @@ restricted/
 .idea/
 .vscode/
 
-# local working notes, not part of the project
-AGENTS.md
+# local agent scratch space, not part of the project
 .agents/
