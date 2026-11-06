@@ -51,6 +51,31 @@ Both numbers are in `parameters`, and `make objects` prints them:
 - `parameters.spacing`: `spacing_m`, `floor_points`, `floor_area_m2`,
   `density_per_m2` and the method, or a reason when it could not be measured.
 
+## Why the plane band is 4 cm
+
+The splat surface is a slab about 2 cm thick, not a mathematical plane. A
+removal band narrower than the slab cuts through it and leaves a shell of the
+same wall or floor behind, and that shell is what connects unrelated parts of
+the room. Measured on the delivered capture with this stage, same voxel:
+
+| band | planes | removed as planes | objects | pipes | ducts | points in objects | largest object |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2.5 cm | 12 | 54.6 percent | 111 | 1 | 6 | 37.2 percent | 3.8 percent |
+| 4.0 cm (default) | 8 | 55.5 percent | 130 | 8 | 16 | 37.0 percent | 3.7 percent |
+
+The wider band removes the same share of the capture with fewer planes, and more
+of what is left becomes a pipe or a duct frame instead of a strip welded to a
+wall. Reproduce the narrow row with
+
+```
+uv run python -m plantpilot.segment --plane-distance 0.025 --planes 12 \
+  --max-objects 120 --out /tmp/objects-narrow.json
+```
+
+`--voxel` lowers the requested voxel size the same way. At 2 cm the delivered
+capture frames 163 objects instead of 130; the default 3 cm is what the demo
+draws at and keeps one machine from becoming several.
+
 ## The frame
 
 - Coordinates are the splat frame. Nothing is rotated, translated, rescaled or
@@ -165,12 +190,23 @@ Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
 | Rendered gaussians | 502,483 | `make scene` |
 | First invalid row | 502,483 | `make scene` |
 | Up axis | `+y`, floor slab at -0.894 | `make scene` |
-| Points removed as planes | 274,220 (54.6 percent) | `make objects` |
-| Floor height | -0.880, rms 0.013 | `make objects` |
-| Components at 3 cm | 25,385 | `make objects` |
-| Objects framed | 111 | `make objects` |
-| Largest object share | 3.8 percent of points | `make objects` |
-| Extraction time | 3.4 s | `make objects` |
+| Points removed as planes | 278,931 (55.5 percent) | `make objects` |
+| Planes removed | 8 | `make objects` |
+| Floor height | -0.877, rms 0.020 | `make objects` |
+| Point spacing on the floor | 0.014 m | `make objects` |
+| Components at 3 cm | 23,952 | `make objects` |
+| Objects framed | 130 | `make objects` |
+| Points inside objects | 37.0 percent | `make objects` |
+| Largest object share | 3.7 percent of points | `make objects` |
+| Median points per object | 431 | `make objects` |
+| Extraction time | 2.7 s | `make objects` |
+| Floor to next horizontal plane | 1.95 m (floor -0.877, next plane +1.074) | `make objects` |
+
+The 1.95 m clear height is the distance to the next strong horizontal plane, not
+to a confirmed ceiling: at +1.074 the points look like a pipe tray or duct. It
+matters for the scale check, because a 2 m door does not fit under a 1.95 m
+ceiling, so the units cannot be exactly metres unless that plane is not the
+ceiling.
 
 ## The second scene
 
@@ -186,17 +222,19 @@ Run on the plant, Friday evening:
 | Points in the capture | 141,575 |
 | Measured spacing on the floor | 0.042 m |
 | Effective voxel size | 0.058 m (requested 0.030 m) |
-| Components | 1,448 |
-| Objects framed | 86 |
+| Components | 763 |
+| Objects framed | 62 |
 | Largest object share | 4.2 percent of points |
 | Extraction time | 0.9 s |
-| Assets framed against ground truth | 9 of 10, bar is 8 |
+| Assets framed against ground truth | 10 of 10, bar is 8 |
 | Command result | PASS |
 
-The tank at T-501 is the one asset not framed: its shell merges with the pipe
-run and the split that brings the merged component under the box limits cuts it
-where the tank centre is not inside any piece. The check reports that rather
-than hiding it.
+Two honest details. The tank boxes frame the lower part of each tank, because
+the tanks (4 m tall) merge with the pipe run and the size limit cuts the merged
+shell; the check asks that a box contain the asset's centre and stay inside
+three times its footprint, not that the box be the whole asset. And the asset
+classes on this scene are weaker than on the delivered capture (a pump is
+framed as `motor`), which the check does not score.
 
 ## Not in these artifacts
 
