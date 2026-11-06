@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 from pathlib import Path
 
+import numpy as np
+
 from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, corpus, ocr, register
+from . import __version__, corpus, nav, ocr, register
 
 ROOT = Path(__file__).resolve().parents[4]
 DATA = Path(os.environ.get("PLANTPILOT_DATA", ROOT / "data"))
 FIXTURES = ROOT / "fixtures"
 INDEX_DB = DATA / "index.db"
 REGISTER_DB = DATA / "register.db"
+PLANT_SPEC = FIXTURES / "plant" / "plant.json"
+PLANT_CLOUD = DATA / "plant" / "cloud.npz"
 
 app = FastAPI(title="PlantPilot", version=__version__)
 
@@ -104,6 +110,76 @@ def asset(tag: str) -> dict:
 @app.get("/api/section/{sid}")
 def section(sid: str) -> dict:
     return {"section": corpus.section(INDEX_DB, sid)}
+
+
+def _plant_spec() -> dict:
+    return json.loads(PLANT_SPEC.read_text())
+
+
+def _start_point(spec: dict) -> list[float]:
+    door = spec["door"]
+    return [round((door["x0"] + door["x1"]) / 2.0, 3), round(door["z"] + 0.8, 3)]
+
+
+@app.get("/api/plant")
+def plant() -> dict:
+    spec = _plant_spec()
+    return {
+        "name": spec["name"],
+        "note": spec["note"],
+        "source": "synthetic reference plant",
+        "area": spec["area"],
+        "door": spec["door"],
+        "start": _start_point(spec),
+        "assets": spec["assets"],
+        "aisles": spec["aisles"],
+        "blockers": spec["blockers"],
+    }
+
+
+@app.get("/api/cloud/meta")
+def cloud_meta() -> dict:
+    if not PLANT_CLOUD.exists():
+        return {"available": False, "count": 0, "source": "synthetic reference plant"}
+    data = np.load(PLANT_CLOUD)
+    return {
+        "available": True,
+        "count": int(len(data["points"])),
+        "layout": "float32 xyz triples, then uint8 rgb triples",
+        "source": "synthetic reference plant",
+    }
+
+
+@app.get("/api/cloud")
+def cloud() -> Response:
+    if not PLANT_CLOUD.exists():
+        return Response(status_code=404, content=b"no cloud generated, run make plant")
+    data = np.load(PLANT_CLOUD)
+    points = np.ascontiguousarray(data["points"], dtype=np.float32)
+    colours = np.ascontiguousarray(data["colors"], dtype=np.uint8)
+    return Response(content=points.tobytes() + colours.tobytes(), media_type="application/octet-stream")
+
+
+@app.post("/api/route")
+def route(payload: dict) -> dict:
+    spec = _plant_spec()
+    start = payload.get("start") or _start_point(spec)
+    by_id = {a["id"]: a for a in spec["assets"]}
+    goal = payload.get("goal")
+    target_id = payload.get("to")
+    if goal is None and target_id:
+        asset = by_id.get(target_id)
+        if not asset:
+            return {"reachable": False, "reason": f"unknown asset {target_id}", "path": []}
+        goal = asset["waypoint"]
+    if goal is None:
+        return {"reachable": False, "reason": "give a goal point or an asset id", "path": []}
+    agent = float(payload.get("agent_radius_m", nav.DEFAULT_AGENT_RADIUS_M))
+    result = nav.plan(spec, start, goal, payload.get("blockers") or [], agent)
+    result["start"] = [round(float(v), 3) for v in start]
+    result["goal"] = [round(float(v), 3) for v in goal]
+    result["agent_radius_m"] = agent
+    return result
 
 
 _web = ROOT / "app" / "web" / "dist"
