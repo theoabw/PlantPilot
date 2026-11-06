@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchCloud, fetchExplain, fetchPlant, fetchRoute, inspections } from './api'
-import type { Cloud, Explain, Plant, RouteResult } from './api'
+import { fetchCloud, fetchDiagnosis, fetchExplain, fetchPlant, fetchRoute, inspections } from './api'
+import type { Cloud, Diagnosis, Explain, Plant, RouteResult } from './api'
 import PlantScene from './PlantScene'
 
 const WEST_AISLE_CLOSED = [[0.0, 4.8, 4.6, 7.2]]
@@ -16,16 +16,18 @@ export default function MissionView() {
   const [loading, setLoading] = useState(true)
   const [routeMs, setRouteMs] = useState<number | null>(null)
   const [evidence, setEvidence] = useState<Explain | null>(null)
+  const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null)
 
   useEffect(() => {
     let alive = true
-    Promise.all([fetchPlant(), fetchCloud()])
-      .then(([nextPlant, nextCloud]) => {
+    Promise.all([fetchPlant(), fetchCloud(), fetchDiagnosis()])
+      .then(([nextPlant, nextCloud, nextDiagnosis]) => {
         if (!alive) {
           return
         }
         setPlant(nextPlant)
         setCloud(nextCloud)
+        setDiagnosis(nextDiagnosis)
         setSelected(nextPlant.assets.find((asset) => asset.id === 'P-204')?.id ?? nextPlant.assets[0]?.id ?? null)
       })
       .catch((problem: Error) => alive && setError(problem.message))
@@ -99,10 +101,42 @@ export default function MissionView() {
               {plant?.source ?? '...'}
             </span>
           </div>
+
           <p className="mt-1 text-base font-semibold text-slate-700">
             {cloud ? `${cloud.count.toLocaleString()} points` : loading ? 'loading the cloud' : 'no cloud'}
             {routeMs !== null ? ` · route answered in ${routeMs} ms` : ''}
           </p>
+        </div>
+
+        <div className="rounded-xl border-2 border-slate-900 bg-white p-3">
+          <p className="text-sm font-bold uppercase tracking-wide text-slate-600">P-005 diagnosis</p>
+          {diagnosis?.available && diagnosis.target && diagnosis.issue ? (
+            <>
+              <p className="mt-1 text-lg font-black text-slate-900">
+                {diagnosis.target.tag} · health {diagnosis.health_score}
+              </p>
+              <p className="text-base font-semibold text-slate-700">
+                {diagnosis.issue.summary} ({diagnosis.issue.urgency})
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">
+                {diagnosis.data_quality?.cases ?? 0} data-quality cases · confidence {diagnosis.findings?.[0]?.confidence ?? 'n/a'}
+              </p>
+              {diagnosis.next_safe_check ? (
+                <p className="mt-2 text-base text-slate-700">
+                  Next safe check: {diagnosis.next_safe_check.action} ({diagnosis.next_safe_check.document_id})
+                </p>
+              ) : null}
+              {diagnosis.citations?.length ? (
+                <p className="mt-2 text-sm font-semibold text-slate-600">
+                  Sources: {diagnosis.citations.map((citation) => citation.title).join(', ')}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-1 text-base font-semibold text-amber-800">
+              {diagnosis?.reason ?? 'loading diagnosis'}
+            </p>
+          )}
         </div>
 
         <div className="rounded-xl border-2 border-slate-900 bg-white p-3">

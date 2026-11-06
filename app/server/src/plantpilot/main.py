@@ -23,6 +23,7 @@ REGISTER_DB = DATA / "register.db"
 PLANT_SPEC = FIXTURES / "plant" / "plant.json"
 PLANT_CLOUD = DATA / "plant" / "cloud.npz"
 ROUTE_FILE = DATA / "scene" / "route.json"
+DIAGNOSIS_FILE = DATA / "scene" / "diagnosis.json"
 
 app = FastAPI(title="PlantPilot", version=__version__)
 
@@ -69,6 +70,19 @@ def health() -> dict:
         "assets": register.count(REGISTER_DB),
         "version": __version__,
     }
+
+
+@app.get("/api/diagnosis")
+def diagnosis() -> dict:
+    if not DIAGNOSIS_FILE.exists():
+        return {
+            "available": False,
+            "reason": "no diagnosis generated, run make diagnose",
+        }
+    try:
+        return {"available": True, **json.loads(DIAGNOSIS_FILE.read_text(encoding="utf-8"))}
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"available": False, "reason": f"failed to read diagnosis.json: {exc}"}
 
 
 @app.post("/api/scan")

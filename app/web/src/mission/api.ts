@@ -98,6 +98,20 @@ export type Explain = {
   action: { part: string; action: string; interval: string; source: string } | null
 }
 
+export type Diagnosis = {
+  available: boolean
+  reason?: string
+  artifact?: string
+  target?: { asset_id: string; tag: string; class: string; area: string }
+  condition?: string
+  health_score?: number
+  issue?: { code: string; summary: string; urgency: string }
+  findings?: { finding_id: string; statement: string; confidence: number }[]
+  data_quality?: { cases: number; confidence_penalty: number }
+  citations?: { doc_id: string; title: string; content: string }[]
+  next_safe_check?: { action: string; document_id: string; reason: string }
+}
+
 export function fetchExplain(assetId: string): Promise<Explain> {
   return json<Explain>('/api/explain', {
     method: 'POST',
@@ -105,3 +119,5 @@ export function fetchExplain(assetId: string): Promise<Explain> {
     body: JSON.stringify({ asset_id: assetId }),
   })
 }
+
+export const fetchDiagnosis = () => json<Diagnosis>('/api/diagnosis')
