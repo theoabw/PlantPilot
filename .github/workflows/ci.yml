@@ -5,15 +5,37 @@ on:
   push:
     branches: [main]
 
+# What is cached, and what invalidates each cache:
+#   uv package cache   astral-sh/setup-uv, keyed on uv.lock
+#   npm tarball cache  actions/setup-node, keyed on app/web/package-lock.json
+#                      and app/web/package.json
+#   apt packages       awalsh128/cache-apt-pkgs-action, keyed on its version input
+# The test run, the type check and the vite build are rebuilt every time on
+# purpose: caching build output would let a broken build stay green.
 jobs:
   python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+
+      - name: Install uv and the Python it runs
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
-      - run: sudo apt-get update && sudo apt-get install -y poppler-utils tesseract-ocr
+          # setup-uv caches the uv package cache by default on GitHub-hosted
+          # runners. State it, and key it on the lock file, so the behaviour is
+          # visible here and survives a change of action default.
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install poppler and Tesseract from the apt cache
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
+        with:
+          packages: poppler-utils tesseract-ocr
+          # Every distinct value is a separate cache. Bump it to force a fresh
+          # download, and whenever the package list changes.
+          version: "1.0"
+
       - run: uv sync --locked
       - run: uv run pytest
       - run: node scripts/sinceai_check.mjs
@@ -26,7 +48,12 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: app/web/package-lock.json
+          # Both files decide the cache key: package-lock.json for a resolved
+          # version, package.json for a widened range that no lock change yet
+          # reflects.
+          cache-dependency-path: |
+            app/web/package-lock.json
+            app/web/package.json
       - run: npm ci
         working-directory: app/web
       - run: npm run build
