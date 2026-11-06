@@ -14,6 +14,18 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, corpus, nav, ocr, register
+from .models import (
+    AssetGraphResponse,
+    CloudMetaResponse,
+    ExplainRequest,
+    ExplainResponse,
+    HealthResponse,
+    PlantResponse,
+    RouteRequest,
+    RouteResponse,
+    ScanResponse,
+    SectionResponse,
+)
 
 ROOT = Path(__file__).resolve().parents[4]
 DATA = Path(os.environ.get("PLANTPILOT_DATA", ROOT / "data"))
@@ -62,7 +74,7 @@ _ensure_register()
 
 
 @app.get("/api/health")
-def health() -> dict:
+def health() -> HealthResponse:
     return {
         "ok": True,
         "corpus_sections": corpus.count(INDEX_DB),
@@ -72,7 +84,9 @@ def health() -> dict:
 
 
 @app.post("/api/scan")
-async def scan(frame: UploadFile = File(...), symptom: str = Form("cavitation damage")) -> dict:
+async def scan(
+    frame: UploadFile = File(...), symptom: str = Form("cavitation damage")
+) -> ScanResponse:
     data = await frame.read()
     result = ocr.analyze(data)
     empty = {"asset": None, "sections": [], "action": None}
@@ -97,7 +111,7 @@ async def scan(frame: UploadFile = File(...), symptom: str = Form("cavitation da
 
 
 @app.get("/api/assets/{tag}")
-def asset(tag: str) -> dict:
+def asset(tag: str) -> AssetGraphResponse:
     row = register.get(REGISTER_DB, tag)
     if not row:
         return {"asset": None, "neighbours": [], "shared_spares": []}
@@ -109,7 +123,7 @@ def asset(tag: str) -> dict:
 
 
 @app.get("/api/section/{sid}")
-def section(sid: str) -> dict:
+def section(sid: str) -> SectionResponse:
     return {"section": corpus.section(INDEX_DB, sid)}
 
 
@@ -122,8 +136,8 @@ def _start_point(spec: dict) -> list[float]:
     return [round((door["x0"] + door["x1"]) / 2.0, 3), round(door["z"] + 0.8, 3)]
 
 
-@app.get("/api/plant")
-def plant() -> dict:
+@app.get("/api/plant", response_model_exclude_unset=True)
+def plant() -> PlantResponse:
     spec = _plant_spec()
     return {
         "name": spec["name"],
@@ -138,8 +152,8 @@ def plant() -> dict:
     }
 
 
-@app.get("/api/cloud/meta")
-def cloud_meta() -> dict:
+@app.get("/api/cloud/meta", response_model_exclude_unset=True)
+def cloud_meta() -> CloudMetaResponse:
     if not PLANT_CLOUD.exists():
         return {"available": False, "count": 0, "source": "synthetic reference plant"}
     data = np.load(PLANT_CLOUD)
@@ -151,7 +165,14 @@ def cloud_meta() -> dict:
     }
 
 
-@app.get("/api/cloud")
+@app.get(
+    "/api/cloud",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/octet-stream": {}}},
+        404: {"description": "No cloud has been generated", "content": {"text/plain": {}}},
+    },
+)
 def cloud() -> Response:
     if not PLANT_CLOUD.exists():
         return Response(status_code=404, content=b"no cloud generated, run make plant")
@@ -184,23 +205,23 @@ def _due(asset: dict) -> dict:
     }
 
 
-@app.post("/api/explain")
-def explain(payload: dict) -> dict:
+@app.post("/api/explain", response_model_exclude_unset=True)
+def explain(payload: ExplainRequest) -> ExplainResponse:
     """The work order plus the cited reason: a section, a page and the next action."""
-    asset_id = payload.get("asset_id") or payload.get("to")
+    asset_id = payload.asset_id or payload.to
     asset = _plant_asset(str(asset_id)) if asset_id else None
     if not asset:
         return {"asset": None, "reason": f"unknown asset {asset_id}", "sections": [], "action": None}
     order = _due(asset)
-    symptom = str(payload.get("symptom") or order["symptom"])
+    symptom = payload.symptom or order["symptom"]
     query = " ".join(p for p in [symptom, asset.get("kind", ""), "valve", "maintenance"] if p)
     sections = corpus.search(INDEX_DB, query, limit=2)
     action = _next_action(ocr.family_of({"type": asset.get("type", "")}) if asset.get("type") else "NelesAce")
     return {"asset": asset, "request": {**order, "symptom": symptom}, "sections": sections, "action": action}
 
 
-@app.get("/api/route")
-def get_route() -> dict:
+@app.get("/api/route", response_model_exclude_unset=True)
+def get_route() -> RouteResponse:
     if ROUTE_FILE.exists():
         try:
             return json.loads(ROUTE_FILE.read_text())
@@ -209,13 +230,13 @@ def get_route() -> dict:
     return {"reachable": False, "reason": "no route generated, run make route", "path": []}
 
 
-@app.post("/api/route")
-def route(payload: dict) -> dict:
+@app.post("/api/route", response_model_exclude_unset=True)
+def route(payload: RouteRequest) -> RouteResponse:
     spec = _plant_spec()
-    start = payload.get("start") or _start_point(spec)
+    start = payload.start or _start_point(spec)
     by_id = {a["id"]: a for a in spec["assets"]}
-    goal = payload.get("goal")
-    target_id = payload.get("to")
+    goal = payload.goal
+    target_id = payload.to
     if goal is None and target_id:
         asset = by_id.get(target_id)
         if not asset:
@@ -223,8 +244,10 @@ def route(payload: dict) -> dict:
         goal = asset["waypoint"]
     if goal is None:
         return {"reachable": False, "reason": "give a goal point or an asset id", "path": []}
-    agent = float(payload.get("agent_radius_m", nav.DEFAULT_AGENT_RADIUS_M))
-    result = nav.plan(spec, start, goal, payload.get("blockers") or [], agent)
+    agent = payload.agent_radius_m
+    if agent is None:
+        agent = nav.DEFAULT_AGENT_RADIUS_M
+    result = nav.plan(spec, start, goal, payload.blockers or [], agent)
     result["start"] = [round(float(v), 3) for v in start]
     result["goal"] = [round(float(v), 3) for v in goal]
     result["agent_radius_m"] = agent
