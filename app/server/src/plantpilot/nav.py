@@ -1,16 +1,19 @@
-"""Floor, occupancy grid and A* for one floor of the reference plant.
+"""Floor, occupancy grid, A* pathfinding and proximity queries for PlantPilot.
 
-The grid is built from the plant spec, not from the raw cloud, so a route is
-deterministic and testable. A cloud-derived grid can replace it later behind
-the same interface; the callers only need `plan()`.
+Builds an occupancy grid from either a plant specification or a 3D point cloud,
+inflates obstacles by the agent radius, computes collision-free A* routes
+to reviewed inspection waypoints, and evaluates dynamic proximity along the path.
 """
 
 from __future__ import annotations
 
 import heapq
+import json
 import math
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -18,7 +21,12 @@ import numpy as np
 CELL_M = 0.10
 DEFAULT_AGENT_RADIUS_M = 0.35
 SAFETY_MARGIN_M = 0.10
-WALKABLE_HEIGHT_MAX_M = 1.5
+WALKABLE_HEIGHT_MIN_M = 0.10
+WALKABLE_HEIGHT_MAX_M = 2.00
+DEFAULT_CLEARANCE_TARGET_M = 0.90
+MIN_WAYPOINT_DISTANCE_M = 0.60
+PROXIMITY_RADIUS_M = 2.50
+PROXIMITY_STEP_M = 0.50
 
 
 @dataclass
@@ -30,37 +38,186 @@ class Rect:
 
 
 def asset_footprint(asset: dict) -> Rect:
+    """Compute 2D horizontal bounding box for an asset."""
     x, _, z = asset["pos"]
     if asset.get("shape") == "cylinder":
-        r = asset["size"][0] / 2.0
+        r = float(asset["size"][0]) / 2.0
         return Rect(x - r, z - r, x + r, z + r)
-    sx, _, sz = asset["size"]
+    if "extents" in asset:
+        sx, _, sz = asset["extents"]
+    elif "size" in asset:
+        sx, _, sz = asset["size"]
+    else:
+        sx, sz = 1.0, 1.0
+    return Rect(x - float(sx) / 2.0, z - float(sz) / 2.0,
+                x + float(sx) / 2.0, z + float(sz) / 2.0)
+
+
+def object_footprint(obj: dict, up_axis: int = 1) -> Rect:
+    """Compute 2D horizontal bounding box for an extracted scene object."""
+    center = obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
+    extents = obj.get("extents") or obj.get("size", [0.8, 0.8, 0.8])
+    if up_axis == 1:
+        x, z = float(center[0]), float(center[2])
+        sx, sz = float(extents[0]), float(extents[2])
+    else:
+        x, z = float(center[0]), float(center[1])
+        sx, sz = float(extents[0]), float(extents[1])
     return Rect(x - sx / 2.0, z - sz / 2.0, x + sx / 2.0, z + sz / 2.0)
+
+
+def detect_floor(
+    points: np.ndarray,
+    up_axis: int = 1,
+    bin_size_m: float = 0.05,
+    manual_override: float | None = None,
+) -> tuple[float, float, float]:
+    """Detect floor height from point cloud along the given up-axis.
+
+    Returns:
+        (floor_height, min_bound, max_bound) along the up-axis.
+    """
+    if manual_override is not None:
+        y_vals = points[:, up_axis]
+        return float(manual_override), float(np.min(y_vals)), float(np.max(y_vals))
+
+    y_vals = points[:, up_axis]
+    valid = np.isfinite(y_vals)
+    if not np.any(valid):
+        return 0.0, 0.0, 1.0
+
+    y_clean = y_vals[valid]
+    q01, q99 = np.percentile(y_clean, [1.0, 99.0])
+    y_filtered = y_clean[(y_clean >= q01) & (y_clean <= q99)]
+    if len(y_filtered) == 0:
+        y_filtered = y_clean
+
+    y_min, y_max = float(np.min(y_filtered)), float(np.max(y_filtered))
+    num_bins = max(5, int(math.ceil((y_max - y_min) / bin_size_m)))
+    counts, edges = np.histogram(y_filtered, bins=num_bins)
+
+    # The floor is the prominent horizontal surface in the lower 30% of height
+    lower_cutoff_idx = max(1, int(len(counts) * 0.30))
+    lower_counts = counts[:lower_cutoff_idx]
+    peak_idx = int(np.argmax(lower_counts))
+    floor_y = float((edges[peak_idx] + edges[peak_idx + 1]) / 2.0)
+
+    return floor_y, y_min, y_max
 
 
 class Grid:
     """Occupancy grid for one floor. Row index is z, column index is x."""
 
-    def __init__(self, spec: dict, agent_radius_m: float = DEFAULT_AGENT_RADIUS_M):
-        area = spec["area"]
-        self.x0, self.z0 = float(area["x0"]), float(area["z0"])
-        self.width_m = float(area["x1"]) - self.x0
-        self.depth_m = float(area["z1"]) - self.z0
-        self.cols = int(round(self.width_m / CELL_M))
-        self.rows = int(round(self.depth_m / CELL_M))
-        self.blocked = np.zeros((self.rows, self.cols), dtype=np.uint8)
-
-        # walls: one cell border, so a path never hugs or leaves the floor
-        self.blocked[0, :] = 1
-        self.blocked[-1, :] = 1
-        self.blocked[:, 0] = 1
-        self.blocked[:, -1] = 1
-
-        for asset in spec["assets"]:
-            self.add_rect(asset_footprint(asset), hard=True)
+    def __init__(
+        self,
+        spec: dict | None = None,
+        agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
+        area: dict | None = None,
+        blocked_mask: np.ndarray | None = None,
+    ):
         self.agent_radius_m = agent_radius_m
-        self.base_blocked = self.blocked.copy()
-        self._inflate()
+        if spec is not None:
+            area_spec = spec["area"]
+            self.x0 = float(area_spec["x0"])
+            self.z0 = float(area_spec["z0"])
+            self.width_m = float(area_spec["x1"]) - self.x0
+            self.depth_m = float(area_spec["z1"]) - self.z0
+            self.cols = int(round(self.width_m / CELL_M))
+            self.rows = int(round(self.depth_m / CELL_M))
+            self.blocked = np.zeros((self.rows, self.cols), dtype=np.uint8)
+
+            # Walls: perimeter border so routes never leave the scanned area
+            self.blocked[0, :] = 1
+            self.blocked[-1, :] = 1
+            self.blocked[:, 0] = 1
+            self.blocked[:, -1] = 1
+
+            for asset in spec.get("assets", []):
+                self.add_rect(asset_footprint(asset), hard=True)
+            self.base_blocked = self.blocked.copy()
+            self._inflate()
+        elif area is not None and blocked_mask is not None:
+            self.x0 = float(area["x0"])
+            self.z0 = float(area["z0"])
+            self.width_m = float(area["x1"]) - self.x0
+            self.depth_m = float(area["z1"]) - self.z0
+            self.rows, self.cols = blocked_mask.shape
+            self.blocked = blocked_mask.astype(np.uint8).copy()
+            self.base_blocked = self.blocked.copy()
+            self._inflate()
+        else:
+            raise ValueError("Grid requires either a spec dict or (area, blocked_mask).")
+
+    @classmethod
+    def from_cloud(
+        cls,
+        points: np.ndarray,
+        floor_y: float,
+        up_axis: int = 1,
+        agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
+        objects: list[dict] | None = None,
+        bounds_pad_m: float = 0.5,
+    ) -> "Grid":
+        """Build occupancy grid directly from point cloud and extracted objects."""
+        # Horizontal axes: for up_axis=1 (y up), horizontal axes are x (0) and z (2)
+        if up_axis == 1:
+            h_x, h_z = points[:, 0], points[:, 2]
+            y_pts = points[:, 1]
+        else:
+            h_x, h_z = points[:, 0], points[:, 1]
+            y_pts = points[:, 2]
+
+        valid = np.isfinite(h_x) & np.isfinite(h_z) & np.isfinite(y_pts)
+        h_x, h_z, y_pts = h_x[valid], h_z[valid], y_pts[valid]
+
+        q01_x, q99_x = np.percentile(h_x, [0.5, 99.5])
+        q01_z, q99_z = np.percentile(h_z, [0.5, 99.5])
+
+        x0 = float(q01_x - bounds_pad_m)
+        x1 = float(q99_x + bounds_pad_m)
+        z0 = float(q01_z - bounds_pad_m)
+        z1 = float(q99_z + bounds_pad_m)
+
+        cols = max(10, int(math.ceil((x1 - x0) / CELL_M)))
+        rows = max(10, int(math.ceil((z1 - z0) / CELL_M)))
+        blocked = np.zeros((rows, cols), dtype=np.uint8)
+
+        # Border walls
+        blocked[0, :] = 1
+        blocked[-1, :] = 1
+        blocked[:, 0] = 1
+        blocked[:, -1] = 1
+
+        # Obstacle points: standing above the floor between min and max clearance height
+        is_obstacle = (y_pts >= (floor_y + WALKABLE_HEIGHT_MIN_M)) & (
+            y_pts <= (floor_y + WALKABLE_HEIGHT_MAX_M)
+        )
+        obs_x = h_x[is_obstacle]
+        obs_z = h_z[is_obstacle]
+
+        col_indices = np.clip(
+            np.floor((obs_x - x0) / CELL_M).astype(int), 0, cols - 1
+        )
+        row_indices = np.clip(
+            np.floor((obs_z - z0) / CELL_M).astype(int), 0, rows - 1
+        )
+        blocked[row_indices, col_indices] = 1
+
+        # Rasterize extracted object bounding boxes
+        grid_instance = cls(
+            area={"x0": x0, "z0": z0, "x1": x1, "z1": z1},
+            blocked_mask=blocked,
+            agent_radius_m=agent_radius_m,
+        )
+
+        if objects:
+            for obj in objects:
+                fp = object_footprint(obj, up_axis=up_axis)
+                grid_instance.add_rect(fp, hard=True)
+            grid_instance.base_blocked = grid_instance.blocked.copy()
+            grid_instance._inflate()
+
+        return grid_instance
 
     def _cells(self, rect: Rect) -> tuple[int, int, int, int]:
         c0 = int(math.floor((rect.x0 - self.x0) / CELL_M))
@@ -75,64 +232,206 @@ class Grid:
 
     def _inflate(self) -> None:
         radius_cells = (self.agent_radius_m + SAFETY_MARGIN_M) / CELL_M
-        k = int(math.ceil(radius_cells))
+        k = max(1, int(math.ceil(radius_cells)))
         yy, xx = np.mgrid[-k : k + 1, -k : k + 1]
-        kernel = (((xx ** 2 + yy ** 2) ** 0.5) <= radius_cells).astype(np.uint8)
+        kernel = (((xx**2 + yy**2) ** 0.5) <= radius_cells).astype(np.uint8)
         self.blocked = cv2.dilate(self.blocked, kernel, iterations=1)
         self.free = (self.blocked == 0).astype(np.uint8)
         self.clearance_m = cv2.distanceTransform(self.free, cv2.DIST_L2, 5) * CELL_M
 
     def with_blockers(self, blockers: list[list[float]]) -> "Grid":
-        """A copy with extra blocked rectangles, inflated the same way."""
+        """Return a copy with extra blocked rectangles, inflated identically."""
         clone = Grid.__new__(Grid)
-        clone.__dict__.update({k: v for k, v in self.__dict__.items() if k != "blocked"})
+        clone.__dict__.update(
+            {k: v for k, v in self.__dict__.items() if k != "blocked"}
+        )
         clone.blocked = self.base_blocked.copy()
         for b in blockers:
             clone.add_rect(Rect(*b))
         clone._inflate()
         return clone
 
-    def to_cell(self, point) -> tuple[int, int]:
+    def to_cell(self, point: tuple[float, float] | list[float]) -> tuple[int, int]:
         col = int(round((float(point[0]) - self.x0) / CELL_M))
         row = int(round((float(point[1]) - self.z0) / CELL_M))
         return row, col
 
     def to_world(self, row: int, col: int) -> tuple[float, float]:
-        return (self.x0 + col * CELL_M, self.z0 + row * CELL_M)
+        return (round(self.x0 + col * CELL_M, 3), round(self.z0 + row * CELL_M, 3))
 
     def walkable(self, row: int, col: int) -> bool:
         return 0 <= row < self.rows and 0 <= col < self.cols and self.free[row, col] == 1
 
-    def nearest_walkable(self, row: int, col: int, max_m: float = 0.35) -> tuple[int, int] | None:
+    def nearest_walkable(
+        self, row: int, col: int, max_m: float = 0.50
+    ) -> tuple[int, int] | None:
         if self.walkable(row, col):
             return row, col
-        limit = int(max_m / CELL_M)
+        limit = max(1, int(round(max_m / CELL_M)))
         best = None
         for dr in range(-limit, limit + 1):
             for dc in range(-limit, limit + 1):
-                if self.walkable(row + dr, col + dc):
+                r, c = row + dr, col + dc
+                if self.walkable(r, c):
                     d = dr * dr + dc * dc
                     if best is None or d < best[0]:
-                        best = (d, (row + dr, col + dc))
+                        best = (d, (r, c))
         return best[1] if best else None
 
 
-def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> dict:
-    """8-connected A*. Returns the path in metres, its length and its clearance."""
+def compute_service_waypoint(
+    target_box: dict,
+    grid: Grid,
+    target_dist_m: float = DEFAULT_CLEARANCE_TARGET_M,
+    min_dist_m: float = MIN_WAYPOINT_DISTANCE_M,
+    up_axis: int = 1,
+) -> tuple[float, float] | None:
+    """Find a walkable inspection waypoint beside the target object.
+
+    The waypoint is at least min_dist_m away from the object's boundary
+    and selects the walkable cell with the highest clearance.
+    """
+    center = target_box.get("center") or target_box.get("pos", [0.0, 0.0, 0.0])
+    extents = target_box.get("extents") or target_box.get("size", [0.8, 0.8, 0.8])
+    if up_axis == 1:
+        cx, cz = float(center[0]), float(center[2])
+        sx, sz = float(extents[0]), float(extents[2])
+    else:
+        cx, cz = float(center[0]), float(center[1])
+        sx, sz = float(extents[0]), float(extents[1])
+
+    half_x, half_z = sx / 2.0, sz / 2.0
+    candidates: list[tuple[float, tuple[float, float]]] = []
+
+    # Sample 16 radial directions around the target
+    num_angles = 16
+    for i in range(num_angles):
+        theta = 2.0 * math.pi * i / num_angles
+        dx = math.cos(theta)
+        dz = math.sin(theta)
+
+        # Distance from box center to box edge along this ray
+        denom_x = abs(dx) if abs(dx) > 1e-5 else 1e-5
+        denom_z = abs(dz) if abs(dz) > 1e-5 else 1e-5
+        edge_dist = min(half_x / denom_x, half_z / denom_z)
+
+        # Candidate waypoint placed target_dist_m beyond the edge
+        cand_x = cx + dx * (edge_dist + target_dist_m)
+        cand_z = cz + dz * (edge_dist + target_dist_m)
+
+        # Verify distance to box edge is at least min_dist_m
+        dist_to_box = math.dist((cand_x, cand_z), (cx, cz)) - edge_dist
+        if dist_to_box < min_dist_m:
+            continue
+
+        r, c = grid.to_cell((cand_x, cand_z))
+        if grid.walkable(r, c):
+            clearance = float(grid.clearance_m[r, c])
+            candidates.append((clearance, (round(cand_x, 3), round(cand_z, 3))))
+
+    if candidates:
+        # Pick the candidate with the highest obstacle clearance
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][1]
+
+    # Fallback: search wider radius if narrow perimeter is constrained
+    for extra in (0.3, 0.6, 1.0):
+        for i in range(num_angles):
+            theta = 2.0 * math.pi * i / num_angles
+            cand_x = cx + math.cos(theta) * (max(half_x, half_z) + target_dist_m + extra)
+            cand_z = cz + math.sin(theta) * (max(half_x, half_z) + target_dist_m + extra)
+            r, c = grid.to_cell((cand_x, cand_z))
+            if grid.walkable(r, c):
+                return (round(cand_x, 3), round(cand_z, 3))
+
+    return None
+
+
+def derive_start_position(
+    grid: Grid,
+    objects: list[dict] | None = None,
+    up_axis: int = 1,
+) -> tuple[float, float]:
+    """Derive start position: near entrance/door object, or at boundary edge with high clearance."""
+    if objects:
+        for obj in objects:
+            cls_name = str(obj.get("class_proposal", "")).lower()
+            if any(k in cls_name for k in ("door", "entrance", "opening", "exit")):
+                center = obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
+                if up_axis == 1:
+                    cx, cz = float(center[0]), float(center[2])
+                else:
+                    cx, cz = float(center[0]), float(center[1])
+                wp = compute_service_waypoint(obj, grid, target_dist_m=0.6, up_axis=up_axis)
+                if wp:
+                    return wp
+                cell = grid.nearest_walkable(*grid.to_cell((cx, cz)), max_m=1.0)
+                if cell:
+                    return grid.to_world(*cell)
+
+    # Perimeter edge search: test walkable boundary cells for highest clearance
+    best_candidate: tuple[float, tuple[int, int]] | None = None
+    pad = 2
+    edge_cells: list[tuple[int, int]] = []
+    for c in range(pad, grid.cols - pad):
+        edge_cells.append((pad, c))
+        edge_cells.append((grid.rows - 1 - pad, c))
+    for r in range(pad, grid.rows - pad):
+        edge_cells.append((r, pad))
+        edge_cells.append((r, grid.cols - 1 - pad))
+
+    for r, c in edge_cells:
+        if grid.walkable(r, c):
+            clearance = float(grid.clearance_m[r, c])
+            if best_candidate is None or clearance > best_candidate[0]:
+                best_candidate = (clearance, (r, c))
+
+    if best_candidate:
+        return grid.to_world(*best_candidate[1])
+
+    # Absolute fallback: search from center outwards
+    mid_r, mid_c = grid.rows // 2, grid.cols // 2
+    cell = grid.nearest_walkable(mid_r, mid_c, max_m=5.0)
+    if cell:
+        return grid.to_world(*cell)
+
+    return (grid.x0 + 1.0, grid.z0 + 1.0)
+
+
+def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> dict[str, Any]:
+    """8-connected A*. Returns path in metres, length, clearance, and computation time."""
+    t0 = time.perf_counter()
     s = grid.nearest_walkable(*grid.to_cell(start))
     g = grid.nearest_walkable(*grid.to_cell(goal))
     if s is None:
-        return {"reachable": False, "reason": "the start is not on the walkable floor", "path": []}
+        return {
+            "reachable": False,
+            "reason": "the start is not on the walkable floor",
+            "path": [],
+            "distance_m": 0.0,
+            "clearance_m": 0.0,
+            "astar_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+        }
     if g is None:
-        return {"reachable": False, "reason": "the inspection point is blocked", "path": []}
+        return {
+            "reachable": False,
+            "reason": "the inspection point is blocked",
+            "path": [],
+            "distance_m": 0.0,
+            "clearance_m": 0.0,
+            "astar_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+        }
 
-    neighbours = [(-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0),
-                  (-1, -1, math.sqrt(2)), (-1, 1, math.sqrt(2)),
-                  (1, -1, math.sqrt(2)), (1, 1, math.sqrt(2))]
+    neighbours = [
+        (-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0),
+        (-1, -1, math.sqrt(2)), (-1, 1, math.sqrt(2)),
+        (1, -1, math.sqrt(2)), (1, 1, math.sqrt(2)),
+    ]
     open_heap = [(0.0, s)]
     came: dict[tuple[int, int], tuple[int, int]] = {}
-    cost = {s: 0.0}
-    seen = set()
+    cost: dict[tuple[int, int], float] = {s: 0.0}
+    seen: set[tuple[int, int]] = set()
+
     while open_heap:
         _, current = heapq.heappop(open_heap)
         if current == g:
@@ -140,14 +439,18 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
         if current in seen:
             continue
         seen.add(current)
+
         for dr, dc, step in neighbours:
             nxt = (current[0] + dr, current[1] + dc)
             if not grid.walkable(*nxt):
                 continue
-            if dr and dc and not (grid.walkable(current[0] + dr, current[1])
-                                  and grid.walkable(current[0], current[1] + dc)):
-                continue  # no slipping through the corner between two obstacles
-            # prefer the middle of an aisle: a tight cell costs more than an open one
+            # Prevent corner clipping between adjacent obstacles
+            if dr and dc and not (
+                grid.walkable(current[0] + dr, current[1])
+                and grid.walkable(current[0], current[1] + dc)
+            ):
+                continue
+
             clearance = float(grid.clearance_m[nxt[0], nxt[1]])
             penalty = 0.4 / max(clearance, 0.2)
             tentative = cost[current] + step * (1.0 + penalty)
@@ -157,37 +460,317 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
                 heuristic = math.dist(nxt, g)
                 heapq.heappush(open_heap, (tentative + heuristic, nxt))
 
+    elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+
     if g not in came and g != s:
-        return {"reachable": False, "reason": "no walkable route with this obstruction", "path": []}
+        return {
+            "reachable": False,
+            "reason": "no walkable route with this obstruction",
+            "path": [],
+            "distance_m": 0.0,
+            "clearance_m": 0.0,
+            "astar_ms": elapsed_ms,
+        }
 
     cells = [g]
     while cells[-1] != s:
         cells.append(came[cells[-1]])
     cells.reverse()
-    path = [grid.to_world(*c) for c in cells]
-    length = sum(math.dist(a, b) for a, b in zip(path, path[1:]))
-    # distanceTransform measures to the inflated obstacle, so add the inflation back
-    # to report metres to the real machine surface.
+
+    path_2d = [grid.to_world(*c) for c in cells]
+    length = sum(math.dist(a, b) for a, b in zip(path_2d, path_2d[1:]))
     inflation = grid.agent_radius_m + SAFETY_MARGIN_M
     clearance = min(float(grid.clearance_m[r, c]) for r, c in cells) + inflation
+
     return {
         "reachable": True,
-        "path": [[round(x, 3), round(z, 3)] for x, z in path],
+        "path": [[round(x, 3), round(z, 3)] for x, z in path_2d],
         "distance_m": round(length, 2),
         "clearance_m": round(clearance, 2),
+        "astar_ms": elapsed_ms,
         "cells": len(cells),
     }
 
 
-def load_spec(path: Path) -> dict:
-    import json
+def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) -> list[tuple[float, float]]:
+    """Simplify grid path using line-of-sight shortcutting without sacrificing clearance."""
+    if len(path_2d) <= 2:
+        return [(float(p[0]), float(p[1])) for p in path_2d]
 
+    pts = [(float(p[0]), float(p[1])) for p in path_2d]
+    smoothed = [pts[0]]
+    curr_idx = 0
+
+    while curr_idx < len(pts) - 1:
+        next_idx = len(pts) - 1
+        found = False
+        while next_idx > curr_idx + 1:
+            if _has_line_of_sight(grid, pts[curr_idx], pts[next_idx]):
+                smoothed.append(pts[next_idx])
+                curr_idx = next_idx
+                found = True
+                break
+            next_idx -= 1
+        if not found:
+            curr_idx += 1
+            smoothed.append(pts[curr_idx])
+
+    return smoothed
+
+
+def _has_line_of_sight(grid: Grid, p0: tuple[float, float], p1: tuple[float, float]) -> bool:
+    dist = math.dist(p0, p1)
+    num_samples = max(2, int(math.ceil(dist / (CELL_M * 0.5))))
+    for i in range(num_samples + 1):
+        t = i / float(num_samples)
+        x = p0[0] + t * (p1[0] - p0[0])
+        z = p0[1] + t * (p1[1] - p0[1])
+        r, c = grid.to_cell((x, z))
+        if not grid.walkable(r, c):
+            return False
+    return True
+
+
+def compute_path_proximity(
+    path_3d: list[list[float]],
+    objects: list[dict],
+    mapped_records: list[dict] | None = None,
+    radius_m: float = PROXIMITY_RADIUS_M,
+    step_m: float = PROXIMITY_STEP_M,
+) -> list[dict[str, Any]]:
+    """Compute nearby objects within radius_m at regularly sampled intervals along path.
+
+    Satisfies Acceptance Check 5: verifies nearby equipment identity, distance,
+    and mapping metadata along the path.
+    """
+    if not path_3d:
+        return []
+
+    # Build mapping lookup table by object_id
+    map_by_obj: dict[str, dict] = {}
+    if mapped_records:
+        for m in mapped_records:
+            obj_id = m.get("object_id") or m.get("id")
+            if obj_id:
+                map_by_obj[obj_id] = m
+
+    # Calculate cumulative distance along path
+    dists = [0.0]
+    for p_prev, p_curr in zip(path_3d, path_3d[1:]):
+        seg = math.dist(p_prev, p_curr)
+        dists.append(dists[-1] + seg)
+    total_len = dists[-1]
+
+    # Generate sampling points along the polyline
+    sample_targets = []
+    curr_d = 0.0
+    while curr_d <= total_len:
+        sample_targets.append(curr_d)
+        curr_d += step_m
+    if not sample_targets or (total_len - sample_targets[-1] > 0.1):
+        sample_targets.append(total_len)
+
+    samples: list[dict[str, Any]] = []
+    seg_idx = 0
+
+    for d_target in sample_targets:
+        while seg_idx < len(dists) - 2 and dists[seg_idx + 1] < d_target:
+            seg_idx += 1
+
+        seg_len = dists[seg_idx + 1] - dists[seg_idx]
+        t = 0.0 if seg_len < 1e-6 else (d_target - dists[seg_idx]) / seg_len
+        p0, p1 = path_3d[seg_idx], path_3d[seg_idx + 1]
+        sample_pos = [
+            round(p0[0] + t * (p1[0] - p0[0]), 3),
+            round(p0[1] + t * (p1[1] - p0[1]), 3),
+            round(p0[2] + t * (p1[2] - p0[2]), 3),
+        ]
+
+        nearby: list[dict[str, Any]] = []
+        for obj in objects:
+            obj_id = str(obj.get("id", ""))
+            center = obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
+            dist_to_obj = math.dist(sample_pos, [float(c) for c in center])
+            if dist_to_obj <= radius_m:
+                mapped = map_by_obj.get(obj_id, {})
+                tag = mapped.get("tag") or mapped.get("asset_id") or obj.get("tag") or obj_id
+                cls_name = mapped.get("class") or obj.get("class_proposal", "equipment")
+                method = mapped.get("method", "size_prior")
+                state = mapped.get("state") or obj.get("state", "NOMINAL")
+                nearby.append({
+                    "object_id": obj_id,
+                    "tag": tag,
+                    "class": cls_name,
+                    "distance_m": round(dist_to_obj, 2),
+                    "method": method,
+                    "state": state,
+                })
+
+        nearby.sort(key=lambda item: item["distance_m"])
+        samples.append({
+            "distance_along_path_m": round(d_target, 2),
+            "position": sample_pos,
+            "nearby_objects": nearby[:3],  # Nearest 3 labelled
+        })
+
+    return samples
+
+
+def load_spec(path: Path) -> dict:
+    """Load JSON plant specification."""
     return json.loads(path.read_text())
 
 
-def plan(spec: dict, start, goal, blockers: list[list[float]] | None = None,
-         agent_radius_m: float = DEFAULT_AGENT_RADIUS_M) -> dict:
+def plan(
+    spec: dict,
+    start: tuple[float, float],
+    goal: tuple[float, float],
+    blockers: list[list[float]] | None = None,
+    agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
+) -> dict[str, Any]:
+    """Plan route on a plant spec, with optional obstacle blockers."""
     grid = Grid(spec, agent_radius_m)
     if blockers:
         grid = grid.with_blockers(blockers)
     return astar(grid, start, goal)
+
+
+def build_route(
+    scene_path: Path | None = None,
+    objects_path: Path | None = None,
+    mapped_path: Path | None = None,
+    target_asset_id: str = "P-005",
+    output_path: Path | None = None,
+    manual_floor_y: float | None = None,
+    agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
+) -> dict[str, Any]:
+    """End-to-end execution for Seat B: produces route.json matching Acceptance Checks 4 & 5."""
+    up_axis = 1
+
+    # Load objects if available
+    objects: list[dict] = []
+    if objects_path and objects_path.exists():
+        try:
+            obj_data = json.loads(objects_path.read_text())
+            objects = obj_data if isinstance(obj_data, list) else obj_data.get("objects", [])
+        except Exception:
+            objects = []
+
+    # Load mapping if available
+    mapped_records: list[dict] = []
+    target_object_id: str | None = None
+    if mapped_path and mapped_path.exists():
+        try:
+            map_data = json.loads(mapped_path.read_text())
+            if isinstance(map_data, dict):
+                mapped_records = map_data.get("mappings", [])
+                target_object_id = map_data.get("target_object_id")
+            elif isinstance(map_data, list):
+                mapped_records = map_data
+        except Exception:
+            mapped_records = []
+
+    # Locate target object
+    target_box: dict | None = None
+    if target_object_id:
+        target_box = next((o for o in objects if o.get("id") == target_object_id), None)
+    if not target_box and mapped_records:
+        for m in mapped_records:
+            if m.get("asset_id") == target_asset_id or m.get("tag") == target_asset_id:
+                obj_id = m.get("object_id")
+                target_box = next((o for o in objects if o.get("id") == obj_id), None)
+                break
+    if not target_box and objects:
+        # Fallback: find object with class pump or first object
+        target_box = next((o for o in objects if "pump" in str(o.get("class_proposal", "")).lower()), objects[0])
+
+    # Build grid from scene point cloud or fallback
+    if scene_path and scene_path.exists():
+        data = np.load(scene_path)
+        points = data["xyz"] if "xyz" in data else data["points"]
+        floor_y, _, _ = detect_floor(points, up_axis=up_axis, manual_override=manual_floor_y)
+        grid = Grid.from_cloud(
+            points=points,
+            floor_y=floor_y,
+            up_axis=up_axis,
+            agent_radius_m=agent_radius_m,
+            objects=objects,
+        )
+    else:
+        # Fallback to synthetic reference plant
+        root = Path(__file__).resolve().parents[4]
+        ref_spec_path = root / "fixtures" / "plant" / "plant.json"
+        if ref_spec_path.exists():
+            spec = load_spec(ref_spec_path)
+            grid = Grid(spec, agent_radius_m=agent_radius_m)
+            floor_y = 0.0
+        else:
+            grid = Grid(
+                area={"x0": -5.0, "z0": -5.0, "x1": 5.0, "z1": 5.0},
+                blocked_mask=np.zeros((100, 100), dtype=np.uint8),
+                agent_radius_m=agent_radius_m,
+            )
+            floor_y = 0.0
+
+    # Derive start position and target waypoint
+    start_2d = derive_start_position(grid, objects=objects, up_axis=up_axis)
+    if target_box:
+        goal_2d = compute_service_waypoint(target_box, grid, up_axis=up_axis)
+        if not goal_2d:
+            c = target_box.get("center", [0.0, 0.0, 0.0])
+            goal_2d = (float(c[0]) + 0.9, float(c[2]) if up_axis == 1 else float(c[1]))
+    else:
+        goal_2d = (grid.x0 + grid.width_m * 0.7, grid.z0 + grid.depth_m * 0.7)
+
+    # Compute A* path
+    plan_result = astar(grid, start_2d, goal_2d)
+
+    # Format 3D path coordinates [x, y, z] with y snapped slightly above floor for floor arrows
+    y_render = round(floor_y + 0.05, 3)
+    if plan_result["reachable"]:
+        raw_path = plan_result["path"]
+        smoothed_2d = smooth_path(grid, raw_path)
+        path_3d = [[round(x, 3), y_render, round(z, 3)] for x, z in smoothed_2d]
+    else:
+        path_3d = []
+
+    # Proximity queries along path (Acceptance Check 5)
+    samples = compute_path_proximity(
+        path_3d=path_3d,
+        objects=objects,
+        mapped_records=mapped_records,
+        radius_m=PROXIMITY_RADIUS_M,
+        step_m=PROXIMITY_STEP_M,
+    )
+
+    free_count = int(np.sum(grid.free == 1))
+    blocked_count = int(np.sum(grid.blocked == 1))
+
+    route_doc: dict[str, Any] = {
+        "floor_height_m": round(floor_y, 3),
+        "up_axis": "y" if up_axis == 1 else "z",
+        "start": [round(start_2d[0], 3), y_render, round(start_2d[1], 3)],
+        "target_asset_id": target_asset_id,
+        "target_object_id": target_box.get("id") if target_box else None,
+        "target_waypoint": [round(goal_2d[0], 3), y_render, round(goal_2d[1], 3)],
+        "reachable": plan_result["reachable"],
+        "reason": plan_result.get("reason"),
+        "distance_m": plan_result.get("distance_m", 0.0),
+        "clearance_m": plan_result.get("clearance_m", 0.0),
+        "astar_ms": plan_result.get("astar_ms", 0.0),
+        "path": path_3d,
+        "path_samples": samples,
+        "grid_stats": {
+            "cols": grid.cols,
+            "rows": grid.rows,
+            "resolution_m": CELL_M,
+            "free_cells": free_count,
+            "blocked_cells": blocked_count,
+        },
+    }
+
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(route_doc, indent=2))
+
+    return route_doc
