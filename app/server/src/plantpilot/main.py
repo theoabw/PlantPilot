@@ -36,7 +36,6 @@ REGISTER_DB = DATA / "register.db"
 PLANT_SPEC = FIXTURES / "plant" / "plant.json"
 PLANT_CLOUD = DATA / "plant" / "cloud.npz"
 ROUTE_FILE = DATA / "scene" / "route.json"
-DIAGNOSIS_FILE = DATA / "scene" / "diagnosis.json"
 # The scene artifacts the room view reads. They are written by make scene,
 # make objects, make map and make splat-asset, never committed. PLANTPILOT_SCENE
 # and PLANTPILOT_SPLAT point the room at another capture, for example
@@ -45,6 +44,7 @@ SCENE_DIR = Path(os.environ.get("PLANTPILOT_SCENE", DATA / "scene"))
 OBJECTS_FILE = SCENE_DIR / "objects.json"
 MAPPED_FILE = SCENE_DIR / "mapped.json"
 ROUTE_ARTIFACT = SCENE_DIR / "route.json"
+DIAGNOSIS_FILE = SCENE_DIR / "diagnosis.json"
 SPLAT_ASSET = Path(os.environ.get("PLANTPILOT_SPLAT", DATA / "viewer" / "room.ply"))
 
 app = FastAPI(title="PlantPilot", version=__version__)

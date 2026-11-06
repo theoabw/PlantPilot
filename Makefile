@@ -1,15 +1,34 @@
 PY := uv run
 
-# The supplied capture, as delivered. `make scene` reads this file and filters
-# it itself, so the counts it prints are the counts in the delivered file. A
-# second capture is `make scene PLY=path/to/other.ply`.
-PLY ?= data/supplied/Equipment Room.ply
+# Which supplied capture the demo uses. `boiler` is the capture the challenge
+# names and the default; `equipment` is the complete capture of the same kind of
+# room. The choice sets every artifact path, so
+#   make demo CAPTURE=equipment
+# runs the second scene with no other overrides.
+CAPTURE ?= boiler
+ifeq ($(CAPTURE),equipment)
+CAPTURE_DIR ?= data/equipment
+CAPTURE_PLY ?= data/supplied/Equipment Room.ply
+VIEWER_PLY ?= data/viewer/equipment.ply
+else ifeq ($(CAPTURE),boiler)
+CAPTURE_DIR ?= data/scene
+CAPTURE_PLY ?= data/supplied/Industrial Boiler Room (1).ply
+VIEWER_PLY ?= data/viewer/boiler.ply
+else
+$(error CAPTURE must be boiler or equipment, got '$(CAPTURE)')
+endif
+
+PLY ?= $(CAPTURE_PLY)
 PACK_XLSX ?= data/supplied/builder_pack.xlsx
-SCENE ?= data/scene/scene.npz
-OBJECTS ?= data/scene/objects.json
-PREVIEW ?= data/scene/preview.png
-OBJECTS_TOP ?= data/scene/objects_top.png
-OBJECTS_VIEW ?= data/scene/objects_view.png
+PACK ?= $(CAPTURE_DIR)/pack.json
+SCENE ?= $(CAPTURE_DIR)/scene.npz
+OBJECTS ?= $(CAPTURE_DIR)/objects.json
+MAPPED ?= $(CAPTURE_DIR)/mapped.json
+ROUTE ?= $(CAPTURE_DIR)/route.json
+DIAGNOSIS ?= $(CAPTURE_DIR)/diagnosis.json
+PREVIEW ?= $(CAPTURE_DIR)/preview.png
+OBJECTS_TOP ?= $(CAPTURE_DIR)/objects_top.png
+OBJECTS_VIEW ?= $(CAPTURE_DIR)/objects_view.png
 
 # The preview renderer draws native gaussian splats, which is slower than the
 # point debug view and is what makes the room read as surfaces. This is the
@@ -18,8 +37,8 @@ SPLAT_GAUSSIANS ?= 500000
 PREVIEW_WIDTH ?= 1400
 PREVIEW_HEIGHT ?= 900
 
-# The browser viewer's copy of the capture: sane prefix only, core properties only.
-VIEWER_PLY ?= data/viewer/room.ply
+# The browser viewer's copy of the capture: sane prefix only, core properties
+# only. VIEWER_PLY is set by CAPTURE above.
 
 # The second scene for the scene-agnostic check: the synthetic reference plant,
 # written as a 3DGS PLY so the same stages run on it unchanged.
@@ -46,20 +65,20 @@ objects:
 splat-asset:
 	$(PY) python scripts/make_splat_asset.py --ply "$(PLY)" --out $(VIEWER_PLY)
 
-## pack: convert the supplied builder workbook into data/scene/pack.json
+## pack: convert the supplied builder workbook into the capture's pack.json
 pack:
-	$(PY) python -m plantpilot.pack --xlsx "$(PACK_XLSX)" --out data/scene/pack.json
+	$(PY) python -m plantpilot.pack --xlsx "$(PACK_XLSX)" --out $(PACK)
 
 ## map: assign builder-pack assets to distinct extracted objects
 map: pack objects
-	$(PY) python -m plantpilot.mapping --pack data/scene/pack.json --objects $(OBJECTS) --out data/scene/mapped.json
+	$(PY) python -m plantpilot.mapping --pack $(PACK) --objects $(OBJECTS) --out $(MAPPED)
 
 ## diagnose: build an evidence-backed diagnosis for P-005
 diagnose: pack
-	$(PY) python -m plantpilot.diagnose --pack data/scene/pack.json --out data/scene/diagnosis.json
+	$(PY) python -m plantpilot.diagnose --pack $(PACK) --out $(DIAGNOSIS)
 
-## pipeline: build the complete supplied-scene demo artifact set
-pipeline: diagnose route splat-asset
+## pipeline: build every artifact the room view needs for CAPTURE
+pipeline: scene objects map diagnose route splat-asset
 
 ## generality: run the same stages on the reference plant, score the boxes
 generality: plant
@@ -68,9 +87,10 @@ generality: plant
 	$(PY) python -m plantpilot.segment --scene $(PLANT_SCENE) --out $(PLANT_OBJECTS)
 	$(PY) python scripts/plant_generality.py --objects $(PLANT_OBJECTS)
 
-## demo: build the register, then serve the API and the built web page
-demo: register
-	$(PY) uvicorn plantpilot.main:app --host 127.0.0.1 --port 8000 --app-dir app/server/src
+## demo: build CAPTURE's artifacts and the web page, then serve both
+demo: pipeline web-build register
+	PLANTPILOT_SCENE=$(CAPTURE_DIR) PLANTPILOT_SPLAT=$(VIEWER_PLY) \
+	  $(PY) uvicorn plantpilot.main:app --host 127.0.0.1 --port 8000 --app-dir app/server/src
 
 ## web: vite dev server on 5173, proxying /api to 8000
 web:
@@ -112,7 +132,7 @@ proof:
 
 ## route: compute collision-free route to target asset with proximity samples
 route: scene objects map
-	$(PY) python scripts/make_route.py
+	$(PY) python scripts/make_route.py --scene $(SCENE) --objects $(OBJECTS) --mapped $(MAPPED) --output $(ROUTE)
 
 ## openapi: write the OpenAPI schema the API serves to docs/openapi.json
 openapi:
