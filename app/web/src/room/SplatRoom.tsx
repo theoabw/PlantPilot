@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
-import { CLASS_COLOURS, upVector } from './api'
+import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 
 export type TripState = {
@@ -53,6 +53,8 @@ type Props = {
   explode: number
   objectAssets: { id: string; label: string; url: string; kind: 'splat' | 'mesh' }[]
   occluderObjects: RoomObject[]
+  mappedFrames: { id: string; tag: string; state: string; centre: [number, number, number]; axes: [number, number, number][]; extents: [number, number, number] }[]
+  showMappedFrames: boolean
   obstacleMode: boolean
   obstacles: [number, number][]
   robotPositionRef: { current: [number, number] | null }
@@ -450,7 +452,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, crouchSpans, showRobot, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, crouchSpans, showRobot, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -476,6 +478,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     occupancy: THREE.InstancedMesh | null
     decorGroup: THREE.Group | null
     occluderGroup: THREE.Group | null
+    mappedGroup: THREE.Group | null
     placeRobotAt: ((dt: number) => void) | null
     updateArrows: (() => void) | null
     focusTween: {
@@ -605,6 +608,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     // the real surfaces at demo scale.
     const occluderGroup = new THREE.Group()
     scene.add(occluderGroup)
+    // Faint proposal frames for every Excel record that was mapped to a raw
+    // object, so the demo shows the full mapping without calling them reviewed.
+    const mappedGroup = new THREE.Group()
+    scene.add(mappedGroup)
     // the splat needs no lights, the extracted meshes do
     scene.add(new THREE.HemisphereLight(0xf2f6ff, 0x1b2430, 1.1))
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.25)
@@ -1254,6 +1261,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       occupancy: null,
       decorGroup: null,
       occluderGroup: null,
+      mappedGroup: null,
       placeRobotAt: null,
       updateArrows: null,
       focusTween: null,
@@ -1288,6 +1296,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       radius: 5,
     }
     stateRef.current.occluderGroup = occluderGroup
+    stateRef.current.mappedGroup = mappedGroup
     stateRef.current.placeRobotAt = placeRobot
     stateRef.current.updateArrows = updateArrowTrail
 
@@ -1660,6 +1669,53 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     live.renderer.render(live.scene, live.camera)
   }, [showOccupancy, route, upAxis, floorHeight])
 
+  useEffect(() => {
+    const state = stateRef.current
+    const group = state?.mappedGroup
+    if (!state || !group) {
+      return
+    }
+    for (const child of [...group.children]) {
+      group.remove(child)
+      const line = child as THREE.LineSegments
+      line.geometry?.dispose()
+      const lineMaterial = line.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(lineMaterial)) {
+        lineMaterial.forEach((entry) => entry.dispose())
+      } else {
+        lineMaterial?.dispose()
+      }
+    }
+    if (!showMappedFrames || mappedFrames.length === 0) {
+      renderRef.current()
+      return
+    }
+    const world = state.world.quaternion
+    for (const frame of mappedFrames) {
+      const geometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1))
+      const colour = new THREE.Color(STATE_COLOURS[frame.state] ?? '#94a3b8')
+      const material = new THREE.LineBasicMaterial({
+        color: colour,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+      })
+      const lines = new THREE.LineSegments(geometry, material)
+      lines.scale.set(frame.extents[0], frame.extents[1], frame.extents[2])
+      lines.position.copy(new THREE.Vector3(...frame.centre).applyQuaternion(world))
+      const basis = new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(...frame.axes[0]),
+        new THREE.Vector3(...frame.axes[1]),
+        new THREE.Vector3(...frame.axes[2]),
+      )
+      lines.quaternion.setFromRotationMatrix(basis).premultiply(world)
+      lines.renderOrder = 1
+      group.add(lines)
+    }
+    renderRef.current()
+    state.renderer.render(state.scene, state.camera)
+  }, [mappedFrames, showMappedFrames, frameKey])
+
   // Invisible depth volumes of the reviewed equipment. Drawing these after the
   // splats but before the robot gives the robot a real depth test against the
   // machines, so it no longer shows through tanks and cabinets.
@@ -1768,9 +1824,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     if (state.occluderGroup) {
       state.occluderGroup.visible = showRobot
     }
+    if (state.mappedGroup) {
+      state.mappedGroup.visible = showMappedFrames
+    }
     state.beaconGroup.visible = showRoute
     renderRef.current()
-  }, [showRoute, showRobot])
+  }, [showRoute, showRobot, showMappedFrames])
 
   // Focus tween: ease the camera to a selected object in the loop.
   useEffect(() => {

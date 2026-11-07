@@ -116,6 +116,7 @@ export default function RoomLab({ onLeave }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState('photo')
   const [showOutlines, setShowOutlines] = useState(true)
+  const [showMappedFrames, setShowMappedFrames] = useState(true)
   const [showOccupancy, setShowOccupancy] = useState(false)
   const [devMode, setDevMode] = useState(false)
   const [showRawDetections, setShowRawDetections] = useState(false)
@@ -272,6 +273,36 @@ export default function RoomLab({ onLeave }: Props) {
     }
     return byAnchor
   }, [reviewed, mappedByObject])
+
+  const mappedFrames = useMemo(() => {
+    if (!data || !mapped) {
+      return []
+    }
+    const objectsById = new Map(data.objects.map((object) => [object.id, object]))
+    const frames: {
+      id: string
+      tag: string
+      state: string
+      centre: [number, number, number]
+      axes: [number, number, number][]
+      extents: [number, number, number]
+    }[] = []
+    for (const record of mapped.mappings) {
+      const object = record.object_id ? objectsById.get(record.object_id) : undefined
+      if (!object) {
+        continue
+      }
+      frames.push({
+        id: object.id,
+        tag: record.tag,
+        state: record.state,
+        centre: object.centre,
+        axes: object.axes,
+        extents: object.extents,
+      })
+    }
+    return frames
+  }, [data, mapped])
 
   const targetAnchor = useMemo(() => {
     const targetObject = mapped?.target_object_id
@@ -707,6 +738,8 @@ export default function RoomLab({ onLeave }: Props) {
             explode={explode}
             objectAssets={objectAssets}
             occluderObjects={reviewed}
+            mappedFrames={mappedFrames}
+            showMappedFrames={showMappedFrames}
             obstacleMode={obstacleMode}
             obstacles={obstacles}
             robotPositionRef={robotPositionRef}
@@ -814,6 +847,15 @@ export default function RoomLab({ onLeave }: Props) {
                       type="checkbox"
                       checked={showOutlines}
                       onChange={(event) => setShowOutlines(event.target.checked)}
+                      className="accent-cyan-400"
+                    />
+                  </label>
+                  <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+                    Mapped assets ({mappedFrames.length})
+                    <input
+                      type="checkbox"
+                      checked={showMappedFrames}
+                      onChange={(event) => setShowMappedFrames(event.target.checked)}
                       className="accent-cyan-400"
                     />
                   </label>
@@ -954,6 +996,45 @@ export default function RoomLab({ onLeave }: Props) {
             {filteredEquipment.length === 0 ? (
               <p className="px-2 py-4 text-xs font-semibold text-slate-500">Nothing matches that search.</p>
             ) : null}
+          </div>
+          <div className="border-t border-slate-800 px-2 pb-2 pt-1">
+            <p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+              Pack records · {mapped?.counts.mapped ?? 0}/{mapped?.counts.assets ?? 30} mapped
+            </p>
+            <div className="max-h-44 overflow-y-auto">
+              {(mapped?.mappings ?? []).map((record) => (
+                <button
+                  key={record.asset_id}
+                  type="button"
+                  onClick={() => {
+                    if (record.object_id) {
+                      setSelectedId(record.object_id)
+                      setBrowserOpen(false)
+                      setFocusToken((value) => value + 1)
+                    }
+                  }}
+                  className="mb-0.5 flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left hover:bg-slate-800/80"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-[11px] font-bold text-slate-200">
+                      {record.tag} · {humanize(record.class)}
+                    </span>
+                    <span className="block truncate text-[9px] font-semibold text-slate-500">
+                      {record.status} · {record.method.replace(/_/g, ' ')}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <span className="text-[9px] font-bold" style={{ color: STATE_COLOURS[record.state] }}>
+                      {record.state.replace(/_/g, ' ')}
+                    </span>
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: STATE_COLOURS[record.state] }}
+                    />
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </section>
       ) : null}

@@ -156,8 +156,11 @@ The room view is a contextual product shell: a minimal header, a mission card
   raw detections, confidence, occupancy and builder diagnostics. Only the
   reviewed anchors are outlined, labels appear on selection or in developer
   mode, and navigation markers exist only while a mission is running.
-- The room view draws the reviewed anchors by default, as thin outlines, and
-  shows labels and provenance only on selection. If a capture has no reviewed
+- The room view draws the reviewed anchors as brighter outlines and all mapped
+  pack records as faint proposal frames. The Equipment browser lists every
+  pack record by tag and state under `Pack records`, so the full 30 of 30
+  mapping is visible without presenting every proposal as reviewed equipment.
+  Labels and provenance appear on selection. If a capture has no reviewed
   fixture it falls back to the automatic proposal layer, and the raw extraction
   stays one toggle away in the Objects panel.
 - `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` point the room view at another
