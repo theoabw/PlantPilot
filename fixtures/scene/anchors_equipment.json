@@ -2,8 +2,8 @@
   "artifact": "anchors",
   "version": 1,
   "capture": "Equipment Room.ply",
-  "reviewed_by": "box audit 2026-11-07",
-  "note": "Seven boxes from the automatic proposal layer that survived a visual audit. Each entry separates the observed object type from an inferred function, with the evidence that supports the label and a confidence level.",
+  "reviewed_by": "box audit 2026-11-07, plus multi-view instance fusion review 2026-11-07",
+  "note": "Reviewed objects in the Equipment Room capture. Seven boxes come from the automatic proposal layer and survived a visual audit, and the eighth, the office chair, was recovered by multi-view SAM 3 instance fusion. Each entry separates the observed object type from an inferred function, with the evidence that supports the label and a confidence level. Where the fusion recovered the same object, the entry carries `fused` with the support views, the score, the vertical coverage and the floor gap; the box the review accepted is kept under `reviewed_box`.",
   "anchors": [
     {
       "id": "AN-0238fdab",
@@ -41,15 +41,69 @@
         0.1155
       ],
       "source_object_ids": [
-        "OBJ-063",
-        "OBJ-066"
+        "OBJ-056",
+        "OBJ-057"
       ],
       "rgb": null,
       "observed_type": "vertical pipe run",
       "inferred_function": "process or heating pipework",
       "category": "piping",
       "classification_confidence": "high",
-      "evidence": "A long thin red-painted run with elbows stands inside the reviewed box."
+      "evidence": "A long thin red-painted run with elbows stands inside the reviewed box.",
+      "reviewed_box": {
+        "centre": [
+          -1.0219,
+          0.0018,
+          0.13
+        ],
+        "axes": [
+          [
+            0.07943,
+            0.99678,
+            -0.01086
+          ],
+          [
+            0.99377,
+            -0.07833,
+            0.07926
+          ],
+          [
+            -0.07815,
+            0.01709,
+            0.9968
+          ]
+        ],
+        "extents": [
+          1.6379,
+          0.4516,
+          0.1155
+        ],
+        "note": "the box the visual review accepted; kept beside the fused box for provenance"
+      },
+      "fused": {
+        "method": "multi_view_sam3_instance_fusion",
+        "instance": "SB-0000",
+        "views": 10,
+        "score": 0.78,
+        "max_score": 0.957,
+        "vertical_coverage": 0.884,
+        "mask_inside_box": 0.92,
+        "centre_shift_m": null,
+        "floor_gap_m": 0.323,
+        "floor_gap_reason": "the pipe run is wall mounted at mid height; the reviewed box itself starts 0.35 m above the floor and the fused box matches it",
+        "vertical": {
+          "bottom_above_floor_m": 0.323,
+          "top_above_floor_m": 1.99,
+          "height_m": 1.667,
+          "p2_bottom_above_floor_m": 0.333,
+          "p98_top_above_floor_m": 1.951
+        },
+        "visible_fraction": 0.429,
+        "best_visible_fraction": 0.89,
+        "worst_occluder": null,
+        "closeup_dependent": false,
+        "note": "Independent instance from 16 posed views: SAM 3 masks lifted through the splat's own depth and fused across views. The label and the evidence sentence are still the reviewed ones."
+      }
     },
     {
       "id": "AN-7b2029e0",
@@ -92,7 +146,64 @@
       "inferred_function": "loose floor equipment, not a fixed machine",
       "category": "other",
       "classification_confidence": "medium",
-      "evidence": "The reviewed box holds a red coiled hose and cover lying on the floor next to a cart."
+      "evidence": "The reviewed box holds a red coiled hose and cover lying on the floor next to a cart.",
+      "reviewed_box": {
+        "centre": [
+          1.4704,
+          1.0425,
+          -2.7228
+        ],
+        "axes": [
+          [
+            0.98517,
+            -0.12883,
+            -0.11335
+          ],
+          [
+            0.12284,
+            0.06832,
+            0.99007
+          ],
+          [
+            0.1198,
+            0.98931,
+            -0.08313
+          ]
+        ],
+        "extents": [
+          1.1783,
+          0.7337,
+          0.2927
+        ],
+        "note": "the box the visual review accepted; kept beside the fused box for provenance"
+      },
+      "fused": {
+        "method": "multi_view_sam3_instance_fusion",
+        "instance": "SB-0003",
+        "views": 4,
+        "score": 0.8062,
+        "max_score": 0.9414,
+        "vertical_coverage": 1.0,
+        "mask_inside_box": 0.591,
+        "centre_shift_m": null,
+        "floor_gap_m": -0.024,
+        "floor_gap_reason": "a hose and cover lying on the floor; the measured bottom is 2 cm below the floor plane from the 1st percentile extent, so the box touches the floor",
+        "vertical": {
+          "bottom_above_floor_m": -0.024,
+          "top_above_floor_m": 0.425,
+          "height_m": 0.449,
+          "p2_bottom_above_floor_m": -0.006,
+          "p98_top_above_floor_m": 0.4
+        },
+        "visible_fraction": 0.106,
+        "best_visible_fraction": 0.417,
+        "worst_occluder": {
+          "label": "chair",
+          "share": 0.287
+        },
+        "closeup_dependent": false,
+        "note": "Independent instance from 16 posed views: SAM 3 masks lifted through the splat's own depth and fused across views. The label and the evidence sentence are still the reviewed ones."
+      }
     },
     {
       "id": "AN-51c6f8ce",
@@ -130,6 +241,7 @@
         0.4831
       ],
       "source_object_ids": [
+        "OBJ-061",
         "OBJ-070"
       ],
       "rgb": null,
@@ -137,7 +249,64 @@
       "inferred_function": "circulation pump, brand not confirmed",
       "category": "mechanical",
       "classification_confidence": "medium",
-      "evidence": "A cylindrical pump body, motor housing and connecting pipework sit inside the reviewed box."
+      "evidence": "A cylindrical pump body, motor housing and connecting pipework sit inside the reviewed box.",
+      "reviewed_box": {
+        "centre": [
+          -0.7891,
+          0.6442,
+          2.0766
+        ],
+        "axes": [
+          [
+            0.92255,
+            -0.25627,
+            -0.28849
+          ],
+          [
+            0.20214,
+            -0.31588,
+            0.92702
+          ],
+          [
+            0.32869,
+            0.91353,
+            0.23962
+          ]
+        ],
+        "extents": [
+          1.0163,
+          0.8107,
+          0.4831
+        ],
+        "note": "the box the visual review accepted; kept beside the fused box for provenance"
+      },
+      "fused": {
+        "method": "multi_view_sam3_instance_fusion",
+        "instance": "SB-0005",
+        "views": 3,
+        "score": 0.473,
+        "max_score": 0.9297,
+        "vertical_coverage": 0.895,
+        "mask_inside_box": 0.773,
+        "centre_shift_m": null,
+        "floor_gap_m": -0.011,
+        "floor_gap_reason": "a floor-standing pump and motor; the box bottom sits on the floor",
+        "vertical": {
+          "bottom_above_floor_m": -0.011,
+          "top_above_floor_m": 0.79,
+          "height_m": 0.801,
+          "p2_bottom_above_floor_m": -0.002,
+          "p98_top_above_floor_m": 0.784
+        },
+        "visible_fraction": 0.188,
+        "best_visible_fraction": 0.598,
+        "worst_occluder": {
+          "label": "pipe",
+          "share": 0.304
+        },
+        "closeup_dependent": false,
+        "note": "Independent instance from 16 posed views: SAM 3 masks lifted through the splat's own depth and fused across views. The label and the evidence sentence are still the reviewed ones."
+      }
     },
     {
       "id": "AN-b3544c88",
@@ -174,13 +343,72 @@
         0.6189,
         0.357
       ],
-      "source_object_ids": [],
+      "source_object_ids": [
+        "OBJ-021"
+      ],
       "rgb": null,
       "observed_type": "red rectangular door or cabinet",
       "inferred_function": "service cabinet or access door, not confirmed",
       "category": "controls",
       "classification_confidence": "medium",
-      "evidence": "A red rectangular panel with a hinge line and handle fills the reviewed box."
+      "evidence": "A red rectangular panel with a hinge line and handle fills the reviewed box.",
+      "reviewed_box": {
+        "centre": [
+          -2.7564,
+          0.3816,
+          2.7912
+        ],
+        "axes": [
+          [
+            0.13501,
+            0.99081,
+            -0.00848
+          ],
+          [
+            0.9788,
+            -0.13469,
+            -0.1543
+          ],
+          [
+            0.15402,
+            -0.01253,
+            0.98799
+          ]
+        ],
+        "extents": [
+          1.1864,
+          0.6189,
+          0.357
+        ],
+        "note": "the box the visual review accepted; kept beside the fused box for provenance"
+      },
+      "fused": {
+        "method": "multi_view_sam3_instance_fusion",
+        "instance": "SB-0004",
+        "views": 4,
+        "score": 0.5746,
+        "max_score": 0.9297,
+        "vertical_coverage": 0.992,
+        "mask_inside_box": 0.978,
+        "centre_shift_m": null,
+        "floor_gap_m": 0.205,
+        "floor_gap_reason": "the segmented surface starts at the bottom rail of the door or cabinet, 0.20 m up; the rail and skirting below it are not part of the lift",
+        "vertical": {
+          "bottom_above_floor_m": 0.205,
+          "top_above_floor_m": 1.442,
+          "height_m": 1.238,
+          "p2_bottom_above_floor_m": 0.232,
+          "p98_top_above_floor_m": 1.428
+        },
+        "visible_fraction": 0.067,
+        "best_visible_fraction": 0.482,
+        "worst_occluder": {
+          "label": "pipe",
+          "share": 0.132
+        },
+        "closeup_dependent": false,
+        "note": "Independent instance from 16 posed views: SAM 3 masks lifted through the splat's own depth and fused across views. The label and the evidence sentence are still the reviewed ones."
+      }
     },
     {
       "id": "AN-5dbcb330",
@@ -218,8 +446,7 @@
         0.6043
       ],
       "source_object_ids": [
-        "OBJ-031",
-        "OBJ-034"
+        "OBJ-022"
       ],
       "rgb": null,
       "observed_type": "vertical cylindrical vessel",
@@ -249,6 +476,63 @@
         ],
         "method": "multi_view_sam3_instance_fusion",
         "note": "Independent SAM 3 segment agrees with the reviewed box centre within 8 cm and extents within 10 percent."
+      },
+      "reviewed_box": {
+        "centre": [
+          -2.5094,
+          0.3953,
+          0.9932
+        ],
+        "axes": [
+          [
+            0.04361,
+            0.99849,
+            0.03329
+          ],
+          [
+            0.90498,
+            -0.02537,
+            -0.4247
+          ],
+          [
+            0.42321,
+            -0.04864,
+            0.90472
+          ]
+        ],
+        "extents": [
+          1.1367,
+          0.6382,
+          0.6043
+        ],
+        "note": "the box the visual review accepted; kept beside the fused box for provenance"
+      },
+      "fused": {
+        "method": "multi_view_sam3_instance_fusion",
+        "instance": "SB-0002",
+        "views": 6,
+        "score": 0.7454,
+        "max_score": 0.9609,
+        "vertical_coverage": 0.87,
+        "mask_inside_box": 0.506,
+        "centre_shift_m": null,
+        "floor_gap_m": 0.051,
+        "floor_gap_reason": "the vessel's base plinth is below the segmented surface",
+        "vertical": {
+          "bottom_above_floor_m": 0.051,
+          "top_above_floor_m": 1.483,
+          "height_m": 1.432,
+          "p2_bottom_above_floor_m": 0.114,
+          "p98_top_above_floor_m": 1.473
+        },
+        "visible_fraction": 0.114,
+        "best_visible_fraction": 0.464,
+        "worst_occluder": {
+          "label": "red-painted pipe run",
+          "share": 0.173
+        },
+        "closeup_dependent": false,
+        "note": "Independent instance from 16 posed views: SAM 3 masks lifted through the splat's own depth and fused across views. The label and the evidence sentence are still the reviewed ones."
       }
     },
     {
@@ -287,14 +571,71 @@
         0.441
       ],
       "source_object_ids": [
-        "OBJ-019"
+        "OBJ-014"
       ],
       "rgb": null,
       "observed_type": "unidentified equipment cluster",
       "inferred_function": "not confirmed",
       "category": "mechanical",
       "classification_confidence": "low",
-      "evidence": "The box covers a dense low object beside a red vessel; no single component can be named from the capture."
+      "evidence": "The box covers a dense low object beside a red vessel; no single component can be named from the capture.",
+      "reviewed_box": {
+        "centre": [
+          -3.4559,
+          0.6253,
+          2.9864
+        ],
+        "axes": [
+          [
+            -0.19426,
+            -0.58958,
+            0.784
+          ],
+          [
+            0.93079,
+            -0.36307,
+            -0.04241
+          ],
+          [
+            0.30965,
+            0.72151,
+            0.61931
+          ]
+        ],
+        "extents": [
+          0.9105,
+          0.6096,
+          0.441
+        ],
+        "note": "the box the visual review accepted; kept beside the fused box for provenance"
+      },
+      "fused": {
+        "method": "multi_view_sam3_instance_fusion",
+        "instance": "SB-0006",
+        "views": 2,
+        "score": 0.8945,
+        "max_score": 0.9336,
+        "vertical_coverage": 1.0,
+        "mask_inside_box": 0.86,
+        "centre_shift_m": null,
+        "floor_gap_m": 0.003,
+        "floor_gap_reason": "the box bottom sits on the floor (0.003 m); unlike every other row this instance is lifted from two close-up poses (c001, c002) because no room view sees the corner (mean visible fraction 0.04, best 0.29 in the 16 room views)",
+        "vertical": {
+          "bottom_above_floor_m": 0.003,
+          "top_above_floor_m": 0.942,
+          "height_m": 0.939,
+          "p2_bottom_above_floor_m": 0.041,
+          "p98_top_above_floor_m": 0.932
+        },
+        "visible_fraction": 0.044,
+        "best_visible_fraction": 0.295,
+        "worst_occluder": {
+          "label": "pipe",
+          "share": 0.148
+        },
+        "closeup_dependent": true,
+        "note": "Independent instance from 16 posed views: SAM 3 masks lifted through the splat's own depth and fused across views. The label and the evidence sentence are still the reviewed ones."
+      }
     },
     {
       "id": "AN-3f29eeb0",
@@ -303,36 +644,37 @@
       "label": "washing machine",
       "reviewed": true,
       "verdict": "A",
-      "note": "Tight box on one dark machine body; the audit called the motor label unclear.",
+      "note": "The reviewed box was the top band of the machine: 0.33 m of a 0.88 m body. The box is now the fused instance fitted upright, from 0.16 m above the floor to the top of the machine, which stands on a 0.16 m metal stand.",
       "centre": [
-        -0.8519,
-        0.4547,
-        -0.5517
+        -0.829,
+        0.5693,
+        -0.553
       ],
       "axes": [
         [
-          0.0711,
-          -0.06941,
-          0.99505
+          -0.0,
+          1.0,
+          -0.0
         ],
         [
-          0.99697,
-          0.03641,
-          -0.0687
+          -0.07846,
+          0.0,
+          0.99692
         ],
         [
-          -0.03147,
           0.99692,
-          0.07179
+          0.0,
+          0.07846
         ]
       ],
       "extents": [
-        0.769,
-        0.5941,
-        0.3303
+        0.8805,
+        0.7358,
+        0.5223
       ],
       "source_object_ids": [
-        "OBJ-069"
+        "OBJ-060",
+        "OBJ-063"
       ],
       "rgb": null,
       "observed_type": "front-load drum appliance",
@@ -362,6 +704,118 @@
         ],
         "method": "multi_view_sam3_instance_fusion",
         "note": "Independent SAM 3 segment agrees on the class and centre within 11 cm; its box is larger because the masks include surroundings."
+      },
+      "reviewed_box": {
+        "centre": [
+          -0.8519,
+          0.4547,
+          -0.5517
+        ],
+        "axes": [
+          [
+            0.0711,
+            -0.06941,
+            0.99505
+          ],
+          [
+            0.99697,
+            0.03641,
+            -0.0687
+          ],
+          [
+            -0.03147,
+            0.99692,
+            0.07179
+          ]
+        ],
+        "extents": [
+          0.769,
+          0.5941,
+          0.3303
+        ],
+        "note": "the box the visual review accepted; kept beside the fused box for provenance"
+      },
+      "fused": {
+        "method": "multi_view_sam3_instance_fusion",
+        "instance": "SB-0001",
+        "views": 10,
+        "score": 0.6038,
+        "max_score": 0.9531,
+        "vertical_coverage": 0.976,
+        "mask_inside_box": 0.885,
+        "centre_shift_m": null,
+        "floor_gap_m": 0.158,
+        "floor_gap_reason": "the machine stands on a metal stand about 0.16 m tall, so its own base is 0.16 m above the floor; the box deliberately stops at the machine body and does not swallow the stand",
+        "vertical": {
+          "bottom_above_floor_m": 0.158,
+          "top_above_floor_m": 1.038,
+          "height_m": 0.88,
+          "p2_bottom_above_floor_m": 0.223,
+          "p98_top_above_floor_m": 1.03
+        },
+        "visible_fraction": 0.403,
+        "best_visible_fraction": 1.0,
+        "worst_occluder": {
+          "label": "red-painted pipe run",
+          "share": 0.049
+        },
+        "closeup_dependent": false,
+        "note": "Independent instance from 16 posed views: SAM 3 masks lifted through the splat's own depth and fused across views. The label and the evidence sentence are still the reviewed ones."
+      }
+    },
+    {
+      "id": "AN-5765c7db",
+      "asset_id": "AS-5765c7db",
+      "class": "furniture",
+      "label": "office chair",
+      "reviewed": true,
+      "verdict": "A",
+      "origin": "multi_view_instance_fusion",
+      "note": "The geometric layer framed the seat and back of this chair as a valve. The fused instance covers the base, the seat and the back, 0.89 m tall, and the box is fitted upright.",
+      "centre": [
+        1.2529,
+        0.7135,
+        -1.8488
+      ],
+      "axes": [
+        [
+          -0.0,
+          1.0,
+          -0.0
+        ],
+        [
+          0.94832,
+          -0.0,
+          -0.3173
+        ],
+        [
+          0.3173,
+          0.0,
+          0.94832
+        ]
+      ],
+      "extents": [
+        0.8931,
+        0.6179,
+        0.6037
+      ],
+      "source_object_ids": [
+        "OBJ-091",
+        "OBJ-101"
+      ],
+      "rgb": null,
+      "observed_type": "office chair on castors",
+      "inferred_function": "seating",
+      "category": "furniture",
+      "classification_confidence": "high",
+      "evidence": "A black office chair on castors stands by the door; the fused instance covers the base, seat and back.",
+      "fused": {
+        "method": "multi_view_sam3_instance_fusion",
+        "instance": "SBX-0005",
+        "views": 6,
+        "score": 0.9544,
+        "max_score": 0.9805,
+        "note": "Recovered by the concept prompt chair, not by a box prompt: the geometric layer had no correct box to prompt with."
       }
     }
   ]
