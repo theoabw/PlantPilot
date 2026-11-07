@@ -7,6 +7,7 @@ import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
+import { CAMERA_MAX_SPEED_M_S, cappedStep } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -1224,12 +1225,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       // jump. The longer the camera stays inside structure, the faster it is
       // allowed to pull out, still continuously.
       const factor = smoothFactor(transitioning ? 3.2 : blockedFor > 800 ? 20 : blockedFor > 250 ? 12 : 6, Math.max(dt, 0.001))
-      const before = camera.position.clone()
-      camera.position.lerp(smoothed, factor)
-      const step = before.distanceTo(camera.position)
-      if (step > 0.12) {
-        camera.position.copy(before).addScaledVector(camera.position.clone().sub(before).normalize(), 0.12)
-      }
+      const lerpGoal = camera.position.clone().lerp(smoothed, factor)
+      const capped = cappedStep(camera.position, lerpGoal, CAMERA_MAX_SPEED_M_S * Math.max(dt, 0.001))
+      camera.position.set(capped.x, capped.y, capped.z)
       controls.target.lerp(desiredTarget, factor)
     }
     const canWalkTo = (worldPosition: THREE.Vector3): boolean => {
