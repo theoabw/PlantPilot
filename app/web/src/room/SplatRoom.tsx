@@ -2254,10 +2254,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     if (!state) {
       return
     }
-    state.boxGroup.visible = framesVisible
-    state.pickGroup.visible = framesVisible
+    // Exploding moves the objects and not their frames, so the frames would
+    // float around empty space and catch clicks meant for what moved away.
+    const shown = framesVisible && explode === 0
+    state.boxGroup.visible = shown
+    state.pickGroup.visible = shown
     renderRef.current()
-  }, [framesVisible])
+  }, [framesVisible, explode])
 
   useEffect(() => {
     const state = stateRef.current
