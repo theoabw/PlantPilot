@@ -108,7 +108,7 @@ Every number comes from a run on the two supplied captures in `data/supplied/`; 
 | Largest object share | 1.5 percent of points | 4.2 percent of points |
 | Extraction time | 3.7 s | 22.0 s |
 | Builder-pack mapping | 28 proposed, 2 unresolved, P-005 to OBJ-034 | 30 proposed, 0 unresolved, P-005 to OBJ-037 |
-| Route | 1.39 m stand-off, 2 path points, 0.62 m minimum clearance | 1.37 m, 2 path points, 0.32 m minimum clearance |
+| Route | 1.39 m stand-off, 2 path points, 0.62 m minimum clearance | 1.91 m, 3 path points, 0.32 m minimum clearance |
 | Reviewed anchors | none | 8, washing machine box 0.88 m tall |
 | Viewer asset | 428,991 gaussians, 24,023,947 B | 1,386,351 gaussians, 77,636,108 B |
 

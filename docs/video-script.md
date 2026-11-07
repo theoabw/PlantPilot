@@ -36,9 +36,9 @@ Scores criterion 1, 30 percent; feeds criterion 3.
 
 Scores criterion 2, 25 percent.
 
-**On screen.** This shot starts on the click, because the route is only drawn while the robot moves. Click Send robot, then pull back and hold the floor: the path and the target ring are visible, and the mission card bottom left reads "1.4 m route" and "0.32 m clearance".
+**On screen.** This shot starts on the click, because the route is only drawn while the robot moves. Click Send robot, then pull back and hold the floor: the path and the target ring are visible, and the mission card bottom left reads "1.9 m route" and "0.32 m clearance".
 
-**Voiceover.** "Obstacles come from the extracted boxes, from the floor the capture never saw, from near-vertical surfaces that run the room's height, and from overhead structure. The grid is inflated once for a 0.20 agent radius and a 0.02 safety margin. A star search plans a route of 1.37, clearing the nearest object surface by 0.32. The viewer labels those numbers as metres; the door-height scale check has not been done."
+**Voiceover.** "Obstacles come from the extracted boxes, from the floor the capture never saw, from near-vertical surfaces that run the room's height, and from overhead structure. The grid is inflated once for a 0.20 agent radius and a 0.02 safety margin. A star search plans a route of 1.91, clearing the nearest object surface by 0.32. The viewer labels those numbers as metres; the door-height scale check has not been done."
 
 **Counts if.** The path and the target ring are visible; the mission card shows a distance and "0.32 m clearance"; the robot is near the start.
 

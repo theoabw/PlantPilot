@@ -91,6 +91,9 @@ OBJECT_MIN_POINTS_PER_CELL = 2
 # gaussian within 8 cm of it is floor, and 8 cm is also below the lowest height a
 # robot body is modelled from (OBSTACLE_MIN_HEIGHT_M), so the two rules agree.
 FLOOR_TOLERANCE_M = 0.08
+# A gap in floor evidence up to this many cells is still floor: a capture samples
+# the slab at its own spacing, and one missing point is not a hole in the room.
+FLOOR_CLOSE_CELLS = 2
 # The vertical-surface layer reads a gaussian's shape instead of counting its
 # neighbours: `size` is in metres along the ellipsoid axes, and the thinnest of
 # the three is the surface the splat lies on, so its direction is the normal.
@@ -543,9 +546,16 @@ class Grid:
         # Floor layer: ground that was not observed is not ground to walk on, so
         # a cell with no gaussian near the floor plane is blocked. This is what
         # keeps the planner inside the room instead of driving through a wall
-        # into the unobserved space behind it.
+        # into the unobserved space behind it. A capture samples the floor at
+        # about its point spacing, so one missing point is not a hole in the
+        # floor: the supported mask is closed by FLOOR_CLOSE_CELLS before the
+        # missing cells are blocked, which is the same tolerance the surface
+        # layers get.
         floor_band = np.abs(heights.astype(np.float64) - float(floor_y)) <= FLOOR_TOLERANCE_M
         floor_cells = (_cell_counts(h_x[floor_band], h_z[floor_band], x0, z0, rows, cols) > 0)
+        if FLOOR_CLOSE_CELLS > 0:
+            floor_kernel = np.ones((2 * FLOOR_CLOSE_CELLS + 1,) * 2, dtype=np.uint8)
+            floor_cells = cv2.dilate(floor_cells.astype(np.uint8), floor_kernel).astype(bool)
         no_floor_cells = ~floor_cells
 
         # The robot's own body band, for the overhead patch test.
