@@ -97,23 +97,24 @@ export type Point2 = { x: number; z: number }
  * One manual walking step, sliding along whatever blocks it.
  *
  * Tries the whole step, then each axis alone, so walking into a wall at an angle
- * follows the wall. A character standing on a blocked cell can always step, or
- * nothing could ever get it out: changing to a wider robot blocks most of the
- * floor under the old position. Only the grid's edge still stops that step.
+ * follows the wall. A blocked start can move only toward free space.
  */
 export function slideStep(
   at: Point2,
   step: Point2,
   isFree: (point: Point2) => boolean,
-  isOnGrid: (point: Point2) => boolean,
+  canEscape: (from: Point2, to: Point2) => boolean,
 ): Point2 | null {
   const whole = { x: at.x + step.x, z: at.z + step.z }
-  if (!isFree(at)) {
-    return isOnGrid(whole) ? whole : null
-  }
   const candidates = [whole, { x: at.x + step.x, z: at.z }, { x: at.x, z: at.z + step.z }]
-  for (const candidate of candidates) {
-    if ((candidate.x !== at.x || candidate.z !== at.z) && isFree(candidate)) {
+  const startFree = isFree(at)
+  for (const [index, candidate] of candidates.entries()) {
+    if (startFree && index === 0 && step.x !== 0 && step.z !== 0
+      && (!isFree(candidates[1]) || !isFree(candidates[2]))) {
+      continue
+    }
+    if ((candidate.x !== at.x || candidate.z !== at.z)
+      && (startFree ? isFree(candidate) : canEscape(at, candidate))) {
       return candidate
     }
   }

@@ -6,9 +6,13 @@ import * as THREE from 'three'
 import { SplatEditRgbaBlendMode, SplatEdits } from '@sparkjsdev/spark'
 
 const source = await readFile(new URL('../src/room/boxSplatFilter.ts', import.meta.url), 'utf8')
+const boxSource = await readFile(new URL('../src/room/boxGeometry.ts', import.meta.url), 'utf8')
+const boxJs = ts.transpile(boxSource, { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 })
+  .replace("'three'", JSON.stringify(import.meta.resolve('three')))
+const boxUrl = `data:text/javascript;base64,${Buffer.from(boxJs).toString('base64')}`
 const js = ts.transpile(source, { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 })
   .replace("'@sparkjsdev/spark'", JSON.stringify(import.meta.resolve('@sparkjsdev/spark')))
-  .replace("'three'", JSON.stringify(import.meta.resolve('three')))
+  .replace("'./boxGeometry'", JSON.stringify(boxUrl))
 const { boxSplatFilter } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`)
 
 test('filter encodes the union of oriented boxes in scene coordinates', () => {

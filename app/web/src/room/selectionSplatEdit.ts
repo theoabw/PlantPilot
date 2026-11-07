@@ -1,6 +1,9 @@
 import { SplatEdit, SplatEditRgbaBlendMode, SplatEditSdf, SplatEditSdfType } from '@sparkjsdev/spark'
 import * as THREE from 'three'
 import type { RoomObject } from './api'
+import { boxQuaternion } from './boxGeometry'
+
+const HIGHLIGHT_MARGIN_M = 0.03
 
 /**
  * Tint the splats inside one reviewed box so a selection shows the surface the
@@ -24,11 +27,8 @@ export function selectionSplatEdit(object: RoomObject): SplatEdit {
     color: new THREE.Color(0.10, 0.55, 0.80),
   })
   box.position.set(...object.centre)
-  const axes = object.axes.map((axis) => new THREE.Vector3(...axis).normalize())
-  box.quaternion.setFromRotationMatrix(
-    new THREE.Matrix4().makeBasis(axes[0], axes[1], axes[2]),
-  )
-  box.scale.set(...object.extents).multiplyScalar(0.5)
+  box.quaternion.copy(boxQuaternion(object.axes))
+  box.scale.set(...object.extents).multiplyScalar(0.5).addScalar(HIGHLIGHT_MARGIN_M)
   edit.add(box)
   return edit
 }
