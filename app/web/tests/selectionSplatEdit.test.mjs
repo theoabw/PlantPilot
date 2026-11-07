@@ -23,6 +23,8 @@ test('highlight adds light inside the selected oriented box', () => {
 
   const box = edit.children[0]
   assert.ok(box.isSplatEditSdf)
+  // ADD_RGBA adds this to every splat's alpha, so anything but 0 solidifies fog.
+  assert.equal(box.opacity, 0)
   assert.deepEqual([box.position.x, box.position.y, box.position.z], [1, 2, 3])
   // The box is a unit cube scaled by half extents, so its local size is 2 m by
   // 4 m by 6 m in the object's own axes.
