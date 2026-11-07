@@ -5,6 +5,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
+import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 
 export type TripState = {
@@ -729,9 +730,21 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       // which is why the cut here is high. The draw shares the accumulation and
       // geometry with the SparkRenderer and refreshes Spark's per-frame uniforms
       // itself, because it runs first.
+      //
+      // It is fill bound like the colour pass, so it draws every second splat:
+      // the splats overlap heavily in screen space, so half of them still leave
+      // a depth surface with no gap a thin overlay can pass through, at half
+      // the fill.
+      const depthVertexShader = spark.material.vertexShader.replace(
+        'void main() {',
+        'void main() {\n    if (mod(float(gl_InstanceID), 2.0) > 0.5) {\n        gl_Position = vec4(0.0, 0.0, 2.0, 1.0);\n        return;\n    }',
+      )
+      if (depthVertexShader === spark.material.vertexShader) {
+        console.warn('depth pass: the splat shader entry point moved, drawing every splat')
+      }
       const depthMaterial = new THREE.ShaderMaterial({
         glslVersion: THREE.GLSL3,
-        vertexShader: spark.material.vertexShader,
+        vertexShader: depthVertexShader,
         fragmentShader: spark.material.fragmentShader,
         uniforms: { ...spark.uniforms, minAlpha: { value: DEPTH_ALPHA_CUT } },
         premultipliedAlpha: true,
@@ -1818,6 +1831,28 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       renderRef.current()
     }
   }, [boxedSplatsOnly, filterBoxes, filterUrl, splatUrl])
+
+  // Selection highlight: add light to the splats inside the selected box, so
+  // the viewer shows the surface the box is masking instead of only the box.
+  useEffect(() => {
+    const mesh = stateRef.current?.splat
+    if (!mesh || !selectedId) {
+      return
+    }
+    const object =
+      frameObjects.find((candidate) => candidate.id === selectedId) ??
+      objects.find((candidate) => candidate.id === selectedId)
+    if (!object) {
+      return
+    }
+    const edit = selectionSplatEdit(object)
+    mesh.add(edit)
+    renderRef.current()
+    return () => {
+      mesh.remove(edit)
+      renderRef.current()
+    }
+  }, [selectedId, frameObjects, objects, splatUrl])
 
   useEffect(() => {
     const state = stateRef.current
