@@ -663,3 +663,23 @@ def test_smoothing_keeps_the_detour_that_gave_a_stretch_its_clearance():
     # The straight chord would pass 0.35 m from the corner and still have sight.
     assert driven > 0.35
     assert raw_clearance > 0.0
+
+
+def test_the_service_waypoint_reads_the_box_through_its_own_frame():
+    grid = nav.Grid(
+        area={"x0": -6.0, "z0": -6.0, "x1": 6.0, "z1": 6.0},
+        blocked_mask=np.zeros((120, 120), dtype=np.uint8),
+        agent_radius_m=0.1,
+        safety_margin_m=0.0,
+    )
+    # A 4 m tall column: its long axis is world up, so its footprint is 0.4 m wide.
+    column = {
+        "centre": [0.0, 2.0, 0.0],
+        "axes": [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+        "extents": [4.0, 0.4, 0.4],
+    }
+    waypoint = nav.compute_service_waypoint(column, grid)
+    footprint = nav.object_footprint(column)
+    gap_x = max(footprint.x0 - waypoint[0], 0.0, waypoint[0] - footprint.x1)
+    gap_z = max(footprint.z0 - waypoint[1], 0.0, waypoint[1] - footprint.z1)
+    assert math.hypot(gap_x, gap_z) == pytest.approx(nav.DEFAULT_CLEARANCE_TARGET_M, abs=0.15)

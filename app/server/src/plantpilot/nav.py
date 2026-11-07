@@ -758,17 +758,11 @@ def compute_service_waypoint(
     The waypoint is at least min_dist_m away from the object's boundary
     and selects the walkable cell with the highest clearance.
     """
-    # objects.json uses "centre"; fall back to "center" then "pos".
-    center = target_box.get("centre") or target_box.get("center") or target_box.get("pos", [0.0, 0.0, 0.0])
-    extents = target_box.get("extents") or target_box.get("size", [0.8, 0.8, 0.8])
-    if up_axis == 1:
-        cx, cz = float(center[0]), float(center[2])
-        sx, sz = float(extents[0]), float(extents[2])
-    else:
-        cx, cz = float(center[0]), float(center[1])
-        sx, sz = float(extents[0]), float(extents[1])
-
-    half_x, half_z = sx / 2.0, sz / 2.0
+    # The footprint reads the box through its own frame: `extents` runs along the
+    # box's axes, so read as world sizes it puts a machine's height in its width.
+    footprint = object_footprint(target_box, up_axis=up_axis)
+    cx, cz = (footprint.x0 + footprint.x1) / 2.0, (footprint.z0 + footprint.z1) / 2.0
+    half_x, half_z = (footprint.x1 - footprint.x0) / 2.0, (footprint.z1 - footprint.z0) / 2.0
     candidates: list[tuple[float, tuple[float, float]]] = []
 
     # Sample 16 radial directions around the target
