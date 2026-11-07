@@ -62,7 +62,8 @@ type Props = {
   focusTarget: { centre: [number, number, number]; radius: number } | null
   focusToken: number
   robotProfile: 'humanoid' | 'amr' | 'cargo'
-  posture: 'upright' | 'crouched'
+  crouchSpans: [number, number][]
+  showRobot: boolean
   route: RoomRoute | null
   tripToken: number
   follow: boolean
@@ -89,8 +90,8 @@ const MAPPED_COLOUR = 0x22d3ee
 const ROUTE_COLOUR = 0xfbbf24
 
 // The procedural humanoid reads this while animating; a single viewer instance
-// owns it, so a module-level value avoids rebuilding the model on posture change.
-let robotPosture: 'upright' | 'crouched' = 'upright'
+// owns it, so a module-level value avoids rebuilding the model on crouch changes.
+let robotCrouchSpans: [number, number][] = []
 
 function boxColour(object: RoomObject, mapped: Set<string>, targetId: string | null): number {
   if (targetId === object.id) {
@@ -279,7 +280,10 @@ function buildRobot(profile: RobotProfile): THREE.Group {
     let crouch = 0
 
     group.userData.animate = (_time: number, travelled: number, moving: boolean) => {
-      const wantCrouch = robotPosture === 'crouched' ? 1 : 0
+      const withinSpan = robotCrouchSpans.some(
+        ([from, to]) => travelled >= from - 0.35 && travelled <= to + 0.35,
+      )
+      const wantCrouch = withinSpan ? 1 : 0
       crouch += (wantCrouch - crouch) * 0.18
       const phase = travelled * 3.9
       const swing = moving ? 0.55 : 0
@@ -445,10 +449,10 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, posture, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, crouchSpans, showRobot, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
-  robotPosture = posture
+  robotCrouchSpans = crouchSpans
   const [progress, setProgress] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [perf, setPerf] = useState<{ draws: number; ms: number; calls: number; splats: number } | null>(null)
@@ -469,6 +473,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     meshGroups: Map<string, { group: THREE.Group; index: number }>
     obstacleGroup: THREE.Group
     occupancy: THREE.InstancedMesh | null
+    decorGroup: THREE.Group | null
     placeRobotAt: ((dt: number) => void) | null
     updateArrows: (() => void) | null
     focusTween: {
@@ -949,8 +954,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       const heading = stateRef.current?.motion.heading ?? robot.rotation.y
       robotForward.set(0, 0, 1).applyAxisAngle(up, heading)
-      const rawDesired = robot.position.clone().addScaledVector(robotForward, -2.8).add(new THREE.Vector3(0, 1.5, 0))
-      const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, 0.5, 0))
+      const lookHeight = robotProfile === 'humanoid' ? 0.62 : 0.45
+      const followDistance = robotProfile === 'humanoid' ? 2.55 : 2.35
+      const rawDesired = robot.position
+        .clone()
+        .addScaledVector(robotForward, -followDistance)
+        .add(new THREE.Vector3(0, lookHeight + 0.8, 0))
+      const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, lookHeight, 0))
       const safeDesired = safeCameraPosition(rawDesired, desiredTarget)
       const state = stateRef.current
       if (state) {
@@ -1007,29 +1017,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         renderRef.current()
         if (!motion.reached) {
           motion.reached = true
-          // arrival camera: step back from the target so its frame and the
-          // diagnosis card read together instead of leaving the camera trailing
-          const targetBox = objectsRef.current.find((object) => object.id === targetRef.current)
-          const live = stateRef.current
-          const beacon = beaconWorldRef.current
-          const worldCentre = targetBox
-            ? new THREE.Vector3(...targetBox.centre).applyQuaternion(live ? live.world.quaternion : new THREE.Quaternion())
-            : beacon
-          if (worldCentre) {
-            const radius = targetBox ? Math.max(1.4, Math.max(...targetBox.extents) * 1.7) : 2.4
-            const direction = camera.position.clone().sub(worldCentre)
-            if (direction.lengthSq() < 0.01) {
-              direction.set(0, 0.4, 1)
-            }
-            direction.normalize()
-            camera.position.copy(worldCentre).addScaledVector(direction, radius).add(new THREE.Vector3(0, 0.5, 0))
-            controls.target.copy(worldCentre)
-            const safeArrival = stateRef.current?.safeCameraPosition
-              ? stateRef.current.safeCameraPosition(camera.position.clone(), worldCentre.clone())
-              : camera.position.clone()
-            camera.position.copy(safeArrival)
-            controls.update()
-          }
+          // No arrival cut: the camera keeps its follow framing so the robot is
+          // left standing at the target, ready for the next destination.
           tripRef.current({ mode: 'arrived', travelled: motion.total, total: motion.total })
         }
       }
@@ -1237,6 +1226,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       meshGroups: new Map(),
       obstacleGroup: new THREE.Group(),
       occupancy: null,
+      decorGroup: null,
       placeRobotAt: null,
       updateArrows: null,
       focusTween: null,
@@ -1693,10 +1683,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     if (!state) {
       return
     }
-    state.routeGroup.visible = showRoute
+    state.routeGroup.visible = showRobot
+    if (state.decorGroup) {
+      state.decorGroup.visible = showRoute
+    }
     state.beaconGroup.visible = showRoute
     renderRef.current()
-  }, [showRoute])
+  }, [showRoute, showRobot])
 
   // Focus tween: ease the camera to a selected object in the loop.
   useEffect(() => {
@@ -2268,7 +2261,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const arrowCount = Math.max(1, Math.min(300, Math.floor(totalLength / 0.45)))
     const arrows = new THREE.InstancedMesh(arrowGeometry, arrowMaterial, arrowCount)
     arrows.renderOrder = 3
-    state.routeGroup.add(arrows)
+    const decor = new THREE.Group()
+    decor.add(arrows)
+    state.routeGroup.add(decor)
+    if (stateRef.current) {
+      stateRef.current.decorGroup = decor
+    }
 
     for (const [point, inner] of [[points[0], 0.1], [points[points.length - 1], 0.14]] as [THREE.Vector3, number][]) {
       const ring = new THREE.Mesh(
@@ -2278,7 +2276,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       ring.rotation.x = -Math.PI / 2
       ring.position.copy(point)
       ring.position.y += 0.01
-      state.routeGroup.add(ring)
+      decor.add(ring)
     }
 
     const robot = buildRobot(robotProfile)

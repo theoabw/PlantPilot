@@ -1056,6 +1056,17 @@
             "title": "Blockers",
             "type": "array"
           },
+          "standing_height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Standing Height M"
+          },
           "start": {
             "anyOf": [
               {
@@ -1069,6 +1080,20 @@
               }
             ],
             "title": "Start"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
           }
         },
         "title": "RerouteRequest",

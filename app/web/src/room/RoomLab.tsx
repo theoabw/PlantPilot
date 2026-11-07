@@ -129,7 +129,12 @@ export default function RoomLab({ onLeave }: Props) {
   const [rerouteNote, setRerouteNote] = useState<string | null>(null)
   const [explode, setExplode] = useState(0)
   const [robotId, setRobotId] = useState<RobotOption['id']>('amr')
-  const [posture, setPosture] = useState<'upright' | 'crouched'>('upright')
+  const [crouchSpans, setCrouchSpans] = useState<[number, number][]>([])
+  const [destinationScene, setDestinationScene] = useState<[number, number, number] | null>(null)
+  const [destinationLabel, setDestinationLabel] = useState<string | null>(null)
+  const [destinationTag, setDestinationTag] = useState<string | null>(null)
+  const [destinationCondition, setDestinationCondition] = useState<string | null>(null)
+  const [destinationObjectId, setDestinationObjectId] = useState<string | null>(null)
   const [customRadius, setCustomRadius] = useState<number | null>(null)
   const [focusToken, setFocusToken] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -138,6 +143,7 @@ export default function RoomLab({ onLeave }: Props) {
   const [arrivalDismissed, setArrivalDismissed] = useState(false)
   const robotPositionRef = useRef<[number, number] | null>(null)
   const initialStartRef = useRef<[number, number] | null>(null)
+  const destinationXZRef = useRef<[number, number] | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -163,6 +169,11 @@ export default function RoomLab({ onLeave }: Props) {
             const axes = value.grid?.horizontal_axes ?? [0, 2]
             initialStartRef.current = [value.path[0][axes[0]], value.path[0][axes[1]]]
           }
+          if (value?.target_waypoint) {
+            const waypoint = value.target_waypoint
+            setDestinationScene([waypoint[0], waypoint[1], waypoint[2]])
+            destinationXZRef.current = [waypoint[0], waypoint[2]]
+          }
         }
       })
       .catch(() => undefined)
@@ -187,6 +198,9 @@ export default function RoomLab({ onLeave }: Props) {
     if (trip.mode !== 'arrived' || diagnosis) {
       return
     }
+    if (mapped?.target_tag && destinationTag && destinationTag !== mapped.target_tag) {
+      return
+    }
     let alive = true
     fetchDiagnosis()
       .then((value) => {
@@ -198,7 +212,7 @@ export default function RoomLab({ onLeave }: Props) {
     return () => {
       alive = false
     }
-  }, [trip.mode, diagnosis])
+  }, [trip.mode, diagnosis, destinationTag, mapped])
 
   const reviewed = useMemo<RoomObject[]>(() => {
     return (anchors?.anchors ?? []).map((anchor: RoomAnchor): RoomObject => ({
@@ -284,16 +298,23 @@ export default function RoomLab({ onLeave }: Props) {
   }, [mapped])
 
   const mission: MissionTarget | null = useMemo(() => {
-    if (!mapped) {
+    const tag = destinationTag ?? mapped?.target_tag ?? null
+    if (!tag) {
       return null
     }
+    const isMappedTarget = !destinationTag || destinationTag === mapped?.target_tag
     return {
-      tag: mapped.target_tag,
-      label: targetAnchor?.label ?? (humanize(targetMapping?.class) || 'equipment'),
-      condition: targetMapping ? severityText(targetMapping) : 'Mapped to the builder pack',
-      issue: targetMapping?.issue_code,
+      tag,
+      label:
+        destinationLabel ??
+        targetAnchor?.label ??
+        (humanize(targetMapping?.class) || 'equipment'),
+      condition:
+        destinationCondition ??
+        (isMappedTarget && targetMapping ? severityText(targetMapping) : 'Selected equipment'),
+      issue: isMappedTarget ? targetMapping?.issue_code : undefined,
     }
-  }, [mapped, targetAnchor, targetMapping])
+  }, [destinationTag, destinationLabel, destinationCondition, mapped, targetAnchor, targetMapping])
 
   const displayObjects = useMemo<RoomObject[]>(() => {
     if (view === 'objects') {
@@ -435,49 +456,91 @@ export default function RoomLab({ onLeave }: Props) {
     radius: number,
     profile: RobotOption,
     note?: string,
+    options: {
+      target?: [number, number] | null
+      startAfter?: boolean
+      label?: string
+      tag?: string | null
+      condition?: string | null
+      objectId?: string | null
+    } = {},
   ) => {
     const start = robotPositionRef.current ?? initialStartRef.current
-    const planWithHeight = (height: number) => fetchReroute(blockers, start, radius, height)
-    const finish = (result: RoomRoute, nextPosture: 'upright' | 'crouched') => {
-      setPosture(nextPosture)
+    const target = options.target ?? destinationXZRef.current
+    const planWithHeight = (height: number, standingHeightM: number | null = null) =>
+      fetchReroute(blockers, start, radius, height, {
+        target: target ?? null,
+        standingHeightM,
+      })
+    const finish = (result: RoomRoute, crouched: boolean) => {
       setRoute(result)
+      const waypoint = result.target_waypoint
+      if (waypoint) {
+        const axes = result.grid?.horizontal_axes ?? [0, 2]
+        setDestinationScene([waypoint[0], waypoint[1], waypoint[2]])
+        destinationXZRef.current = [waypoint[axes[0]], waypoint[axes[1]]]
+      }
+      setCrouchSpans(crouched ? result.crouch_spans_m ?? [] : [])
+      if (options.label) {
+        setDestinationLabel(options.label)
+      }
+      if (options.tag !== undefined) {
+        setDestinationTag(options.tag)
+      }
+      if (options.condition !== undefined) {
+        setDestinationCondition(options.condition)
+      }
+      if (options.objectId !== undefined) {
+        setDestinationObjectId(options.objectId)
+      }
       if (!result.reachable) {
         setRerouteNote(note ?? `No safe route for this robot at ${radius.toFixed(2)} m clearance`)
         return
       }
       setRerouteNote(
         note ??
-          (nextPosture === 'crouched'
-            ? 'Crouches under low pipework'
-            : `Route replanned for ${radius.toFixed(2)} m clearance`),
+          (crouched ? 'Crouches under low pipework on this route' : `Route replanned for ${radius.toFixed(2)} m clearance`),
       )
-      if (driving) {
+      if (options.startAfter) {
+        setSelectedId(null)
+        setFollow(true)
+        setArrivalDismissed(false)
+        setTripToken((value) => value + 1)
+      } else if (driving) {
         setTripToken((value) => value + 1)
       }
     }
     planWithHeight(profile.height)
       .then((result) => {
         if (result.reachable || !profile.crouchHeight) {
-          finish(result, 'upright')
+          finish(result, false)
           return
         }
-        // A humanoid can duck. Retry with the crouched height instead of
-        // refusing the whole room, and let the model crouch on that route.
-        planWithHeight(profile.crouchHeight)
-          .then((crouched) => finish(crouched.reachable ? crouched : result, crouched.reachable ? 'crouched' : 'upright'))
-          .catch(() => finish(result, 'upright'))
+        // A humanoid can duck. Plan the crouched route and let the planner tell
+        // us which stretches actually need it, so the model walks upright
+        // everywhere else.
+        planWithHeight(profile.crouchHeight, profile.height)
+          .then((crouched) =>
+            finish(
+              crouched.reachable ? crouched : result,
+              crouched.reachable && (crouched.crouch_spans_m?.length ?? 0) > 0,
+            ),
+          )
+          .catch(() => finish(result, false))
       })
       .catch(() => setRerouteNote('Route replan failed'))
   }
 
-  const replanForRobot = (radius: number, note?: string) => {
-    const blockers = obstacles.map((item) => [
+  const obstacleBlockers = () =>
+    obstacles.map((item) => [
       item[0] - 0.18,
       item[1] - 0.18,
       item[0] + 0.18,
       item[1] + 0.18,
     ])
-    planRoute(blockers, radius, robot, note)
+
+  const replanForRobot = (radius: number, note?: string) => {
+    planRoute(obstacleBlockers(), radius, robot, note, { target: destinationXZRef.current })
   }
 
   const changeRobot = (id: RobotOption['id'], radius?: number) => {
@@ -485,13 +548,13 @@ export default function RoomLab({ onLeave }: Props) {
     setCustomRadius(radius ?? null)
     const option = ROBOTS.find((candidate) => candidate.id === id) ?? ROBOTS[1]
     const chosenRadius = radius ?? option.radius
-    const blockers = obstacles.map((item) => [
-      item[0] - 0.18,
-      item[1] - 0.18,
-      item[0] + 0.18,
-      item[1] + 0.18,
-    ])
-    planRoute(blockers, chosenRadius, option, `${chosenRadius.toFixed(2)} m clearance for the ${option.label.toLowerCase()}`)
+    planRoute(
+      obstacleBlockers(),
+      chosenRadius,
+      option,
+      `${chosenRadius.toFixed(2)} m clearance for the ${option.label.toLowerCase()}`,
+      { target: destinationXZRef.current },
+    )
   }
 
   const routeReady = Boolean(route?.reachable && (route.path?.length ?? 0) > 1)
@@ -529,14 +592,41 @@ export default function RoomLab({ onLeave }: Props) {
   }, [selectedObject])
 
   const startMission = () => {
-    if (!routeReady) {
+    if (!routeReady && !destinationXZRef.current) {
       return
     }
-    setSelectedId(null)
-    setFollow(true)
     setBrowserOpen(false)
-    setArrivalDismissed(false)
-    setTripToken((value) => value + 1)
+    // Always plan from where the robot stands now, so it can walk from one
+    // destination to the next without teleporting back to the dock.
+    planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
+      target: destinationXZRef.current,
+      startAfter: true,
+      label: destinationLabel ?? undefined,
+      tag: destinationTag,
+      condition: destinationCondition ?? undefined,
+      objectId: destinationObjectId,
+    })
+  }
+
+  const sendToEquipment = () => {
+    if (!selectedObject) {
+      return
+    }
+    const axes = route?.grid?.horizontal_axes ?? [0, 2]
+    const target: [number, number] = [
+      selectedObject.centre[axes[0]],
+      selectedObject.centre[axes[1]],
+    ]
+    const displayName =
+      humanize(selectedMapping?.class) || selectedObject.label || humanize(selectedObject.class)
+    planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
+      target,
+      startAfter: true,
+      label: displayName,
+      tag: selectedMapping?.tag ?? displayName,
+      condition: selectedMapping ? severityText(selectedMapping) : 'Selected equipment',
+      objectId: selectedObject.id,
+    })
   }
 
   const placeObstacle = (point: [number, number]) => {
@@ -555,27 +645,15 @@ export default function RoomLab({ onLeave }: Props) {
       item[1] + 0.18,
     ])
     blockers.push(blocker)
-    const start = robotPositionRef.current ?? initialStartRef.current
-    fetchReroute(blockers, start, clearanceRadius, robot.height)
-      .then((result) => {
-        setRoute(result)
-        if (!result.reachable) {
-          setRerouteNote('No alternative path from the robot position')
-          return
-        }
-        setRerouteNote(`Rerouted live · ${(result.distance_m ?? 0).toFixed(1)} m`)
-        if (driving) {
-          setTripToken((value) => value + 1)
-        }
-      })
-      .catch(() => setRerouteNote('Reroute failed'))
+    planRoute(blockers, clearanceRadius, robot, 'Rerouted live · obstacles on the path', {
+      target: destinationXZRef.current,
+    })
   }
 
   const clearObstacles = () => {
     setObstacles([])
     setObstacleMode(false)
     replanForRobot(clearanceRadius, 'Obstacles cleared, route restored')
-    setPosture('upright')
   }
 
   const sceneName = useMemo(() => {
@@ -610,7 +688,7 @@ export default function RoomLab({ onLeave }: Props) {
             selectedId={selectedId}
             mappedIds={mappedIds}
             targetId={displayTargetId}
-            targetPoint={targetPoint}
+            targetPoint={destinationScene ?? targetPoint}
             cameraPose={null}
             maxSplats={data.source.points + 20_000}
             splatUrl={splatAssetUrl(data.source.points)}
@@ -629,10 +707,11 @@ export default function RoomLab({ onLeave }: Props) {
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}
+            showRobot={trip.mode !== 'idle'}
+            crouchSpans={crouchSpans}
             focusTarget={focusTarget}
             focusToken={focusToken}
             robotProfile={robot.id}
-            posture={posture}
             route={route}
             tripToken={tripToken}
             follow={follow}
@@ -918,16 +997,13 @@ export default function RoomLab({ onLeave }: Props) {
             >
               Focus
             </button>
-            {selectedObject.id === targetAnchor?.id ? (
-              <button
-                type="button"
-                onClick={startMission}
-                disabled={!routeReady}
-                className="flex-1 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-              >
-                Send robot
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={sendToEquipment}
+              className="flex-1 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-400"
+            >
+              Send robot here
+            </button>
           </div>
         </aside>
       ) : null}
@@ -942,7 +1018,13 @@ export default function RoomLab({ onLeave }: Props) {
             </span>
           </div>
           <h2 className="mt-1 text-lg font-black leading-tight text-white">
-            {mission.tag} <span className="text-slate-400">·</span> {mission.label}
+            {mission.tag === mission.label ? (
+              mission.label
+            ) : (
+              <>
+                {mission.tag} <span className="text-slate-400">·</span> {mission.label}
+              </>
+            )}
           </h2>
           <p className="mt-1 text-xs font-semibold" style={{ color: targetMapping ? STATE_COLOURS[targetMapping.state] : '#cbd5e1' }}>
             {mission.condition}
@@ -952,8 +1034,10 @@ export default function RoomLab({ onLeave }: Props) {
               ? `${(route?.distance_m ?? 0).toFixed(1)} m route · ${(route?.clearance_m ?? 0).toFixed(2)} m clearance`
               : routeMessage(route)}
           </p>
-          {posture === 'crouched' && routeReady ? (
-            <p className="mt-1 text-[10px] font-semibold text-amber-200">Ducks under low pipework on this route</p>
+          {crouchSpans.length > 0 && routeReady ? (
+            <p className="mt-1 text-[10px] font-semibold text-amber-200">
+              Ducks under low pipework for {crouchSpans.reduce((total, [from, to]) => total + Math.max(0, to - from), 0).toFixed(1)} m of this route
+            </p>
           ) : null}
           <div className="mt-3">
             <div className="flex rounded-lg border border-slate-700 bg-slate-900/60 p-0.5">
@@ -980,15 +1064,15 @@ export default function RoomLab({ onLeave }: Props) {
             <button
               type="button"
               onClick={startMission}
-              disabled={!routeReady}
+              disabled={!mission}
               className="flex-1 rounded-lg bg-cyan-500 px-3 py-2.5 text-sm font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
               Send robot
             </button>
-            {targetAnchor || mapped?.target_object_id ? (
+            {destinationObjectId || targetAnchor || mapped?.target_object_id ? (
               <button
                 type="button"
-                onClick={() => setSelectedId(targetAnchor?.id ?? mapped?.target_object_id ?? null)}
+                onClick={() => setSelectedId(destinationObjectId ?? targetAnchor?.id ?? mapped?.target_object_id ?? null)}
                 className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-200 hover:border-slate-400"
               >
                 Inspect
@@ -1001,7 +1085,7 @@ export default function RoomLab({ onLeave }: Props) {
       {driving ? (
         <section className="absolute bottom-5 left-1/2 z-30 w-[24rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl border border-slate-700/80 bg-slate-950/90 px-4 py-3 shadow-2xl backdrop-blur">
           <div className="flex items-center justify-between text-xs font-bold text-slate-200">
-            <span>Driving to {mission?.tag ?? 'the target'}</span>
+            <span>Driving to {destinationTag ?? destinationLabel ?? mission?.tag ?? 'the target'}</span>
             <span className="text-cyan-300">{remaining.toFixed(1)} m</span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
@@ -1021,24 +1105,36 @@ export default function RoomLab({ onLeave }: Props) {
 
       {showArrival && mission ? (
         <section className="absolute bottom-4 left-4 z-30 w-[24rem] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700/80 bg-slate-950/95 p-4 shadow-2xl backdrop-blur">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300">Inspection complete</p>
-          <h2 className="mt-1 text-lg font-black leading-tight text-white">
-            {diagnosis?.issue?.code ?? mission.issue ?? 'Report'} <span className="text-slate-400">at</span> {mission.tag}
-          </h2>
-          <p className="mt-1 text-xs font-semibold text-slate-300">
-            Health {diagnosis?.health_score ?? 'n/a'} · {diagnosis?.issue?.summary ?? mission.condition}
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300">
+            {destinationTag === null || destinationTag === mapped?.target_tag ? 'Inspection complete' : 'Arrived'}
           </p>
-          {diagnosis?.next_safe_check ? (
-            <p className="mt-2 rounded-md border border-slate-700 bg-slate-900/70 px-2 py-1.5 text-[11px] font-semibold leading-snug text-slate-300">
-              Next check: {diagnosis.next_safe_check.action}
+          <h2 className="mt-1 text-lg font-black leading-tight text-white">
+            {destinationTag === null || destinationTag === mapped?.target_tag
+              ? `${diagnosis?.issue?.code ?? mission.issue ?? 'Report'} at ${mission.tag}`
+              : (destinationLabel ?? mission.label)}
+          </h2>
+          {destinationTag === null || destinationTag === mapped?.target_tag ? (
+            <>
+              <p className="mt-1 text-xs font-semibold text-slate-300">
+                Health {diagnosis?.health_score ?? 'n/a'} · {diagnosis?.issue?.summary ?? mission.condition}
+              </p>
+              {diagnosis?.next_safe_check ? (
+                <p className="mt-2 rounded-md border border-slate-700 bg-slate-900/70 px-2 py-1.5 text-[11px] font-semibold leading-snug text-slate-300">
+                  Next check: {diagnosis.next_safe_check.action}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-1 text-xs font-semibold text-slate-300">
+              Robot is waiting here. Choose another machine to send it onward.
             </p>
-          ) : null}
+          )}
           <div className="mt-3 flex gap-2">
-            {targetAnchor || mapped?.target_object_id ? (
+            {destinationObjectId || targetAnchor || mapped?.target_object_id ? (
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedId(targetAnchor?.id ?? mapped?.target_object_id ?? null)
+                  setSelectedId(destinationObjectId ?? targetAnchor?.id ?? mapped?.target_object_id ?? null)
                   setArrivalDismissed(true)
                 }}
                 className="flex-1 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-400"
@@ -1050,7 +1146,6 @@ export default function RoomLab({ onLeave }: Props) {
               type="button"
               onClick={() => {
                 setArrivalDismissed(true)
-                setFollow(false)
               }}
               className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-200 hover:border-slate-400"
             >
