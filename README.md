@@ -91,7 +91,7 @@ objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
 
 **Route planning.** `nav.py` builds an occupancy grid from four independent layers. A cell is walkable ground only when it holds a gaussian near the floor plane, which is what holds the planner inside the truncated capture; on the complete capture the object and overhead layers hold the perimeter and the floor layer changes one reachable cell. A cell is blocked when a near-vertical surface crosses the robot's body, which it detects from the gaussians' own normals: a wall runs the height of the room, an overhead pipe does not, and a machine body still blocks. Object boxes block their footprints when the envelope is plausible for one object, overhead structure blocks a taller robot, and the grid is closed by one cell and then inflated once with a 0.20 m agent radius and a 0.02 m margin. A* searches it to a stand-off waypoint beside the target, and the artifact records each layer's cell count and the rule behind it. Reported clearance is the smallest distance from the smoothed path to the uninflated cells, over the whole route. From the doorway, the Compact AMR and the Humanoid reach all 38 mapped assets and anchors and the Cargo AMR reaches 36; a destination with no ground reachable beside it stops on the nearest ground that is.
 
-The complete Equipment Room capture starts from its reviewed doorway position in [route_starts.json](./fixtures/scene/route_starts.json). Live reroutes use the robot's current position instead, and the same grid rules apply.
+The complete Equipment Room capture starts inside the room, about one fifth of the capture depth inward from the previous doorway position, using [route_starts.json](./fixtures/scene/route_starts.json). Live reroutes use the robot's current position instead, and the same grid rules apply.
 
 Choose the Humanoid, Compact AMR or Cargo AMR from **Character** in the header, without selecting equipment first. Changing character stops the current trip and returns it to the original start before replanning. During a mission, use **Follow** to track the selected character while orbiting with the pointer. Select **Move camera** to stop following and move the view with W/A/S/D or the arrow keys; select **Follow** again to resume tracking. **Manual control** lets you drive the selected character with W/A/S/D or the arrow keys, within the route's supported floor area. Choose **Third person** or **First person** in the camera controls; drag in first-person mode to look around. Starting an autonomous mission exits manual control.
 
@@ -123,7 +123,7 @@ Every number comes from a run on the two supplied captures in `data/supplied/`; 
 | Largest object share | 1.5 percent of points | 4.2 percent of points |
 | Extraction time | 3.7 s | 22.0 s |
 | Builder-pack mapping | 28 proposed, 2 unresolved, P-005 to OBJ-034 | 30 proposed, 0 unresolved, P-005 to OBJ-037 |
-| Route | 1.08 m, 2 path points, 0.51 m minimum clearance | 1.71 m, 5 path points, 0.21 m minimum clearance |
+| Route | 1.08 m, 2 path points, 0.51 m minimum clearance | 0.22 m, 2 path points, 0.79 m minimum clearance |
 | Reviewed anchors | none | 8, washing machine box 0.88 m tall |
 | Viewer asset | 428,991 gaussians, 24,023,947 B | 1,386,351 gaussians, 77,636,108 B |
 

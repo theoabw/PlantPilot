@@ -141,7 +141,7 @@ def test_equipment_capture_uses_the_reviewed_dock(tmp_path):
     )
 
     assert route["start"][0] == pytest.approx(-0.585, abs=0.1)
-    assert route["start"][2] == pytest.approx(-4.144, abs=0.1)
+    assert route["start"][2] == pytest.approx(-2.649, abs=0.1)
     assert route["grid_stats"]["floor_domain"] is True
     assert nav._configured_start_position("another-capture.ply") is None
 

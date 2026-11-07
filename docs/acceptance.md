@@ -52,7 +52,7 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make route` runs,
 **then** a path is returned with a length in scene units and a minimum clearance, and the path crosses no blocked cell.
 
-**Pass:** a route exists with at least two path points and a measured clearance of at least the robot radius less one 0.10 m cell, measured along the smoothed path to the uninflated cells, both in scene units because the door-height scale check has not run, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn on the floor, with the length and clearance visible. Route length is not a bar: on the complete capture P-005 lands on an object near the reviewed doorway, so the route is 1.91 m, and on the truncated boiler capture it is a 1.39 m stand-off on the observed floor.
+**Pass:** a route exists with at least two path points and a measured clearance of at least the robot radius less one 0.10 m cell, measured along the smoothed path to the uninflated cells, both in scene units because the door-height scale check has not run, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn on the floor, with the length and clearance visible. Route length is not a bar: on the complete capture the inward start is near the P-005 waypoint, so the route is 0.22 m; on the truncated boiler capture it is 1.08 m on the observed floor.
 **Check:** `make route`; replay the path in the viewer and follow the arrows.
 
 ### 5. Nearby objects are shown as the avatar moves
