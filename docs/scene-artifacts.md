@@ -471,10 +471,12 @@ model visibly crouches for that mission. A route the robot could not physically
 take is never drawn.
 
 The robot itself is procedural: a hi-vis humanoid with pelvis, two-segment legs
-and arms, joined knees, elbows and hips, a backpack, helmet and visor, or a
-wheeled AMR with chassis, four wheels, deck rails, mast, spinning lidar, camera
-bar and e-stop. Both are animated from distance travelled, so the walk or the
-wheel rotation matches the route speed.
+and arms, joined knees, elbows and hips, a backpack, yellow hard hat and visor,
+or a wheeled AMR with a white, grey and green chassis, four dark wheels, deck
+rails, mast, spinning lidar, camera bar and e-stop. The supplied Valmet logo is
+stored locally and shown on the humanoid's vest and backpack and the AMRs'
+chassis. Both are animated from distance travelled, so the walk or the wheel
+rotation matches the route speed.
 
 ## Robot occlusion
 

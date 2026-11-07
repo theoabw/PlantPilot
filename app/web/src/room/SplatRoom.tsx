@@ -14,6 +14,7 @@ import { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, visib
 import { heightSplatFilter } from './heightSplatFilter'
 import { topDownPose } from './topDownPose'
 import { selectionSplatEdit } from './selectionSplatEdit'
+import { ROBOT_PALETTE, robotLogo } from './robotBrand'
 import { routeCurve } from './routeCurve'
 import { canEscapeCell, escapeDistances } from './walkGrid'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
@@ -152,7 +153,7 @@ const NEARBY_RADIUS_M = 2.5
 const SELECTED_COLOUR = 0xffffff
 const TARGET_COLOUR = 0xff3030
 const MAPPED_COLOUR = 0x22d3ee
-const ROBOT_TRIM_COLOUR = 0x26d6bc
+const ROBOT_TRIM_COLOUR = ROBOT_PALETTE.green
 const ROUTE_COLOUR = 0xfbbf24
 // What an overlay looks like where structure hides it: faint, so the robot and
 // the route stay findable behind a machine and a false occlusion from the coarse
@@ -273,8 +274,8 @@ const followDistances: Record<RobotProfile, number> = {
  * payload deck, sensor mast and lidar. Both animate from distance travelled so
  * feet and wheels match the route speed.
  */
-function buildRobot(profile: RobotProfile): THREE.Group {
-  const group = buildRobotBody(profile)
+function buildRobot(profile: RobotProfile, logoTexture: THREE.Texture): THREE.Group {
+  const group = buildRobotBody(profile, logoTexture)
   const parts: THREE.Mesh[] = []
   group.traverse((child) => {
     if (child instanceof THREE.Mesh && !child.userData.noGhost) {
@@ -287,7 +288,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-function buildRobotBody(profile: RobotProfile): THREE.Group {
+function buildRobotBody(profile: RobotProfile, logoTexture: THREE.Texture): THREE.Group {
   // No renderOrder on this group or on the pivots under it. three.js takes a
   // group's renderOrder as the sort key of everything below it, and the ghosts
   // only sort before the solid parts when all of them share one key.
@@ -313,19 +314,22 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
     const THIGH = 0.38
     const SHIN = 0.36
 
-    const pelvis = mesh(new THREE.BoxGeometry(0.3, 0.16, 0.2), 0x1f2937)
+    const pelvis = mesh(new THREE.BoxGeometry(0.3, 0.16, 0.2), ROBOT_PALETTE.darkGrey)
     pelvis.position.y = 0.88
     bob.add(pelvis)
     const belt = mesh(new THREE.BoxGeometry(0.32, 0.05, 0.22), 0x111827)
     belt.position.y = 0.98
     bob.add(belt)
 
-    const torso = mesh(new THREE.BoxGeometry(0.33, 0.5, 0.23), 0x334155)
+    const torso = mesh(new THREE.BoxGeometry(0.33, 0.5, 0.23), ROBOT_PALETTE.darkGrey)
     torso.position.y = 1.2
     bob.add(torso)
-    const vest = mesh(new THREE.BoxGeometry(0.345, 0.34, 0.245), 0xd4f22a, 0.95)
+    const vest = mesh(new THREE.BoxGeometry(0.345, 0.34, 0.245), ROBOT_PALETTE.hiVis, 0.95)
     vest.position.y = 1.22
     bob.add(vest)
+    const vestBadge = robotLogo(logoTexture, 0.18)
+    vestBadge.position.set(0, 1.275, 0.135)
+    bob.add(vestBadge)
     const bandLow = mesh(new THREE.BoxGeometry(0.355, 0.025, 0.255), 0xe2e8f0, 0.85)
     bandLow.position.y = 1.1
     bob.add(bandLow)
@@ -338,12 +342,16 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
     const frontLight = mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), ROBOT_TRIM_COLOUR, 0.9)
     frontLight.position.set(0, 1.18, 0.175)
     bob.add(frontLight)
-    const shoulders = mesh(new THREE.BoxGeometry(0.42, 0.1, 0.21), 0x475569)
+    const shoulders = mesh(new THREE.BoxGeometry(0.42, 0.1, 0.21), ROBOT_PALETTE.darkGrey)
     shoulders.position.y = 1.44
     bob.add(shoulders)
-    const backpack = mesh(new THREE.BoxGeometry(0.26, 0.3, 0.12), 0x1e293b)
+    const backpack = mesh(new THREE.BoxGeometry(0.26, 0.3, 0.12), ROBOT_PALETTE.darkGrey)
     backpack.position.set(0, 1.22, -0.17)
     bob.add(backpack)
+    const backpackBadge = robotLogo(logoTexture, 0.19)
+    backpackBadge.position.set(0, 1.31, -0.24)
+    backpackBadge.rotation.y = Math.PI
+    bob.add(backpackBadge)
     const packLight = mesh(new THREE.BoxGeometry(0.18, 0.035, 0.02), ROBOT_TRIM_COLOUR, 0.8)
     packLight.position.set(0, 1.24, -0.235)
     bob.add(packLight)
@@ -360,13 +368,13 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
     const visorStripe = mesh(new THREE.BoxGeometry(0.12, 0.012, 0.012), ROBOT_TRIM_COLOUR, 0.9)
     visorStripe.position.set(0, 1.6, 0.112)
     bob.add(visorStripe)
-    const helmet = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 20), 0xf8fafc)
+    const helmet = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 20), ROBOT_PALETTE.hardHat)
     helmet.position.y = 1.66
     bob.add(helmet)
-    const dome = mesh(new THREE.SphereGeometry(0.12, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), 0xf8fafc)
+    const dome = mesh(new THREE.SphereGeometry(0.12, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), ROBOT_PALETTE.hardHat)
     dome.position.y = 1.69
     bob.add(dome)
-    const brim = mesh(new THREE.BoxGeometry(0.25, 0.018, 0.09), 0xf1f5f9)
+    const brim = mesh(new THREE.BoxGeometry(0.25, 0.018, 0.09), ROBOT_PALETTE.hardHat)
     brim.position.set(0, 1.645, 0.1)
     bob.add(brim)
 
@@ -377,14 +385,14 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
       hip.position.set(side * 0.1, HIP_Y, 0)
       const hipJoint = mesh(new THREE.SphereGeometry(0.062, 12, 10), 0x111827)
       hip.add(hipJoint)
-      const thigh = mesh(new THREE.BoxGeometry(0.12, THIGH, 0.14), 0x1f2937)
+      const thigh = mesh(new THREE.BoxGeometry(0.12, THIGH, 0.14), ROBOT_PALETTE.darkGrey)
       thigh.position.y = -THIGH / 2
       hip.add(thigh)
       const knee = new THREE.Group()
       knee.position.y = -THIGH
-      const kneeCap = mesh(new THREE.SphereGeometry(0.058, 12, 10), 0x334155)
+      const kneeCap = mesh(new THREE.SphereGeometry(0.058, 12, 10), 0x4d5652)
       knee.add(kneeCap)
-      const shin = mesh(new THREE.BoxGeometry(0.1, SHIN + 0.04, 0.12), 0x334155)
+      const shin = mesh(new THREE.BoxGeometry(0.1, SHIN + 0.04, 0.12), 0x4d5652)
       shin.position.y = -(SHIN + 0.04) / 2
       knee.add(shin)
       const boot = mesh(new THREE.BoxGeometry(0.13, 0.08, 0.24), 0x0f172a)
@@ -404,19 +412,19 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
     for (const side of [-1, 1]) {
       const shoulder = new THREE.Group()
       shoulder.position.set(side * 0.235, 1.4, 0)
-      const shoulderCap = mesh(new THREE.SphereGeometry(0.055, 12, 10), 0x475569)
+      const shoulderCap = mesh(new THREE.SphereGeometry(0.055, 12, 10), 0x4d5652)
       shoulder.add(shoulderCap)
-      const upper = mesh(new THREE.BoxGeometry(0.085, 0.27, 0.1), 0x334155)
+      const upper = mesh(new THREE.BoxGeometry(0.085, 0.27, 0.1), ROBOT_PALETTE.darkGrey)
       upper.position.y = -0.135
       shoulder.add(upper)
-      const sleeveBand = mesh(new THREE.BoxGeometry(0.095, 0.05, 0.11), 0xd4f22a, 0.95)
+      const sleeveBand = mesh(new THREE.BoxGeometry(0.095, 0.05, 0.11), ROBOT_PALETTE.hiVis, 0.95)
       sleeveBand.position.y = -0.22
       shoulder.add(sleeveBand)
       const elbow = new THREE.Group()
       elbow.position.y = -0.285
-      const elbowJoint = mesh(new THREE.SphereGeometry(0.05, 12, 10), 0x475569)
+      const elbowJoint = mesh(new THREE.SphereGeometry(0.05, 12, 10), 0x4d5652)
       elbow.add(elbowJoint)
-      const fore = mesh(new THREE.BoxGeometry(0.078, 0.26, 0.092), 0x475569)
+      const fore = mesh(new THREE.BoxGeometry(0.078, 0.26, 0.092), 0x4d5652)
       fore.position.y = -0.135
       elbow.add(fore)
       const cuff = mesh(new THREE.BoxGeometry(0.082, 0.03, 0.096), 0x0f172a)
@@ -480,10 +488,10 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
     for (const end of [-1, 1]) {
       const hub = new THREE.Group()
       hub.position.set(side * (chassisWidth / 2 + 0.02), wheelRadius, end * (chassisLength / 2 - 0.16))
-      const tyre = mesh(new THREE.CylinderGeometry(wheelRadius, wheelRadius, 0.06, 18), 0x0f172a)
+      const tyre = mesh(new THREE.CylinderGeometry(wheelRadius, wheelRadius, 0.06, 18), ROBOT_PALETTE.tyre)
       tyre.rotation.z = Math.PI / 2
       hub.add(tyre)
-      const rim = mesh(new THREE.CylinderGeometry(wheelRadius * 0.55, wheelRadius * 0.55, 0.065, 14), 0x64748b)
+      const rim = mesh(new THREE.CylinderGeometry(wheelRadius * 0.55, wheelRadius * 0.55, 0.065, 14), 0x818b86)
       rim.rotation.z = Math.PI / 2
       hub.add(rim)
       body.add(hub)
@@ -494,16 +502,20 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
   const skirt = mesh(new THREE.BoxGeometry(chassisWidth + 0.02, 0.06, chassisLength + 0.02), 0x111827)
   skirt.position.y = 0.08
   body.add(skirt)
-  const lower = mesh(new THREE.BoxGeometry(chassisWidth, 0.16, chassisLength), 0x1f2937)
+  const lower = mesh(new THREE.BoxGeometry(chassisWidth, 0.16, chassisLength), ROBOT_PALETTE.green)
   lower.position.y = 0.2
   body.add(lower)
-  const upper = mesh(new THREE.BoxGeometry(chassisWidth - 0.03, 0.14, chassisLength - 0.04), 0x334155)
+  const upper = mesh(new THREE.BoxGeometry(chassisWidth - 0.03, 0.14, chassisLength - 0.04), ROBOT_PALETTE.white)
   upper.position.y = 0.34
   body.add(upper)
-  const deck = mesh(new THREE.BoxGeometry(chassisWidth + 0.04, 0.05, chassisLength + 0.04), 0x475569)
+  const deck = mesh(new THREE.BoxGeometry(chassisWidth + 0.04, 0.05, chassisLength + 0.04), ROBOT_PALETTE.lightGrey)
   deck.position.y = 0.43
   body.add(deck)
   for (const side of [-1, 1]) {
+    const badge = robotLogo(logoTexture, 0.24)
+    badge.position.set(side * ((chassisWidth - 0.03) / 2 + 0.01), 0.34, 0)
+    badge.rotation.y = side * Math.PI / 2
+    body.add(badge)
     const bumperFront = mesh(new THREE.BoxGeometry(0.1, 0.12, 0.07), 0x0b1220)
     bumperFront.position.set(side * (chassisWidth / 2 - 0.03), 0.17, chassisLength / 2 + 0.02)
     body.add(bumperFront)
@@ -535,6 +547,10 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
   const rearBar = mesh(new THREE.BoxGeometry(0.3, 0.04, 0.02), 0x991b1b, 0.85)
   rearBar.position.set(0, 0.3, -chassisLength / 2 - 0.02)
   body.add(rearBar)
+  const rearBadge = robotLogo(logoTexture, 0.23)
+  rearBadge.position.set(0, 0.355, -(chassisLength - 0.04) / 2 - 0.01)
+  rearBadge.rotation.y = Math.PI
+  body.add(rearBadge)
 
   const mast = new THREE.Group()
   mast.position.set(-chassisWidth / 2 + 0.11, 0.43, 0)
@@ -626,6 +642,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   const perfEnabled = useRef(new URLSearchParams(window.location.search).has('perf')).current
   // Effects outside the render effect need a way to say "the scene changed".
   const renderRef = useRef<() => void>(() => undefined)
+  const logoTextureRef = useRef<THREE.Texture | null>(null)
   const stateRef = useRef<{
     renderer: THREE.WebGLRenderer
     scene: THREE.Scene
@@ -797,6 +814,17 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       needsRender = true
     }
     renderRef.current = requestRender
+    let active = true
+    const logoTexture = new THREE.TextureLoader().load(
+      '/brand/valmet-logo.png',
+      () => {
+        if (active) requestRender()
+      },
+      undefined,
+      (error) => console.error('Failed to load the robot logo', error),
+    )
+    logoTexture.colorSpace = THREE.SRGBColorSpace
+    logoTextureRef.current = logoTexture
 
     const world = new THREE.Group()
     scene.add(world)
@@ -2064,6 +2092,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
       })
       state?.routeGroup.clear()
+      active = false
+      logoTextureRef.current = null
+      logoTexture.dispose()
       splat?.dispose()
       renderer.dispose()
       host.removeChild(renderer.domElement)
@@ -3011,7 +3042,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   // the path's own y.
   useEffect(() => {
     const state = stateRef.current
-    if (!state) {
+    const logoTexture = logoTextureRef.current
+    if (!state || !logoTexture) {
       return
     }
     const dispose = () => {
@@ -3109,7 +3141,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       if (previousRobot || characterStart || route?.start) {
         const robot = previousRobot?.userData.profile === robotProfile
           ? previousRobot
-          : buildRobot(robotProfile)
+          : buildRobot(robotProfile, logoTexture)
         if (previousRobot && robot !== previousRobot) {
           robot.position.copy(previousRobot.position)
           state.manualTravelled = 0
@@ -3209,7 +3241,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
 
     const previousPosition = previousRobot?.position.clone() ?? null
     const keepRobot = previousRobot?.userData.profile === robotProfile
-    const robot = keepRobot && previousRobot ? previousRobot : buildRobot(robotProfile)
+    const robot = keepRobot && previousRobot ? previousRobot : buildRobot(robotProfile, logoTexture)
     if (!keepRobot) {
       state.manualTravelled = 0
     }
