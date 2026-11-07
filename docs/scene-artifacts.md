@@ -12,7 +12,7 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/pack.json` | `make pack` (`plantpilot.pack`) | mapping, diagnosis, API |
 | `data/scene/mapped.json` | `make map` (`plantpilot.mapping`) | route, diagnosis, API, viewer |
 | `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
-| `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer, preview renderer |
+| `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
 | `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
 | `data/scene/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
@@ -34,7 +34,6 @@ make demo CAPTURE=equipment         # the same stages on the complete capture
 make scene                          # ingest the capture as delivered
 make objects                        # extract the framed objects
 make splat-asset                    # the sanitised capture as a viewer PLY
-make generality                     # the same stages on the reference plant, scored
 ```
 
 `CAPTURE` selects the capture and every artifact path that follows it:
@@ -88,12 +87,6 @@ declared, sane and rendered counts, the detected up axis and the timing.
 the voxel size, the component and object counts, the largest object share, the
 class counts and the extraction time.
 
-Both `scene` and `objects` render their preview PNGs with the native splat
-renderer (below). `SPLAT_GAUSSIANS`, `PREVIEW_WIDTH` and `PREVIEW_HEIGHT` set
-how much of the capture goes into a preview: the default draws 500,000
-gaussians at 1400 by 900 in about 15 seconds, and `SPLAT_GAUSSIANS=0` draws all
-of them for a still. `--mode points` keeps the old fast debug view.
-
 Both stages are deterministic: the decimation seed, the plane sampler and the
 splitter are fixed. Two runs on one input produce the same planes, floor,
 objects and counts; only the `timing_s` field differs.
@@ -124,8 +117,8 @@ to front. That is how the web splat viewers draw a capture, and it is what turns
 a cloud of points into textured surfaces.
 
 `plantpilot/splat_render.py` is that renderer in numpy. It is the CPU reference
-used for the preview PNGs, the deck and the stills, not the product viewer,
-which draws the same artifact on the GPU:
+used for the filter-channel contour rendering and optional previews, not the
+product viewer, which draws the same artifact on the GPU:
 
 - it reads the artifact, so it uses the per-gaussian orientation, size, opacity
   and DC colour the ingest stored;
@@ -138,9 +131,8 @@ which draws the same artifact on the GPU:
 Both supplied captures are `-y` up: their frames are the usual 3DGS axes with y
 pointing down. The floor is the bright concrete slab at positive y and the
 ceiling is the dark slab that carries the pipes and trays at negative y, which
-is what the walkthrough footage shows. The synthetic reference plant is `+y`
-because our own generator builds it that way, which is why nothing may hardcode
-a sign: the renderer and the viewer both take the axis from the artifact.
+is what the walkthrough footage shows. Nothing may hardcode a sign: the
+renderer and the viewer both take the axis from the artifact.
 
 ### The browser viewer
 
@@ -206,8 +198,7 @@ The room view is a contextual product shell: a minimal header, a mission card
   describes the equipment room. The renderer's splat budget is raised to the
   artifact's count too, because Spark accumulates 2^19 splats by default and
   silently truncates a larger capture.
-- Spark needs `three >= 0.180`; the web package is on that version and the
-  preview renderer here is unchanged.
+- Spark needs `three >= 0.180`; the web package is on that version.
 
 ## Why the plane band is 4 cm
 
@@ -567,34 +558,6 @@ under a 1.95 m ceiling, so the capture units are at least a few percent larger
 than metres, or the ceiling plane is a suspended one. The door check still has
 not been performed and distances stay in scene units.
 
-## The second scene
-
-`make generality` writes the synthetic reference plant (16 by 12 by 5 m, 10
-assets with ground truth) as a 3DGS PLY, runs the same ingest and segmentation
-on it, and scores the boxes against the asset positions. The plant is our own
-synthetic capture, labelled as such; it is not a Valmet asset.
-
-Run on the plant, Friday evening:
-
-| Number | Value |
-| --- | --- |
-| Points in the capture | 141,575 |
-| Measured spacing on the floor | 0.042 m |
-| Effective voxel size | 0.058 m (requested 0.030 m) |
-| Components | 763 |
-| Objects framed | 62 |
-| Largest object share | 4.2 percent of points |
-| Extraction time | 0.9 s |
-| Assets framed against ground truth | 10 of 10, bar is 8 |
-| Command result | PASS |
-
-Two honest details. The tank boxes frame the lower part of each tank, because
-the tanks (4 m tall) merge with the pipe run and the size limit cuts the merged
-shell; the check asks that a box contain the asset's centre and stay inside
-three times its footprint, not that the box be the whole asset. And the asset
-classes on this scene are weaker than on the delivered capture (a pump is
-framed as `motor`), which the check does not score.
-
 ## The improved capture
 
 Valmet delivered a second, complete export, `Equipment Room.ply`, on Friday
@@ -617,20 +580,17 @@ second scene in its own right, and it is the better demo material.
 | Largest object share | 1.2 percent of points | `make objects` |
 | Extraction time | 10.71 s | `make objects` |
 
-Run it with its own paths, so the boiler room artifacts stay where the other
-stages expect them:
+Run it with its own capture argument, so the boiler room artifacts stay where
+the other stages expect them:
 
 ```
-make scene PLY="data/supplied/Equipment Room.ply" SCENE=data/equipment/scene.npz \
-  PREVIEW=data/equipment/preview.png
-make objects SCENE=data/equipment/scene.npz OBJECTS=data/equipment/objects.json \
-  OBJECTS_TOP=data/equipment/objects_top.png OBJECTS_VIEW=data/equipment/objects_view.png
+make scene CAPTURE=equipment
+make objects CAPTURE=equipment
 ```
 
 Both captures are in `data/supplied/`, and both are gitignored. Switching the
 demo to the equipment room is a team decision: the mapping, route and diagnosis
-stages read the artifact paths, so it is a change of `SCENE` and `OBJECTS`, not
-of code.
+stages read the artifact paths, so it is a change of `CAPTURE`, not of code.
 
 ## Not in these artifacts
 

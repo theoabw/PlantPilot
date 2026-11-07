@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .splat import Scene, load_scene
+from .splat import Scene, hero_camera_pose, load_scene
 
 OBJECTS_VERSION = 1
 
@@ -716,21 +716,15 @@ def segment(
     elapsed = time.perf_counter() - started
 
     frame = scene.meta.get("frame", {})
-    camera = None
-    try:
-        # Deferred: render pulls in the CPU splat renderer, which the extraction
-        # itself does not need.
-        from .render import hero_camera
-
-        view = hero_camera(scene, width=1400, height=900)
-        look = view.eye + view.forward * 4.0
-        camera = {
-            "eye": [round(float(value), 4) for value in view.eye],
-            "target": [round(float(value), 4) for value in look],
-            "up": [round(float(value), 4) for value in view.up],
-        }
-    except Exception:
-        camera = None
+    pose = hero_camera_pose(scene)
+    eye = np.asarray(pose["eye"], dtype=np.float64)
+    forward = np.asarray(pose["forward"], dtype=np.float64)
+    look = eye + forward * 4.0
+    camera = {
+        "eye": pose["eye"],
+        "target": [round(float(value), 4) for value in look],
+        "up": pose["up"],
+    }
 
     payload = {
         "artifact": "objects",

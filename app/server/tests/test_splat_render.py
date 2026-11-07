@@ -1,12 +1,10 @@
-"""Tests for the native splat renderer used for previews."""
+"""Tests for the native splat renderer used by the filter channels."""
 
 from __future__ import annotations
 
 import numpy as np
-import pytest
-from PIL import Image
 
-from plantpilot import render, splat, splat_render
+from plantpilot import splat, splat_render
 from splat_fixture import room_ply
 
 
@@ -110,29 +108,3 @@ def test_from_scene_tolerates_a_version_one_artifact(tmp_path):
     scene = splat.load_scene(old)
     gaussians = splat_render.from_scene(scene)
     assert np.allclose(gaussians.rot, [1.0, 0.0, 0.0, 0.0])
-
-
-def test_the_preview_renders_from_the_artifact_and_writes_a_png(tmp_path):
-    out = tmp_path / "scene.npz"
-    splat.ingest(room_ply(tmp_path / "room.ply"), out, hash_source=False)
-    scene = splat.load_scene(out)
-    path = render.render_scene(scene, tmp_path / "preview.png", width=160, height=120,
-                               mode="splats", max_gaussians=2000)
-    image = np.asarray(Image.open(path).convert("RGB"))
-    assert image.shape == (120, 160, 3)
-    assert int(image.max()) > 0
-
-
-def test_the_hero_camera_stands_above_the_detected_floor():
-    # the fixture floor is at y = 0 and the up axis is +y
-    out = None
-    import tempfile
-    from pathlib import Path
-
-    with tempfile.TemporaryDirectory() as directory:
-        out = Path(directory) / "scene.npz"
-        splat.ingest(room_ply(Path(directory) / "room.ply"), out, hash_source=False)
-        scene = splat.load_scene(out)
-    camera = render.hero_camera(scene, 320, 200)
-    assert render.floor_height(scene) == pytest.approx(0.0, abs=0.05)
-    assert camera.eye[1] == pytest.approx(1.45, abs=0.1)

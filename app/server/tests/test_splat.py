@@ -169,3 +169,15 @@ def test_the_report_prints_the_three_counts(tmp_path):
     assert "502" not in report  # no boiler room number leaks into a synthetic run
     payload = json.loads(json.dumps(meta))
     assert payload["frame"]["up_axis"] == "+y"
+
+
+def test_the_hero_camera_stands_above_the_detected_floor(tmp_path):
+    # the fixture floor is at y = 0 and the up axis is +y
+    out = tmp_path / "scene.npz"
+    splat.ingest(room_ply(tmp_path / "room.ply"), out, hash_source=False)
+    scene = splat.load_scene(out)
+    pose = splat.hero_camera_pose(scene)
+    assert splat.floor_height(scene) == pytest.approx(0.0, abs=0.05)
+    assert pose["eye"][1] == pytest.approx(1.45, abs=0.1)
+    assert len(pose["forward"]) == 3
+    assert len(pose["up"]) == 3

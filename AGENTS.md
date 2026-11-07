@@ -27,9 +27,8 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/):
   `chore`, `style` or `revert`. `style` is formatting only and never changes
   behaviour. `chore` is the housekeeping that fits nowhere else.
 - **Scope**, when the change is confined to one area: `server`, `web`, `nav`,
-  `ocr`, `corpus`, `register`, `capture`, `pipeline`, `fixtures`, `proof`,
-  `scripts`, `docs`, `deps` or `ci`. A change that spans several areas gets no
-  scope, or the one a reviewer would say out loud.
+  `pipeline`, `fixtures`, `scripts`, `docs`, `deps` or `ci`. A change that spans
+  several areas gets no scope, or the one a reviewer would say out loud.
 - **Subject**: imperative, lowercase after the colon, no trailing period, the
   whole line 72 characters or fewer. "Add route clearance to the API", not
   "Added" and not "Adding".
@@ -95,9 +94,7 @@ explanation in its message: what was wrong, why, and how the test catches it.
   for.
 - Raise with context. Do not catch an exception you cannot handle, and never let
   a `try` block hide a failed import, a missing file or a bad configuration value.
-- Tests live in `app/server/tests/` and run through `uv run pytest`. CI installs
-  poppler and Tesseract, so a test that needs them runs there and skips locally
-  rather than failing.
+- Tests live in `app/server/tests/` and run through `uv run pytest`.
 
 ## Front end
 
@@ -156,12 +153,11 @@ explanation in its message: what was wrong, why, and how the test catches it.
 
 | Path | Contents |
 | --- | --- |
-| `app/server/src/plantpilot/` | demo path: splat, segment, pack, mapping, nav, diagnose, main. Off the demo path: ocr, corpus, register, capture |
+| `app/server/src/plantpilot/` | the demo path: splat, segment, pack, assets, mapping, nav, diagnose, main |
 | `app/server/tests/` | pytest suite, offline |
 | `app/web/` | React, Vite and three.js viewer |
-| `scripts/` | the demo builds (splat asset, route, anchors, OpenAPI) and the submission check; corpus, register, plates and photo scan are off the demo path |
-| `fixtures/` | committed and small: asset register, section and action samples |
-| `proof/` | timed trials, off the demo path; the README quotes the generated artifacts instead |
+| `scripts/` | the demo builds (splat asset, route, anchors, object splats, meshes, filter channels) and the submission check |
+| `fixtures/` | committed and small: the reviewed scene anchors |
 | `docs/` | plan, roadmap, features, acceptance, video script, submission copy |
 | `.github/workflows/ci.yml` | the checks a pull request must pass |
 

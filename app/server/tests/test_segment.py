@@ -175,6 +175,8 @@ def test_the_artifact_carries_the_contract(scene, tmp_path):
     assert payload["planes"]["removed"] >= 1
     assert "class" in payload["objects"][0]
     assert "method" not in payload["objects"][0]  # mapping is the next stage, not this one
+    assert payload["camera"] is not None
+    assert {"eye", "target", "up"} <= set(payload["camera"])
 
 
 def test_the_report_prints_the_extraction_numbers(scene, tmp_path):
