@@ -49,3 +49,12 @@ jobs:
         working-directory: app/web
       - run: npm run build
         working-directory: app/web
+
+  container:
+    # The image is what a host runs, so a Dockerfile that stops building should
+    # fail the pull request that breaks it rather than the deploy. The build is
+    # not cached on purpose, for the same reason the two jobs above rebuild.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --tag plantpilot:ci .
