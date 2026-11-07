@@ -1035,6 +1035,11 @@
       "RerouteRequest": {
         "description": "Transient obstacles for a live replan, in scene plane coordinates.",
         "properties": {
+          "agent_height_m": {
+            "default": 0.55,
+            "title": "Agent Height M",
+            "type": "number"
+          },
           "agent_radius_m": {
             "default": 0.2,
             "title": "Agent Radius M",

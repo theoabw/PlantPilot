@@ -62,6 +62,7 @@ type Props = {
   focusTarget: { centre: [number, number, number]; radius: number } | null
   focusToken: number
   robotProfile: 'humanoid' | 'amr' | 'cargo'
+  posture: 'upright' | 'crouched'
   route: RoomRoute | null
   tripToken: number
   follow: boolean
@@ -86,6 +87,10 @@ const SELECTED_COLOUR = 0xffffff
 const TARGET_COLOUR = 0xff3030
 const MAPPED_COLOUR = 0x22d3ee
 const ROUTE_COLOUR = 0xfbbf24
+
+// The procedural humanoid reads this while animating; a single viewer instance
+// owns it, so a module-level value avoids rebuilding the model on posture change.
+let robotPosture: 'upright' | 'crouched' = 'upright'
 
 function boxColour(object: RoomObject, mapped: Set<string>, targetId: string | null): number {
   if (targetId === object.id) {
@@ -121,11 +126,11 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
 type RobotProfile = 'humanoid' | 'amr' | 'cargo'
 
 /**
- * A procedural service robot. Two boxes are not a robot; these are simple but
- * readable industrial figures: a walking humanoid with hi-vis vest and helmet,
- * or a wheeled AMR with chassis, wheels, mast and lidar. The animation is a
- * function stored on the group so the render loop can drive it from distance
- * travelled, which keeps feet and wheels in sync with the route speed.
+ * A procedural service robot. A walking humanoid is a small industrial worker
+ * (about 1.3 m after scaling), with a pelvis, two-segment legs and arms, a
+ * hi-vis vest and a helmet. The wheeled AMR has a proper chassis, wheels,
+ * payload deck, sensor mast and lidar. Both animate from distance travelled so
+ * feet and wheels match the route speed.
  */
 function buildRobot(profile: RobotProfile): THREE.Group {
   const group = new THREE.Group()
@@ -138,7 +143,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
     part.renderOrder = 3
     return part
   }
-  const shadow = mesh(new THREE.RingGeometry(0.22, 0.34, 32), 0x0b1220, 0.4)
+  const shadow = mesh(new THREE.RingGeometry(0.2, 0.32, 36), 0x0b1220, 0.38)
   shadow.rotation.x = -Math.PI / 2
   shadow.position.y = 0.005
   group.add(shadow)
@@ -146,118 +151,304 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   if (profile === 'humanoid') {
     const bob = new THREE.Group()
     group.add(bob)
-    const legPivots: THREE.Group[] = []
-    for (const side of [-1, 1]) {
-      const pivot = new THREE.Group()
-      pivot.position.set(side * 0.1, 0.82, 0)
-      const leg = mesh(new THREE.BoxGeometry(0.1, 0.7, 0.12), 0x1f2937)
-      leg.position.y = -0.35
-      pivot.add(leg)
-      const boot = mesh(new THREE.BoxGeometry(0.12, 0.08, 0.22), 0x0f172a)
-      boot.position.set(0, -0.72, 0.04)
-      pivot.add(boot)
-      bob.add(pivot)
-      legPivots.push(pivot)
-    }
-    const torso = mesh(new THREE.BoxGeometry(0.32, 0.42, 0.2), 0x334155)
-    torso.position.y = 1.12
+    const HIP_Y = 0.8
+    const THIGH = 0.38
+    const SHIN = 0.36
+
+    const pelvis = mesh(new THREE.BoxGeometry(0.3, 0.16, 0.2), 0x1f2937)
+    pelvis.position.y = 0.88
+    bob.add(pelvis)
+    const belt = mesh(new THREE.BoxGeometry(0.32, 0.05, 0.22), 0x111827)
+    belt.position.y = 0.98
+    bob.add(belt)
+
+    const torso = mesh(new THREE.BoxGeometry(0.33, 0.5, 0.23), 0x334155)
+    torso.position.y = 1.2
     bob.add(torso)
-    const vest = mesh(new THREE.BoxGeometry(0.33, 0.26, 0.21), 0xfacc15, 0.95)
-    vest.position.y = 1.17
+    const vest = mesh(new THREE.BoxGeometry(0.345, 0.34, 0.245), 0xd4f22a, 0.95)
+    vest.position.y = 1.22
     bob.add(vest)
-    const shoulders = mesh(new THREE.BoxGeometry(0.44, 0.08, 0.16), 0x475569)
-    shoulders.position.y = 1.34
+    const bandLow = mesh(new THREE.BoxGeometry(0.355, 0.025, 0.255), 0xe2e8f0, 0.85)
+    bandLow.position.y = 1.1
+    bob.add(bandLow)
+    const bandHigh = mesh(new THREE.BoxGeometry(0.355, 0.025, 0.255), 0xe2e8f0, 0.85)
+    bandHigh.position.y = 1.34
+    bob.add(bandHigh)
+    const frontPack = mesh(new THREE.BoxGeometry(0.16, 0.1, 0.05), 0x1f2937)
+    frontPack.position.set(0, 1.16, 0.145)
+    bob.add(frontPack)
+    const frontLight = mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), 0x22d3ee, 0.9)
+    frontLight.position.set(0, 1.18, 0.175)
+    bob.add(frontLight)
+    const shoulders = mesh(new THREE.BoxGeometry(0.42, 0.1, 0.21), 0x475569)
+    shoulders.position.y = 1.44
     bob.add(shoulders)
-    const armPivots: THREE.Group[] = []
-    for (const side of [-1, 1]) {
-      const pivot = new THREE.Group()
-      pivot.position.set(side * 0.23, 1.3, 0)
-      const arm = mesh(new THREE.BoxGeometry(0.08, 0.5, 0.09), 0x334155)
-      arm.position.y = -0.26
-      pivot.add(arm)
-      const hand = mesh(new THREE.BoxGeometry(0.07, 0.09, 0.08), 0xe2a679)
-      hand.position.y = -0.53
-      pivot.add(hand)
-      bob.add(pivot)
-      armPivots.push(pivot)
-    }
-    const head = mesh(new THREE.SphereGeometry(0.11, 18, 14), 0xe2a679)
-    head.position.y = 1.47
+    const backpack = mesh(new THREE.BoxGeometry(0.26, 0.3, 0.12), 0x1e293b)
+    backpack.position.set(0, 1.22, -0.17)
+    bob.add(backpack)
+    const packLight = mesh(new THREE.BoxGeometry(0.18, 0.035, 0.02), 0x22d3ee, 0.8)
+    packLight.position.set(0, 1.24, -0.235)
+    bob.add(packLight)
+    const neck = mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.08, 10), 0x1f2937)
+    neck.position.y = 1.5
+    bob.add(neck)
+    const head = mesh(new THREE.SphereGeometry(0.105, 20, 16), 0xe2a679)
+    head.position.y = 1.58
+    head.scale.set(1, 1.05, 0.95)
     bob.add(head)
-    const helmet = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 18), 0xf8fafc)
-    helmet.position.y = 1.55
+    const visor = mesh(new THREE.BoxGeometry(0.15, 0.045, 0.03), 0x0f172a, 0.95)
+    visor.position.set(0, 1.59, 0.1)
+    bob.add(visor)
+    const visorStripe = mesh(new THREE.BoxGeometry(0.12, 0.012, 0.012), 0x22d3ee, 0.9)
+    visorStripe.position.set(0, 1.6, 0.112)
+    bob.add(visorStripe)
+    const helmet = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 20), 0xf8fafc)
+    helmet.position.y = 1.66
     bob.add(helmet)
-    const brim = mesh(new THREE.BoxGeometry(0.24, 0.02, 0.06), 0xf8fafc)
-    brim.position.set(0, 1.53, 0.1)
+    const dome = mesh(new THREE.SphereGeometry(0.12, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), 0xf8fafc)
+    dome.position.y = 1.69
+    bob.add(dome)
+    const brim = mesh(new THREE.BoxGeometry(0.25, 0.018, 0.09), 0xf1f5f9)
+    brim.position.set(0, 1.645, 0.1)
     bob.add(brim)
 
+    const legPivots: THREE.Group[] = []
+    const kneePivots: THREE.Group[] = []
+    for (const side of [-1, 1]) {
+      const hip = new THREE.Group()
+      hip.position.set(side * 0.1, HIP_Y, 0)
+      const hipJoint = mesh(new THREE.SphereGeometry(0.062, 12, 10), 0x111827)
+      hip.add(hipJoint)
+      const thigh = mesh(new THREE.BoxGeometry(0.12, THIGH, 0.14), 0x1f2937)
+      thigh.position.y = -THIGH / 2
+      hip.add(thigh)
+      const knee = new THREE.Group()
+      knee.position.y = -THIGH
+      const kneeCap = mesh(new THREE.SphereGeometry(0.058, 12, 10), 0x334155)
+      knee.add(kneeCap)
+      const shin = mesh(new THREE.BoxGeometry(0.1, SHIN + 0.04, 0.12), 0x334155)
+      shin.position.y = -(SHIN + 0.04) / 2
+      knee.add(shin)
+      const boot = mesh(new THREE.BoxGeometry(0.13, 0.08, 0.24), 0x0f172a)
+      boot.position.set(0, -SHIN + 0.02, 0.045)
+      knee.add(boot)
+      const sole = mesh(new THREE.BoxGeometry(0.135, 0.02, 0.25), 0x020617)
+      sole.position.set(0, -SHIN - 0.02, 0.045)
+      knee.add(sole)
+      hip.add(knee)
+      bob.add(hip)
+      legPivots.push(hip)
+      kneePivots.push(knee)
+    }
+
+    const armPivots: THREE.Group[] = []
+    const elbowPivots: THREE.Group[] = []
+    for (const side of [-1, 1]) {
+      const shoulder = new THREE.Group()
+      shoulder.position.set(side * 0.235, 1.4, 0)
+      const shoulderCap = mesh(new THREE.SphereGeometry(0.055, 12, 10), 0x475569)
+      shoulder.add(shoulderCap)
+      const upper = mesh(new THREE.BoxGeometry(0.085, 0.27, 0.1), 0x334155)
+      upper.position.y = -0.135
+      shoulder.add(upper)
+      const sleeveBand = mesh(new THREE.BoxGeometry(0.095, 0.05, 0.11), 0xd4f22a, 0.95)
+      sleeveBand.position.y = -0.22
+      shoulder.add(sleeveBand)
+      const elbow = new THREE.Group()
+      elbow.position.y = -0.285
+      const elbowJoint = mesh(new THREE.SphereGeometry(0.05, 12, 10), 0x475569)
+      elbow.add(elbowJoint)
+      const fore = mesh(new THREE.BoxGeometry(0.078, 0.26, 0.092), 0x475569)
+      fore.position.y = -0.135
+      elbow.add(fore)
+      const cuff = mesh(new THREE.BoxGeometry(0.082, 0.03, 0.096), 0x0f172a)
+      cuff.position.y = -0.25
+      elbow.add(cuff)
+      const hand = mesh(new THREE.BoxGeometry(0.075, 0.09, 0.07), 0x0f172a)
+      hand.position.y = -0.29
+      elbow.add(hand)
+      shoulder.add(elbow)
+      bob.add(shoulder)
+      armPivots.push(shoulder)
+      elbowPivots.push(elbow)
+    }
+
+    // About 1.34 m standing. Crouched routes fold the body to roughly 1.0 m,
+    // matching the height the planner used for them.
+    group.scale.setScalar(0.79)
+    let crouch = 0
+
     group.userData.animate = (_time: number, travelled: number, moving: boolean) => {
-      const phase = travelled * 3.6
+      const wantCrouch = robotPosture === 'crouched' ? 1 : 0
+      crouch += (wantCrouch - crouch) * 0.18
+      const phase = travelled * 3.9
       const swing = moving ? 0.55 : 0
-      legPivots[0].rotation.x = Math.sin(phase) * swing
-      legPivots[1].rotation.x = -Math.sin(phase) * swing
-      armPivots[0].rotation.x = -Math.sin(phase) * swing * 0.65
-      armPivots[1].rotation.x = Math.sin(phase) * swing * 0.65
-      bob.position.y = moving ? Math.abs(Math.sin(phase)) * 0.03 : 0
+      legPivots[0].rotation.x = Math.sin(phase) * swing + crouch * 0.35
+      legPivots[1].rotation.x = -Math.sin(phase) * swing + crouch * 0.35
+      kneePivots[0].rotation.x = Math.max(0, -Math.sin(phase)) * swing * 1.1 + crouch * 0.7
+      kneePivots[1].rotation.x = Math.max(0, Math.sin(phase)) * swing * 1.1 + crouch * 0.7
+      armPivots[0].rotation.x = -Math.sin(phase) * swing * 0.75 - crouch * 0.35
+      armPivots[1].rotation.x = Math.sin(phase) * swing * 0.75 - crouch * 0.35
+      elbowPivots[0].rotation.x = -0.3 - Math.max(0, Math.sin(phase)) * swing * 0.45 - crouch * 0.35
+      elbowPivots[1].rotation.x = -0.3 - Math.max(0, -Math.sin(phase)) * swing * 0.45 - crouch * 0.35
+      // Crouched head sits near 0.89 m against a 0.95 m planned band. The extra
+      // margin covers the walking bob and the helmet brim, so the head does not
+      // graze the underside of a pipe the route cleared.
+      bob.rotation.x = (moving ? 0.04 : 0) + crouch * 0.14
+      bob.position.y = (moving ? Math.abs(Math.sin(phase)) * 0.025 * (1 - crouch * 0.8) : 0) - crouch * 0.02
+      bob.scale.y = 1 - crouch * 0.34
+      bob.scale.x = 1 + crouch * 0.08
+      bob.scale.z = 1 + crouch * 0.08
     }
     return group
   }
 
-  const scale = profile === 'cargo' ? 1.7 : 1.0
+  const scale = profile === 'cargo' ? 1.5 : 0.85
+  const chassisWidth = 0.56
+  const chassisLength = 0.84
+  const wheelRadius = 0.105
+  const body = new THREE.Group()
+  group.add(body)
+
   const wheels: THREE.Group[] = []
-  const chassisWidth = 0.5
-  const chassisLength = 0.62
-  const wheelRadius = 0.1
   for (const side of [-1, 1]) {
     for (const end of [-1, 1]) {
-      const pivot = new THREE.Group()
-      pivot.position.set(side * (chassisWidth / 2 + 0.01), wheelRadius, end * (chassisLength / 2 - 0.12))
-      const wheel = mesh(new THREE.CylinderGeometry(wheelRadius, wheelRadius, 0.05, 14), 0x0f172a)
-      wheel.rotation.z = Math.PI / 2
-      pivot.add(wheel)
-      group.add(pivot)
-      wheels.push(pivot)
+      const hub = new THREE.Group()
+      hub.position.set(side * (chassisWidth / 2 + 0.02), wheelRadius, end * (chassisLength / 2 - 0.16))
+      const tyre = mesh(new THREE.CylinderGeometry(wheelRadius, wheelRadius, 0.06, 18), 0x0f172a)
+      tyre.rotation.z = Math.PI / 2
+      hub.add(tyre)
+      const rim = mesh(new THREE.CylinderGeometry(wheelRadius * 0.55, wheelRadius * 0.55, 0.065, 14), 0x64748b)
+      rim.rotation.z = Math.PI / 2
+      hub.add(rim)
+      body.add(hub)
+      wheels.push(hub)
     }
   }
-  const chassis = mesh(new THREE.BoxGeometry(chassisWidth, 0.16, chassisLength), 0x334155)
-  chassis.position.y = 0.2
-  group.add(chassis)
-  const deck = mesh(new THREE.BoxGeometry(chassisWidth + 0.03, 0.05, chassisLength + 0.03), 0x475569)
-  deck.position.y = 0.31
-  group.add(deck)
-  const frontLight = mesh(new THREE.BoxGeometry(0.18, 0.05, 0.03), 0x22d3ee, 0.9)
-  frontLight.position.set(0, 0.26, chassisLength / 2 + 0.01)
-  group.add(frontLight)
-  const mast = mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.36, 10), 0x64748b)
-  mast.position.set(-chassisWidth / 2 + 0.1, 0.5, 0)
-  group.add(mast)
-  const lidar = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.055, 16), 0x22d3ee, 0.85)
-  lidar.position.set(-chassisWidth / 2 + 0.1, 0.7, 0)
-  group.add(lidar)
-  if (profile === 'cargo') {
-    const bed = mesh(new THREE.BoxGeometry(chassisWidth + 0.08, 0.1, chassisLength + 0.04), 0x1e293b)
-    bed.position.y = 0.4
-    group.add(bed)
-    const crate = mesh(new THREE.BoxGeometry(0.4, 0.28, 0.4), 0xb45309)
-    crate.position.y = 0.58
-    group.add(crate)
+
+  const skirt = mesh(new THREE.BoxGeometry(chassisWidth + 0.02, 0.06, chassisLength + 0.02), 0x111827)
+  skirt.position.y = 0.08
+  body.add(skirt)
+  const lower = mesh(new THREE.BoxGeometry(chassisWidth, 0.16, chassisLength), 0x1f2937)
+  lower.position.y = 0.2
+  body.add(lower)
+  const upper = mesh(new THREE.BoxGeometry(chassisWidth - 0.03, 0.14, chassisLength - 0.04), 0x334155)
+  upper.position.y = 0.34
+  body.add(upper)
+  const deck = mesh(new THREE.BoxGeometry(chassisWidth + 0.04, 0.05, chassisLength + 0.04), 0x475569)
+  deck.position.y = 0.43
+  body.add(deck)
+  for (const side of [-1, 1]) {
+    const bumperFront = mesh(new THREE.BoxGeometry(0.1, 0.12, 0.07), 0x0b1220)
+    bumperFront.position.set(side * (chassisWidth / 2 - 0.03), 0.17, chassisLength / 2 + 0.02)
+    body.add(bumperFront)
+    const bumperBack = mesh(new THREE.BoxGeometry(0.1, 0.12, 0.07), 0x0b1220)
+    bumperBack.position.set(side * (chassisWidth / 2 - 0.03), 0.17, -chassisLength / 2 - 0.02)
+    body.add(bumperBack)
+    const sideStrip = mesh(new THREE.BoxGeometry(0.015, 0.04, chassisLength * 0.55), 0x22d3ee, 0.7)
+    sideStrip.position.set(side * (chassisWidth / 2 + 0.005), 0.26, 0)
+    body.add(sideStrip)
+    const rail = mesh(new THREE.BoxGeometry(0.04, 0.03, chassisLength - 0.12), 0x64748b)
+    rail.position.set(side * (chassisWidth / 2 - 0.06), 0.47, 0)
+    body.add(rail)
   }
+  for (const end of [-1, 1]) {
+    const roller = mesh(new THREE.CylinderGeometry(0.025, 0.025, chassisWidth - 0.14, 10), 0x94a3b8)
+    roller.rotation.z = Math.PI / 2
+    roller.position.set(0, 0.47, end * (chassisLength / 2 - 0.18))
+    body.add(roller)
+  }
+  const frontBar = mesh(new THREE.BoxGeometry(0.34, 0.05, 0.03), 0x0f172a)
+  frontBar.position.set(0, 0.3, chassisLength / 2 + 0.01)
+  body.add(frontBar)
+  for (const side of [-1, 1]) {
+    const lamp = mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 12), 0x22d3ee, 0.95)
+    lamp.rotation.x = Math.PI / 2
+    lamp.position.set(side * 0.16, 0.3, chassisLength / 2 + 0.02)
+    body.add(lamp)
+  }
+  const rearBar = mesh(new THREE.BoxGeometry(0.3, 0.04, 0.02), 0x991b1b, 0.85)
+  rearBar.position.set(0, 0.3, -chassisLength / 2 - 0.02)
+  body.add(rearBar)
+
+  const mast = new THREE.Group()
+  mast.position.set(-chassisWidth / 2 + 0.11, 0.43, 0)
+  const mastPole = mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.32, 10), 0x64748b)
+  mastPole.position.y = 0.16
+  mast.add(mastPole)
+  const mastBase = mesh(new THREE.CylinderGeometry(0.07, 0.075, 0.04, 16), 0x334155)
+  mastBase.position.y = 0.33
+  mast.add(mastBase)
+  const lidar = new THREE.Group()
+  lidar.position.y = 0.38
+  const lidarBand = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.05, 18), 0x0b1220)
+  lidar.add(lidarBand)
+  const lidarGlass = mesh(new THREE.CylinderGeometry(0.077, 0.077, 0.022, 18), 0x22d3ee, 0.8)
+  lidarGlass.position.y = 0.01
+  lidar.add(lidarGlass)
+  const lidarCap = mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.03, 18), 0x475569)
+  lidarCap.position.y = 0.04
+  lidar.add(lidarCap)
+  mast.add(lidar)
+  body.add(mast)
+
+  const cameraBar = mesh(new THREE.BoxGeometry(0.22, 0.055, 0.05), 0x0f172a)
+  cameraBar.position.set(0.12, 0.55, -0.18)
+  body.add(cameraBar)
+  for (const side of [-1, 1]) {
+    const lens = mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.03, 10), 0x22d3ee, 0.9)
+    lens.rotation.x = Math.PI / 2
+    lens.position.set(0.12 + side * 0.06, 0.55, -0.15)
+    body.add(lens)
+  }
+  const antenna = new THREE.Group()
+  antenna.position.set(0.18, 0.47, -chassisLength / 2 + 0.12)
+  const antennaPole = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.4, 6), 0x64748b)
+  antennaPole.position.y = 0.2
+  antenna.add(antennaPole)
+  const antennaTip = mesh(new THREE.SphereGeometry(0.025, 10, 8), 0xf59e0b, 0.95)
+  antennaTip.position.y = 0.42
+  antenna.add(antennaTip)
+  body.add(antenna)
+  const estop = mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 14), 0xdc2626, 0.95)
+  estop.position.set(0.18, 0.46, 0.18)
+  body.add(estop)
+  const eStopRing = mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.01, 14), 0xfacc15, 0.9)
+  eStopRing.position.set(0.18, 0.445, 0.18)
+  body.add(eStopRing)
+  const plate = mesh(new THREE.BoxGeometry(0.14, 0.006, 0.1), 0xe2e8f0, 0.85)
+  plate.position.set(0.02, 0.46, 0.02)
+  body.add(plate)
+
+  if (profile === 'cargo') {
+    const bed = mesh(new THREE.BoxGeometry(chassisWidth + 0.06, 0.06, chassisLength + 0.02), 0x1e293b)
+    bed.position.y = 0.49
+    body.add(bed)
+    const crate = mesh(new THREE.BoxGeometry(0.42, 0.3, 0.44), 0xb45309)
+    crate.position.y = 0.67
+    body.add(crate)
+    const crateBand = mesh(new THREE.BoxGeometry(0.43, 0.04, 0.45), 0xf59e0b, 0.9)
+    crateBand.position.y = 0.63
+    body.add(crateBand)
+  }
+
   group.scale.setScalar(scale)
 
-  group.userData.animate = (_time: number, travelled: number, moving: boolean) => {
-    for (const pivot of wheels) {
-      pivot.rotation.x = travelled / (wheelRadius * scale)
+  group.userData.animate = (time: number, travelled: number, moving: boolean) => {
+    for (const hub of wheels) {
+      hub.rotation.x = travelled / (wheelRadius * scale)
     }
-    if (!moving) {
-      group.position.y = group.userData.baseY ?? group.position.y
-    }
+    lidar.rotation.y = time * 2.4
+    const blink = moving ? 0.55 + 0.45 * Math.abs(Math.sin(time * 3)) : 0.6
+    ;(antennaTip.material as THREE.MeshBasicMaterial).opacity = blink
   }
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, posture, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
+  robotPosture = posture
   const [progress, setProgress] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [perf, setPerf] = useState<{ draws: number; ms: number; calls: number; splats: number } | null>(null)
@@ -299,6 +490,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     } | null
     safeCameraPosition: ((desired: THREE.Vector3, focus: THREE.Vector3) => THREE.Vector3) | null
     cameraFree: ((world: THREE.Vector3, marginM?: number) => boolean) | null
+    stickyCamera: THREE.Vector3 | null
+    smoothedCamera: THREE.Vector3 | null
+    followTransitionStart: number
+    cameraBlockedSince: number | null
     boxGroup: THREE.Group
     pickGroup: THREE.Group
     boxes: BoxView[]
@@ -682,6 +877,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         return desired
       }
       if (cameraFree(desired, 0.12) && nearestStructure(desired) > 0.25) {
+        stateRef.current.stickyCamera = desired.clone().sub(focus)
         return desired
       }
       const baseDirection = desired.clone().sub(focus)
@@ -718,11 +914,28 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           best = candidate
         }
       }
-      if (best) {
-        return best
+      const previousOffset = stateRef.current?.stickyCamera ?? null
+      const previous = previousOffset ? focus.clone().add(previousOffset) : null
+      let chosen = best
+      if (best && previous && cameraFree(previous, 0.1)) {
+        const previousClearance = nearestStructure(previous)
+        const previousSightline = segmentFree(focus, previous, 0.05) ? 0.25 : 0
+        const previousScore = previousClearance + previousSightline
+        // Keep the previous spot unless the new one is clearly better. Without
+        // this the candidate search flips between symmetric aisle positions and
+        // the camera appears to flicker while tracking.
+        if (previousScore >= bestScore - 0.2) {
+          chosen = previous
+        }
+      }
+      if (chosen) {
+        stateRef.current.stickyCamera = chosen.clone().sub(focus)
+        return chosen
       }
       // Guaranteed escape: directly above the robot, above the avoidance band.
-      return new THREE.Vector3(focus.x + 0.18, focus.y + 2.35, focus.z + 0.18)
+      const escape = new THREE.Vector3(focus.x + 0.18, focus.y + 2.35, focus.z + 0.18)
+      stateRef.current.stickyCamera = escape.clone().sub(focus)
+      return escape
     }
     if (stateRef.current) {
       stateRef.current.safeCameraPosition = safeCameraPosition
@@ -739,13 +952,43 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const rawDesired = robot.position.clone().addScaledVector(robotForward, -2.8).add(new THREE.Vector3(0, 1.5, 0))
       const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, 0.5, 0))
       const safeDesired = safeCameraPosition(rawDesired, desiredTarget)
-      const factor = smoothFactor(6, Math.max(dt, 0.001))
-      if (!cameraFree(camera.position, 0.12)) {
-        camera.position.copy(safeDesired)
-      } else {
-        camera.position.lerp(safeDesired, factor)
+      const state = stateRef.current
+      if (state) {
+        if (!state.smoothedCamera) {
+          state.smoothedCamera = safeDesired.clone()
+        } else {
+          state.smoothedCamera.lerp(safeDesired, smoothFactor(7, Math.max(dt, 0.001)))
+        }
+      }
+      const smoothed = state?.smoothedCamera ?? safeDesired
+      const now = performance.now()
+      const transitioning = state ? now - state.followTransitionStart < 900 : false
+      const blocked = !cameraFree(camera.position, 0.12)
+      if (state) {
+        if (blocked) {
+          if (state.cameraBlockedSince === null) {
+            state.cameraBlockedSince = now
+          }
+        } else {
+          state.cameraBlockedSince = null
+        }
+      }
+      const blockedFor = state?.cameraBlockedSince ? now - state.cameraBlockedSince : 0
+      // Camera speed is capped per frame, so no single correction reads as a
+      // jump. The longer the camera stays inside structure, the faster it is
+      // allowed to pull out, still continuously.
+      const factor = smoothFactor(transitioning ? 3.2 : blockedFor > 800 ? 20 : blockedFor > 250 ? 12 : 6, Math.max(dt, 0.001))
+      const before = camera.position.clone()
+      camera.position.lerp(smoothed, factor)
+      const step = before.distanceTo(camera.position)
+      if (step > 0.12) {
+        camera.position.copy(before).addScaledVector(camera.position.clone().sub(before).normalize(), 0.12)
       }
       controls.target.lerp(desiredTarget, factor)
+      // OrbitControls.update() would recompute the camera position from a
+      // moving target and fight the avoidance clamp, so follow mode aims the
+      // camera directly and skips that update.
+      camera.lookAt(controls.target)
     }
     const advanceMotion = (dt: number) => {
       const motion = stateRef.current?.motion
@@ -781,6 +1024,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
             direction.normalize()
             camera.position.copy(worldCentre).addScaledVector(direction, radius).add(new THREE.Vector3(0, 0.5, 0))
             controls.target.copy(worldCentre)
+            const safeArrival = stateRef.current?.safeCameraPosition
+              ? stateRef.current.safeCameraPosition(camera.position.clone(), worldCentre.clone())
+              : camera.position.clone()
+            camera.position.copy(safeArrival)
             controls.update()
           }
           tripRef.current({ mode: 'arrived', travelled: motion.total, total: motion.total })
@@ -883,7 +1130,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           }
           renderRef.current()
         }
-        controls.update()
+        if (!stateRef.current?.follow) {
+          controls.update()
+        }
         const label = labelRef.current
         if (label) {
           const chosen = selectedRef.current
@@ -994,6 +1243,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       cameraMask: null,
       safeCameraPosition: null,
       cameraFree: null,
+      stickyCamera: null,
+      smoothedCamera: null,
+      followTransitionStart: 0,
+      cameraBlockedSince: null,
       boxGroup,
       pickGroup,
       boxes: [],
@@ -1966,6 +2219,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     } else {
       state.cameraMask = null
     }
+    state.stickyCamera = null
+    state.smoothedCamera = null
 
     if (!route || !route.reachable || route.path.length < 2) {
       tripRef.current({ mode: 'idle', travelled: 0, total: 0 })
@@ -2068,6 +2323,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   useEffect(() => {
     if (stateRef.current) {
       stateRef.current.follow = follow
+      if (follow) {
+        stateRef.current.followTransitionStart = performance.now()
+        stateRef.current.smoothedCamera = null
+      }
     }
     renderRef.current()
   }, [follow])

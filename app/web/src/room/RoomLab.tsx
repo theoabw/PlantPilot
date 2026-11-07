@@ -67,12 +67,14 @@ type RobotOption = {
   id: 'humanoid' | 'amr' | 'cargo'
   label: string
   radius: number
+  height: number
+  crouchHeight?: number
 }
 
 const ROBOTS: RobotOption[] = [
-  { id: 'humanoid', label: 'Humanoid', radius: 0.18 },
-  { id: 'amr', label: 'Compact AMR', radius: 0.2 },
-  { id: 'cargo', label: 'Cargo AMR', radius: 0.45 },
+  { id: 'humanoid', label: 'Humanoid', radius: 0.18, height: 1.35, crouchHeight: 0.95 },
+  { id: 'amr', label: 'Compact AMR', radius: 0.2, height: 0.55 },
+  { id: 'cargo', label: 'Cargo AMR', radius: 0.45, height: 0.9 },
 ]
 
 const routeMessage = (route: RoomRoute | null): string => {
@@ -127,6 +129,7 @@ export default function RoomLab({ onLeave }: Props) {
   const [rerouteNote, setRerouteNote] = useState<string | null>(null)
   const [explode, setExplode] = useState(0)
   const [robotId, setRobotId] = useState<RobotOption['id']>('amr')
+  const [posture, setPosture] = useState<'upright' | 'crouched'>('upright')
   const [customRadius, setCustomRadius] = useState<number | null>(null)
   const [focusToken, setFocusToken] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -427,6 +430,46 @@ export default function RoomLab({ onLeave }: Props) {
   const robot = ROBOTS.find((option) => option.id === robotId) ?? ROBOTS[1]
   const clearanceRadius = customRadius ?? robot.radius
 
+  const planRoute = (
+    blockers: number[][],
+    radius: number,
+    profile: RobotOption,
+    note?: string,
+  ) => {
+    const start = robotPositionRef.current ?? initialStartRef.current
+    const planWithHeight = (height: number) => fetchReroute(blockers, start, radius, height)
+    const finish = (result: RoomRoute, nextPosture: 'upright' | 'crouched') => {
+      setPosture(nextPosture)
+      setRoute(result)
+      if (!result.reachable) {
+        setRerouteNote(note ?? `No safe route for this robot at ${radius.toFixed(2)} m clearance`)
+        return
+      }
+      setRerouteNote(
+        note ??
+          (nextPosture === 'crouched'
+            ? 'Crouches under low pipework'
+            : `Route replanned for ${radius.toFixed(2)} m clearance`),
+      )
+      if (driving) {
+        setTripToken((value) => value + 1)
+      }
+    }
+    planWithHeight(profile.height)
+      .then((result) => {
+        if (result.reachable || !profile.crouchHeight) {
+          finish(result, 'upright')
+          return
+        }
+        // A humanoid can duck. Retry with the crouched height instead of
+        // refusing the whole room, and let the model crouch on that route.
+        planWithHeight(profile.crouchHeight)
+          .then((crouched) => finish(crouched.reachable ? crouched : result, crouched.reachable ? 'crouched' : 'upright'))
+          .catch(() => finish(result, 'upright'))
+      })
+      .catch(() => setRerouteNote('Route replan failed'))
+  }
+
   const replanForRobot = (radius: number, note?: string) => {
     const blockers = obstacles.map((item) => [
       item[0] - 0.18,
@@ -434,27 +477,21 @@ export default function RoomLab({ onLeave }: Props) {
       item[0] + 0.18,
       item[1] + 0.18,
     ])
-    const start = robotPositionRef.current ?? initialStartRef.current
-    fetchReroute(blockers, start, radius)
-      .then((result) => {
-        setRoute(result)
-        if (!result.reachable) {
-          setRerouteNote(note ?? `No safe route for this robot at ${radius.toFixed(2)} m clearance`)
-          return
-        }
-        setRerouteNote(note ?? `Route replanned for ${radius.toFixed(2)} m clearance`)
-        if (driving) {
-          setTripToken((value) => value + 1)
-        }
-      })
-      .catch(() => setRerouteNote('Route replan failed'))
+    planRoute(blockers, radius, robot, note)
   }
 
   const changeRobot = (id: RobotOption['id'], radius?: number) => {
     setRobotId(id)
     setCustomRadius(radius ?? null)
     const option = ROBOTS.find((candidate) => candidate.id === id) ?? ROBOTS[1]
-    replanForRobot(radius ?? option.radius, `${(radius ?? option.radius).toFixed(2)} m clearance for the ${option.label.toLowerCase()}`)
+    const chosenRadius = radius ?? option.radius
+    const blockers = obstacles.map((item) => [
+      item[0] - 0.18,
+      item[1] - 0.18,
+      item[0] + 0.18,
+      item[1] + 0.18,
+    ])
+    planRoute(blockers, chosenRadius, option, `${chosenRadius.toFixed(2)} m clearance for the ${option.label.toLowerCase()}`)
   }
 
   const routeReady = Boolean(route?.reachable && (route.path?.length ?? 0) > 1)
@@ -519,7 +556,7 @@ export default function RoomLab({ onLeave }: Props) {
     ])
     blockers.push(blocker)
     const start = robotPositionRef.current ?? initialStartRef.current
-    fetchReroute(blockers, start, clearanceRadius)
+    fetchReroute(blockers, start, clearanceRadius, robot.height)
       .then((result) => {
         setRoute(result)
         if (!result.reachable) {
@@ -538,6 +575,7 @@ export default function RoomLab({ onLeave }: Props) {
     setObstacles([])
     setObstacleMode(false)
     replanForRobot(clearanceRadius, 'Obstacles cleared, route restored')
+    setPosture('upright')
   }
 
   const sceneName = useMemo(() => {
@@ -594,6 +632,7 @@ export default function RoomLab({ onLeave }: Props) {
             focusTarget={focusTarget}
             focusToken={focusToken}
             robotProfile={robot.id}
+            posture={posture}
             route={route}
             tripToken={tripToken}
             follow={follow}
@@ -913,6 +952,9 @@ export default function RoomLab({ onLeave }: Props) {
               ? `${(route?.distance_m ?? 0).toFixed(1)} m route · ${(route?.clearance_m ?? 0).toFixed(2)} m clearance`
               : routeMessage(route)}
           </p>
+          {posture === 'crouched' && routeReady ? (
+            <p className="mt-1 text-[10px] font-semibold text-amber-200">Ducks under low pipework on this route</p>
+          ) : null}
           <div className="mt-3">
             <div className="flex rounded-lg border border-slate-700 bg-slate-900/60 p-0.5">
               {ROBOTS.map((option) => (
