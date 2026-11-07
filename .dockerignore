@@ -17,3 +17,4 @@ proof/
 *.png
 # The served icons and link preview, the only PNGs the page needs.
 !app/web/public/brand/*.png
+!site/assets/*.png

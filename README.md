@@ -7,6 +7,8 @@
 
 **From scan to service.**
 
+Live demo: <https://plantpilot.tabw.dev>
+
 PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival. The demo runs on the complete capture the organisers re-uploaded after the first delivery was found truncated; the capture the brief names is also processed, with its numbers reported. There is no network at demo time.
 
 ## Problem
@@ -19,7 +21,7 @@ Industrial field-service teams and inspection robots work in plants where the ph
 2. The builder panel lists the supplied pack's assets, with the faulty target P-005 marked.
 3. Press Send robot and the robot follows the planned route; assets within 2.5 m brighten and their tags and states are listed.
 4. On arrival the diagnosis card opens with the finding, its evidence counts, the next safe check and the document it is grounded in.
-5. `?perf=1` on the URL adds a draw and render-time overlay for performance checks.
+5. `?perf=1` on the room view's URL adds a draw and render-time overlay for performance checks.
 
 ## Run it
 
@@ -46,7 +48,7 @@ Build and serve the complete capture:
 make demo
 ```
 
-Open <http://127.0.0.1:8000>. The browser opens the room view. That target builds everything the demo path needs. The object atlas and explode view stay empty until `make object-splats` or `make object-meshes` has run for the capture; the rest of the room view works without them. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
+Open <http://127.0.0.1:8000> for the homepage, or <http://127.0.0.1:8000/demo/> for the room view. That target builds everything the demo path needs. The object atlas and explode view stay empty until `make object-splats` or `make object-meshes` has run for the capture; the rest of the room view works without them. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
 
 The first delivery declares 1,506,136 gaussians in the file the brief names and only 502,483 rows hold data; the rest is unreadable, so the loader keeps the contiguous sane prefix and that scene covers part of the room. The complete capture was re-uploaded by the organisers and is the demo default. Build and serve the named capture instead:
 
@@ -65,7 +67,7 @@ The six requirements in the brief:
 - **Real plan, viewer robot.** It plans a collision-free route to a stand-off point beside P-005; the robot follows the planned polyline.
 - **Real.** It highlights the 3D frames and mapped metadata of assets near the robot.
 - **Real, grounded in the pack.** Arrival opens P-005's diagnosis: health 44, `FOULING` at high urgency, two findings with evidence ids, and a cited next safe check.
-- **Real.** It serves the room view from FastAPI on 127.0.0.1:8000 with no network calls.
+- **Real.** It serves the homepage and the room view from FastAPI on 127.0.0.1:8000 with no network calls.
 
 ## How it works
 
@@ -159,6 +161,6 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 - `docs/video-script.md`: the shooting script for the demo video.
 - `docs/acceptance.md`: the checks the pipeline is held to.
 - `docs/brand/README.md`: the logo, colours and the assets for the deck and video.
-- `site/index.html`: the project homepage, a static page that can be hosted as it is.
+- `site/index.html`: the project homepage, served at `/` beside the room view at `/demo/`.
 
 The code is MIT, see `LICENCE`.

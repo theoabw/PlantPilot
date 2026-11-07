@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, nav
@@ -245,6 +245,16 @@ def splat_asset() -> FileResponse:
     )
 
 
-_web = ROOT / "app" / "web" / "dist"
-if _web.exists():
-    app.mount("/", StaticFiles(directory=str(_web), html=True), name="web")
+def mount_pages(target: FastAPI, room_view: Path, homepage: Path) -> None:
+    """Serve the built room view at /demo/ and the homepage at /, after the API routes."""
+    if room_view.exists():
+        @target.get("/demo", include_in_schema=False)
+        def demo_redirect() -> RedirectResponse:
+            return RedirectResponse("/demo/")
+
+        target.mount("/demo", StaticFiles(directory=str(room_view), html=True), name="web")
+    if homepage.exists():
+        target.mount("/", StaticFiles(directory=str(homepage), html=True), name="site")
+
+
+mount_pages(app, ROOT / "app" / "web" / "dist", ROOT / "site")

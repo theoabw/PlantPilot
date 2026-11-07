@@ -1,6 +1,6 @@
 # Container image
 
-> One image serves the built room view and every API route. What it holds, what
+> One image serves the homepage, the built room view and every API route. What it holds, what
 > it expects mounted beside it, and how to run it. Where this page and the
 > Dockerfile disagree, the Dockerfile is correct.
 
@@ -9,10 +9,11 @@ docker build -t plantpilot .
 docker run --rm -p 8000:8000 -v "$PWD/data:/app/data:ro" plantpilot
 ```
 
-Then open <http://127.0.0.1:8000>. The image carries a `HEALTHCHECK` that asks
-for the built room view, so `docker ps` reports whether the process is serving.
+Then open <http://127.0.0.1:8000> for the homepage, or
+<http://127.0.0.1:8000/demo/> for the room view. The image carries a `HEALTHCHECK`
+that asks for the built room view, so `docker ps` reports whether the process is serving.
 
-Two probes answer different questions. The room view is up when `/` answers
+Two probes answer different questions. The room view is up when `/demo/` answers
 200, and the mount is right when `/api/scene/objects` answers 200 as well.
 
 ## What the image holds

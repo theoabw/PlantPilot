@@ -44,6 +44,7 @@ ENV PATH="/app/.venv/bin:${PATH}"
 
 COPY --from=web /src/app/web/dist ./app/web/dist
 COPY fixtures ./fixtures
+COPY site ./site
 
 # The demo default: the complete capture the organisers re-uploaded. Override
 # both to serve the capture named in the brief.
@@ -59,7 +60,7 @@ EXPOSE 8000
 # the API answers 404 for artifacts that are not mounted, and the mount is
 # optional at startup. Compose files that want a stricter probe override this.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/', timeout=4).status == 200 else 1)"
+  CMD python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/demo/', timeout=4).status == 200 else 1)"
 
 CMD ["uvicorn", "plantpilot.main:app", \
      "--host", "0.0.0.0", "--port", "8000", \

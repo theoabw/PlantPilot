@@ -847,7 +847,7 @@ export default function RoomLab() {
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-sm font-semibold text-slate-400">
-            <img src="/brand/plantpilot-stacked-on-dark.svg" alt="" className="h-40 w-auto" />
+            <img src={`${import.meta.env.BASE_URL}brand/plantpilot-stacked-on-dark.svg`} alt="" className="h-40 w-auto" />
             {error ?? (loading ? 'Loading the captured scene' : 'No scene loaded')}
           </div>
         )}
@@ -862,7 +862,7 @@ export default function RoomLab() {
       {/* Header */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-3 px-4 py-3">
         <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-white/5 bg-brand-navy/85 py-1 pl-1 pr-3 backdrop-blur">
-          <img src="/brand/plantpilot-horizontal-on-dark.svg" alt="PlantPilot" className="h-10 w-auto" />
+          <a href="/" aria-label="PlantPilot homepage"><img src={`${import.meta.env.BASE_URL}brand/plantpilot-horizontal-on-dark.svg`} alt="PlantPilot" className="h-10 w-auto" /></a>
           <span className="hidden h-4 w-px bg-slate-700 sm:block" />
           <span className="hidden text-xs font-semibold text-slate-300 sm:block">{sceneName}</span>
           <span className="flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">

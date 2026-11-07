@@ -3042,7 +3042,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       ) : null}
       {!loaded ? (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-brand-navy/90">
-          <img src="/brand/plantpilot-stacked-on-dark.svg" alt="PlantPilot" className="h-40 w-auto" />
+          <img src={`${import.meta.env.BASE_URL}brand/plantpilot-stacked-on-dark.svg`} alt="PlantPilot" className="h-40 w-auto" />
           <p className="text-sm font-semibold text-slate-300">From scan to service.</p>
           <span className="text-lg font-bold text-white">loading the capture</span>
           <div className="h-2 w-64 overflow-hidden rounded-full bg-slate-800">

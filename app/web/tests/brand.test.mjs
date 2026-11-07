@@ -6,7 +6,7 @@ import test from 'node:test'
 const web = new URL('../', import.meta.url)
 const publicFile = (path) => new URL(`public${path}`, web)
 const read = (path) => readFile(new URL(path, web), 'utf8')
-const brandPaths = (text) => [...text.matchAll(/\/brand\/[\w.-]+/g)].map((match) => match[0])
+const brandPaths = (text) => [...text.matchAll(/\bbrand\/[\w.-]+/g)].map((match) => `/${match[0]}`)
 
 test('every brand file the page head names is served', async () => {
   const paths = brandPaths(await read('index.html'))
@@ -39,9 +39,17 @@ test('the homepage is self-contained and every file it names exists', async () =
   assert.deepEqual(loaded.map((match) => match[1]), [])
 })
 
+test('the homepage reaches the demo, and the image carries the homepage', async () => {
+  const page = await readFile(new URL('../../site/index.html', web), 'utf8')
+  assert.ok(page.includes('href="/demo/"'))
+  const docker = await readFile(new URL('../../Dockerfile', web), 'utf8')
+  assert.match(docker, /^COPY site \.\/site/m)
+})
+
 test('the container image keeps the PNGs the page serves', async () => {
   const lines = (await readFile(new URL('../../.dockerignore', web), 'utf8')).split(/\r?\n/)
   const excluded = lines.indexOf('*.png')
   const kept = lines.indexOf('!app/web/public/brand/*.png')
   assert.ok(excluded >= 0 && kept > excluded, 'the exception has to follow the exclusion')
+  assert.ok(lines.indexOf('!site/assets/*.png') > excluded, 'the homepage image has to stay too')
 })

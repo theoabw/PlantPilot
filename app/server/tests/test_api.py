@@ -107,6 +107,33 @@ def test_the_reroute_endpoint_reports_an_unreadable_artifact(monkeypatch, tmp_pa
     assert "scene.npz" in response.json()["detail"]
 
 
+def test_the_homepage_and_the_room_view_are_served_side_by_side(tmp_path):
+    from fastapi import FastAPI
+
+    from plantpilot import main
+
+    room = tmp_path / "dist"
+    (room / "assets").mkdir(parents=True)
+    (room / "index.html").write_text("room view")
+    (room / "assets" / "app.js").write_text("room script")
+    site = tmp_path / "site"
+    (site / "assets").mkdir(parents=True)
+    (site / "index.html").write_text("homepage")
+    (site / "assets" / "logo.svg").write_text("homepage logo")
+    pages = FastAPI()
+    pages.get("/api/ping")(lambda: {"ok": True})
+    main.mount_pages(pages, room, site)
+    served = TestClient(pages)
+
+    assert served.get("/").text == "homepage"
+    assert served.get("/assets/logo.svg").text == "homepage logo"
+    assert served.get("/demo/").text == "room view"
+    assert served.get("/demo/assets/app.js").text == "room script"
+    redirect = served.get("/demo", follow_redirects=False)
+    assert redirect.status_code == 307 and redirect.headers["location"] == "/demo/"
+    assert served.get("/api/ping").json() == {"ok": True}
+
+
 def test_the_object_splats_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 

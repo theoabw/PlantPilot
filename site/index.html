@@ -10,7 +10,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:title" content="PlantPilot: from scan to service" />
 <meta property="og:description" content="A scan alone is blind. PlantPilot gives it objects, a route and a diagnosis, all offline." />
-<meta property="og:image" content="assets/open-graph-1200x630-dark.png" />
+<meta property="og:url" content="https://plantpilot.tabw.dev/" />
+<meta property="og:image" content="https://plantpilot.tabw.dev/assets/open-graph-1200x630-dark.png" />
 <link rel="icon" href="assets/favicon.ico" sizes="any" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="preload" href="assets/raleway-latin.woff2" as="font" type="font/woff2" crossorigin />
@@ -136,6 +137,7 @@ h2 { font-weight: 300; font-size: clamp(38px, 5.6vw, 76px); line-height: 1.04; l
 }
 .chips .bad { color: #ffb4ad; border-color: rgba(255, 107, 94, .45); }
 .chips .syn { color: var(--route); border-color: rgba(251, 191, 36, .4); }
+.panel.hero p.hint { margin-top: 16px; font-size: 14px; color: var(--muted); }
 .cue { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); width: 1px; height: 46px; background: var(--line); overflow: hidden; }
 .cue::after { content: ''; position: absolute; inset: 0; background: var(--mint); animation: cue 2.2s var(--ease) infinite; }
 @keyframes cue { 0% { transform: translateY(-100%); } 60%, 100% { transform: translateY(100%); } }
@@ -315,7 +317,7 @@ section.alt { background: var(--ink-2); border-block: 1px solid var(--line); }
     <a href="#occlusion">Occlusion</a>
     <a href="#why">Diagnosis</a>
     <a href="#honest">What is real</a>
-    <a class="pill" href="https://github.com/Theoabw/PlantPilot">View the code</a>
+    <a class="pill" href="/demo/">Open the demo</a>
   </nav>
 </header>
 
@@ -341,9 +343,10 @@ section.alt { background: var(--ink-2); border-block: 1px solid var(--line); }
         <h1>From scan <span>to service.</span></h1>
         <p>A 3D scan shows a plant room but knows nothing about it. PlantPilot finds the equipment, plans a robot's route to the faulty pump and opens a cited diagnosis on arrival, all offline.</p>
         <div class="actions">
-          <a class="btn" href="#run">Run the demo</a>
+          <a class="btn" href="/demo/">Open the live demo</a>
           <a class="btn line" href="#frame">See how it works</a>
         </div>
+        <p class="hint">The real capture, in your browser. It downloads about 78 MB and needs WebGL2.</p>
       </div>
       <div class="cue" aria-hidden="true"></div>
     </div>
@@ -622,7 +625,7 @@ section.alt { background: var(--ink-2); border-block: 1px solid var(--line); }
 <section class="block" id="run" style="padding-top:0">
   <div class="wrap run-grid">
     <div class="rise">
-      <h2>One command, on one machine.</h2>
+      <h2>Or run it on your own machine.</h2>
       <p class="lede">The captures and workbook are supplied separately, so put them in <code>data/supplied/</code> first. The room view needs a browser with WebGL2.</p>
       <p class="small">Python 3.12+ with uv, Node 20+ with pnpm. Built with three.js, Spark, React and FastAPI.</p>
     </div>
@@ -631,7 +634,7 @@ section.alt { background: var(--ink-2); border-block: 1px solid var(--line); }
       <pre tabindex="0" aria-label="Commands to run the demo"><code id="cmds">uv sync
 cd app/web &amp;&amp; pnpm install &amp;&amp; cd ../..
 make demo</code></pre>
-      <pre style="padding-top:0"><code><span class="c"># then open http://127.0.0.1:8000</span></code></pre>
+      <pre style="padding-top:0"><code><span class="c"># then open http://127.0.0.1:8000/demo/</span></code></pre>
     </div>
   </div>
 </section>
@@ -639,6 +642,7 @@ make demo</code></pre>
 <div class="close">
   <div class="wrap">
     <strong>From scan <span>to service.</span></strong>
+    <div class="actions"><a class="btn" href="/demo/">Open the live demo</a></div>
     <div class="foot">
       <span>PlantPilot. Built for the Valmet challenge. Numbers are from single runs on the supplied captures.</span>
       <a href="https://github.com/Theoabw/PlantPilot">Source on GitHub</a>

@@ -1,7 +1,7 @@
 {
   "name": "PlantPilot",
   "short_name": "PlantPilot",
-  "start_url": "/",
+  "start_url": "../",
   "display": "standalone",
   "background_color": "#182C3A",
   "theme_color": "#182C3A",
