@@ -3072,6 +3072,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const arrows = new THREE.InstancedMesh(arrowGeometry, arrowMaterial, arrowCount)
     arrows.renderOrder = 3
     const decor = new THREE.Group()
+    // The visibility effect only runs when the toggle changes, and a replan after
+    // arrival builds a new trail while the robot stays deployed.
+    decor.visible = showRoute
     decor.add(arrows)
     // The trail stays readable behind a machine. Sharing the instance matrices
     // means the ghost chevrons scroll with the solid ones at no extra upload.
