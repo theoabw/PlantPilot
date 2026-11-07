@@ -438,46 +438,32 @@ def compute_service_waypoint(
     half_x, half_z = sx / 2.0, sz / 2.0
     candidates: list[tuple[float, tuple[float, float]]] = []
 
-    # Sample 16 radial directions around the target
-    num_angles = 16
-    for i in range(num_angles):
-        theta = 2.0 * math.pi * i / num_angles
-        dx = math.cos(theta)
-        dz = math.sin(theta)
-
-        # Distance from box center to box edge along this ray
-        denom_x = abs(dx) if abs(dx) > 1e-5 else 1e-5
-        denom_z = abs(dz) if abs(dz) > 1e-5 else 1e-5
-        edge_dist = min(half_x / denom_x, half_z / denom_z)
-
-        # Candidate waypoint placed target_dist_m beyond the edge
-        cand_x = cx + dx * (edge_dist + target_dist_m)
-        cand_z = cz + dz * (edge_dist + target_dist_m)
-
-        # Verify distance to box edge is at least min_dist_m
-        dist_to_box = math.dist((cand_x, cand_z), (cx, cz)) - edge_dist
-        if dist_to_box < min_dist_m:
-            continue
-
-        r, c = grid.to_cell((cand_x, cand_z))
-        if grid.walkable(r, c):
-            clearance = float(grid.clearance_m[r, c])
-            candidates.append((clearance, (round(cand_x, 3), round(cand_z, 3))))
+    # Search a dense set of radial samples. The occupancy grid is discrete, so
+    # a sparse set of exact angles can miss a valid cell beside a large target.
+    for radius_value in np.arange(target_dist_m, target_dist_m + 2.01, CELL_M):
+        radius = float(radius_value)
+        for i in range(72):
+            theta = 2.0 * math.pi * i / 72
+            dx = math.cos(theta)
+            dz = math.sin(theta)
+            edge_dist = min(
+                half_x / max(abs(dx), 1e-5),
+                half_z / max(abs(dz), 1e-5),
+            )
+            cand_x = cx + dx * (edge_dist + radius)
+            cand_z = cz + dz * (edge_dist + radius)
+            dist_to_box = math.dist((cand_x, cand_z), (cx, cz)) - edge_dist
+            if dist_to_box < min_dist_m:
+                continue
+            r, c = grid.to_cell((cand_x, cand_z))
+            if grid.walkable(r, c):
+                clearance = float(grid.clearance_m[r, c])
+                candidates.append((clearance, (round(cand_x, 3), round(cand_z, 3))))
 
     if candidates:
         # Pick the candidate with the highest obstacle clearance
         candidates.sort(key=lambda item: item[0], reverse=True)
         return candidates[0][1]
-
-    # Fallback: search wider radius if narrow perimeter is constrained
-    for extra in (0.3, 0.6, 1.0):
-        for i in range(num_angles):
-            theta = 2.0 * math.pi * i / num_angles
-            cand_x = cx + math.cos(theta) * (max(half_x, half_z) + target_dist_m + extra)
-            cand_z = cz + math.sin(theta) * (max(half_x, half_z) + target_dist_m + extra)
-            r, c = grid.to_cell((cand_x, cand_z))
-            if grid.walkable(r, c):
-                return (round(cand_x, 3), round(cand_z, 3))
 
     return None
 
