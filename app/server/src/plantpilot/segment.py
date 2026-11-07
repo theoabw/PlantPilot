@@ -403,9 +403,11 @@ def _extents(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         dominant = int(np.argmax(np.abs(axes[row])))
         if axes[row, dominant] < 0:
             axes[row] = -axes[row]
+    if np.linalg.det(axes) < 0:
+        axes[2] = -axes[2]
     local = centred @ axes.T
-    lo = np.percentile(local, 2.0, axis=0)
-    hi = np.percentile(local, 98.0, axis=0)
+    lo = local.min(axis=0)
+    hi = local.max(axis=0)
     centre = centroid + axes.T @ ((lo + hi) / 2.0)
     extents = hi - lo
     return centre, axes, np.maximum(extents, 1e-4)

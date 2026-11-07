@@ -125,12 +125,18 @@ def object_footprint(obj: dict, up_axis: int = 1) -> Rect:
     # back to "center" and then "pos" so the function works with both schemas.
     center = obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
     extents = obj.get("extents") or obj.get("size", [0.8, 0.8, 0.8])
+    axes = np.asarray(obj.get("axes", np.eye(3)), dtype=float)
+    if axes.shape != (3, 3) or not np.isfinite(axes).all():
+        axes = np.eye(3)
+    horizontal = [axis for axis in range(3) if axis != up_axis]
+    half = np.asarray(extents, dtype=float) / 2.0
+    projected = np.sum(np.abs(axes[:, horizontal]) * half[:, None], axis=0)
     if up_axis == 1:
         x, z = float(center[0]), float(center[2])
-        sx, sz = float(extents[0]), float(extents[2])
+        sx, sz = float(projected[0] * 2.0), float(projected[1] * 2.0)
     else:
         x, z = float(center[0]), float(center[1])
-        sx, sz = float(extents[0]), float(extents[1])
+        sx, sz = float(projected[0] * 2.0), float(projected[1] * 2.0)
     return Rect(x - sx / 2.0, z - sz / 2.0, x + sx / 2.0, z + sz / 2.0)
 
 
@@ -421,13 +427,13 @@ def compute_service_waypoint(
     """
     # objects.json uses "centre"; fall back to "center" then "pos".
     center = target_box.get("centre") or target_box.get("center") or target_box.get("pos", [0.0, 0.0, 0.0])
-    extents = target_box.get("extents") or target_box.get("size", [0.8, 0.8, 0.8])
     if up_axis == 1:
         cx, cz = float(center[0]), float(center[2])
-        sx, sz = float(extents[0]), float(extents[2])
     else:
         cx, cz = float(center[0]), float(center[1])
-        sx, sz = float(extents[0]), float(extents[1])
+    footprint = object_footprint(target_box, up_axis=up_axis)
+    sx = footprint.x1 - footprint.x0
+    sz = footprint.z1 - footprint.z0
 
     half_x, half_z = sx / 2.0, sz / 2.0
     candidates: list[tuple[float, tuple[float, float]]] = []

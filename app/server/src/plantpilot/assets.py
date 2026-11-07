@@ -227,11 +227,11 @@ def seed_masks(rgb: np.ndarray) -> dict[str, np.ndarray]:
 
 
 def fit_box(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """PCA axes plus robust extents (2nd to 98th percentile) for a point set.
+    """Fit a right-handed oriented box that encloses a point set.
 
     The axes are signed so each row points along the dominant positive direction
-    of its own axis. That makes the frame reproducible, which the asset id
-    depends on, and matches the box convention of `objects.json`.
+    of its own axis. Near-degenerate PCA pairs are tightened in their plane so
+    cylindrical and square objects do not receive an arbitrary sideways frame.
     """
     points = np.asarray(points, dtype=np.float64)
     centroid = points.mean(axis=0)
@@ -239,15 +239,46 @@ def fit_box(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     covariance = centred.T @ centred / max(1, points.shape[0] - 1)
     values, vectors = np.linalg.eigh(covariance)
     axes = vectors[:, np.argsort(values)[::-1]].T
+    if values[0] > 0 and (values[0] - values[1]) / values[0] < 0.1:
+        axes = _tighten_pair(points - centroid, axes, 0, 1)
+    if values[1] > 0 and (values[1] - values[2]) / values[1] < 0.1:
+        axes = _tighten_pair(points - centroid, axes, 1, 2)
     for row in range(3):
         dominant = int(np.argmax(np.abs(axes[row])))
         if axes[row, dominant] < 0:
             axes[row] = -axes[row]
+    if np.linalg.det(axes) < 0:
+        axes[2] = -axes[2]
     local = centred @ axes.T
-    lo = np.percentile(local, 2.0, axis=0)
-    hi = np.percentile(local, 98.0, axis=0)
+    lo = local.min(axis=0)
+    hi = local.max(axis=0)
     centre = centroid + axes.T @ ((lo + hi) / 2.0)
     return centre, axes, np.maximum(hi - lo, 1e-4)
+
+
+def _tighten_pair(points: np.ndarray, axes: np.ndarray, first: int, second: int) -> np.ndarray:
+    """Rotate a near-degenerate pair to its tightest enclosing rectangle."""
+    local = points @ axes.T
+    best: tuple[float, float] | None = None
+    for theta in np.linspace(0.0, np.pi / 2.0, 181, endpoint=False):
+        cosine, sine = np.cos(theta), np.sin(theta)
+        first_coord = local[:, first] * cosine + local[:, second] * sine
+        second_coord = -local[:, first] * sine + local[:, second] * cosine
+        area = float(
+            (first_coord.max() - first_coord.min())
+            * (second_coord.max() - second_coord.min())
+        )
+        if best is None or area < best[0] - 1e-12:
+            best = (area, theta)
+    if best is None:
+        return axes
+    cosine, sine = np.cos(best[1]), np.sin(best[1])
+    tightened = axes.copy()
+    first_axis = axes[first].copy()
+    second_axis = axes[second].copy()
+    tightened[first] = cosine * first_axis + sine * second_axis
+    tightened[second] = -sine * first_axis + cosine * second_axis
+    return tightened
 
 
 def _colour_label(colour: str, compact: bool) -> tuple[str, str]:
@@ -339,7 +370,10 @@ def _candidate(record: dict) -> bool:
     """True when a raw geometric box clears the equipment gates."""
     if record.get("class") not in EQUIPMENT_CLASSES:
         return False
-    extents = np.sort(np.asarray(record["extents"], dtype=np.float64))[::-1]
+    extents = np.asarray(record.get("extents"), dtype=np.float64)
+    if extents.shape != (3,) or not np.isfinite(extents).all() or np.any(extents <= 0):
+        raise ValueError(f"geometry box {record.get('id', '<unknown>')} has invalid extents")
+    extents = np.sort(extents)[::-1]
     return bool(
         extents[0] <= MAX_EQUIPMENT_SIDE_M
         and extents[2] >= GEOMETRY_MIN_SIDE_M
@@ -385,6 +419,17 @@ def geometry_proposals(records: list[dict]) -> list[Proposal]:
         if not _candidate(record):
             continue
         extents = np.asarray(record["extents"], dtype=np.float64)
+        axes = np.asarray(record["axes"], dtype=np.float64)
+        if axes.shape != (3, 3) or not np.isfinite(axes).all():
+            raise ValueError(f"geometry box {record.get('id', '<unknown>')} has invalid axes")
+        norms = np.linalg.norm(axes, axis=1)
+        if np.any(norms <= 1e-8):
+            raise ValueError(f"geometry box {record.get('id', '<unknown>')} has zero-length axes")
+        axes = axes / norms[:, None]
+        if not np.allclose(axes @ axes.T, np.eye(3), atol=1e-3):
+            raise ValueError(f"geometry box {record.get('id', '<unknown>')} axes are not orthogonal")
+        if np.linalg.det(axes) < 0:
+            axes[2] = -axes[2]
         points = int(record.get("points", 0))
         class_name = str(record["class"])
         proposals.append(
@@ -394,7 +439,7 @@ def geometry_proposals(records: list[dict]) -> list[Proposal]:
                 confidence=_geometry_confidence(extents, points, class_name),
                 verified=_geometry_verified(extents, points, class_name),
                 centre=np.asarray(record["centre"], dtype=np.float64),
-                axes=np.asarray(record["axes"], dtype=np.float64),
+                axes=axes,
                 extents=extents,
                 points=points,
                 source_object_ids=[str(record["id"])],

@@ -110,6 +110,24 @@ def test_compute_service_waypoint():
     assert grid.walkable(r, c)
 
 
+def test_rotated_object_footprint_projects_oriented_extents():
+    diagonal = math.sqrt(0.5)
+    box = {
+        "centre": [4.0, 0.5, 5.0],
+        "axes": [
+            [diagonal, 0.0, diagonal],
+            [0.0, 1.0, 0.0],
+            [-diagonal, 0.0, diagonal],
+        ],
+        "extents": [2.0, 0.8, 0.4],
+    }
+
+    footprint = nav.object_footprint(box)
+
+    assert footprint.x1 - footprint.x0 == pytest.approx(1.697, abs=0.01)
+    assert footprint.z1 - footprint.z0 == pytest.approx(1.697, abs=0.01)
+
+
 def test_astar_performance_and_clearance():
     grid = nav.Grid(SPEC)
     start = (1.5, 1.5)
