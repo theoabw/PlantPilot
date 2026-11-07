@@ -249,3 +249,36 @@ def test_surface_normals_come_from_the_thinnest_axis():
 def test_surface_normals_reject_a_length_mismatch():
     with pytest.raises(ValueError, match="disagree"):
         nav.surface_normals(np.zeros((2, 4)), np.zeros((3, 3)))
+
+
+def test_a_non_finite_gaussian_drops_its_normal_with_it():
+    """The normals are one per point of the cloud as given, before the filter.
+
+    A cloud with a NaN gaussian still has one normal for it, so the length check
+    must run against the whole cloud and the filter mask then drops the point and
+    its normal together. Validating against the filtered count raises instead.
+    """
+    points, normals = synthetic_room()
+    points = np.vstack([points, [[np.nan, np.nan, np.nan]]])
+    normals = np.vstack([normals, np.array([[0.0, 1.0, 0.0]], dtype=np.float32)])
+
+    grid = nav.Grid.from_cloud(
+        points,
+        floor_y=FLOOR,
+        up_axis=1,
+        agent_radius_m=0.15,
+        safety_margin_m=0.02,
+        normals=normals,
+    )
+
+    assert grid.wall_cells > 0
+    assert grid.walkable(*grid.to_cell((1.0, 1.0)))
+
+
+def test_prefiltered_normals_are_refused_with_a_clear_error():
+    points, normals = synthetic_room()
+    points = np.vstack([points, [[np.nan, np.nan, np.nan]]])
+    normals = np.vstack([normals, np.array([[0.0, 1.0, 0.0]], dtype=np.float32)])
+
+    with pytest.raises(ValueError, match="one normal per point"):
+        nav.Grid.from_cloud(points, floor_y=FLOOR, up_axis=1, normals=normals[:-1])

@@ -401,3 +401,105 @@ def test_a_tall_robot_blocks_pipework_an_amr_can_walk_under():
 
     assert int(getattr(short, "structural_cells", 0)) == 0
     assert int(getattr(tall, "structural_cells", 0)) > 0
+
+
+# ---------------------------------------------------------------------------
+# Review findings: the envelope projection, the goal fallback position, and the
+# non-finite filter against the normals
+# ---------------------------------------------------------------------------
+
+def _turned_box() -> tuple[dict, dict]:
+    """A box turned 35 degrees about the up axis, and its row permutation.
+
+    The rows of `axes` are the box axes and `extents` the lengths along them, so
+    reordering a row together with its length is the same physical box.
+    """
+    angle = np.radians(35.0)
+    cosine, sine = float(np.cos(angle)), float(np.sin(angle))
+    axes = [
+        [cosine, 0.0, -sine],
+        [sine, 0.0, cosine],
+        [0.0, 1.0, 0.0],
+    ]
+    extents = [1.3, 0.8, 0.6]
+    box = {"centre": [1.0, 0.3, 1.0], "axes": axes, "extents": extents}
+    order = [2, 0, 1]
+    permuted = {
+        "centre": [1.0, 0.3, 1.0],
+        "axes": [axes[index] for index in order],
+        "extents": [extents[index] for index in order],
+    }
+    return box, permuted
+
+
+def _box_corner_cloud(box: dict, scale: float = 0.98) -> np.ndarray:
+    """A floor plus two gaussians at the point of the box that the reject loses.
+
+    The point is (e1/2, -e2/2, 0) in the box frame, scaled just inside the
+    surface and at mid height so it sits in the robot's body band. Its world z
+    offset is the box's full z reach, which the row-wise projection of `axes`
+    under-measures, so a reject built from the rows drops it while the true
+    projection keeps it.
+    """
+    axes = np.asarray(box["axes"], dtype=float)
+    extents = np.asarray(box["extents"], dtype=float)
+    local = np.array([extents[0] / 2.0, -extents[1] / 2.0, 0.0]) * scale
+    centre = np.asarray(box["centre"], dtype=float)
+    corner = centre + local @ axes
+    axis = np.arange(0.0, 3.0, 0.05)
+    floor_x, floor_z = np.meshgrid(axis, axis)
+    floor = np.stack([floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1)
+    return np.vstack([floor, corner, corner])
+
+
+def test_the_envelope_reject_keeps_a_corner_point_of_a_turned_box():
+    box, _ = _turned_box()
+    points = _box_corner_cloud(box)
+    grid = nav.Grid.from_cloud(
+        points, floor_y=0.0, up_axis=1, agent_radius_m=0.15, objects=[box]
+    )
+
+    # The layers rasterise a point into the cell that starts at it (a floor of
+    # the grid offset), which is how write_obstacle_png draws them too.
+    point = points[-1]
+    corner_row = int(np.floor((point[2] - grid.z0) / nav.CELL_M))
+    corner_column = int(np.floor((point[0] - grid.x0) / nav.CELL_M))
+    assert grid.layers["object"][corner_row, corner_column] == 1
+    assert not grid.walkable(corner_row, corner_column)
+
+
+def test_permuting_a_box_axes_with_their_extents_does_not_change_the_object_layer():
+    box, permuted = _turned_box()
+    points = _box_corner_cloud(box)
+    plain = nav.Grid.from_cloud(
+        points, floor_y=0.0, up_axis=1, agent_radius_m=0.15, objects=[box]
+    )
+    reordered = nav.Grid.from_cloud(
+        points, floor_y=0.0, up_axis=1, agent_radius_m=0.15, objects=[permuted]
+    )
+
+    assert plain.object_cells > 0
+    assert np.array_equal(plain.layers["object"], reordered.layers["object"])
+    assert plain.object_cells == reordered.object_cells
+
+
+def test_the_reachable_ground_fallback_lands_on_a_cell_astar_can_use():
+    # Only (5, 5) and (6, 6) are free, and the start is (0.5, 0.5) in metres.
+    # The helper must return the centre of (5, 5) as to_cell reads it: half a
+    # cell off maps to the disconnected (6, 6), and A* then refuses the goal.
+    blocked = np.ones((11, 11), dtype=np.uint8)
+    blocked[5, 5] = 0
+    blocked[6, 6] = 0
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 1.1, "z1": 1.1},
+        blocked_mask=blocked,
+        agent_radius_m=0.0,
+        safety_margin_m=0.0,
+    )
+    assert grid.to_cell((0.5, 0.5)) == (5, 5)
+
+    ground = nav.nearest_reachable_ground(grid, (0.5, 0.5), (1.0, 1.0))
+
+    assert ground is not None
+    assert grid.to_cell(ground) == (5, 5)
+    assert nav.astar(grid, (0.5, 0.5), ground)["reachable"] is True

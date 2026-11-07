@@ -334,8 +334,10 @@ def _supported_cells(
         # No frame: the envelope is all the evidence there is.
         cells[r0:r1, c0:c1] = True
         return cells
-    # Cheap world-axis reject before the oriented test.
-    reach = np.abs(axes) @ (extents / 2.0)
+    # Cheap world-axis reject before the oriented test. `axes` holds one box
+    # axis per row, so the half reach along world component i is the i-th column
+    # of the frame, not the i-th row: sum_j |axes[j, i]| * extents[j] / 2.
+    reach = np.abs(axes.T) @ (extents / 2.0)
     near = np.all(np.abs(band_points - centre) <= reach, axis=1)
     if not near.any():
         return None
@@ -477,6 +479,7 @@ class Grid:
             h_x, h_z = points[:, 0], points[:, 1]
             heights = points[:, 2] * up_axis_sign
 
+        cloud_size = int(len(points))
         valid = np.isfinite(h_x) & np.isfinite(h_z) & np.isfinite(heights)
         h_x, h_z, heights = h_x[valid], h_z[valid], heights[valid]
 
@@ -558,13 +561,18 @@ class Grid:
         )
         if normals is not None:
             normals = np.asarray(normals)
-            if normals.shape != (int(np.count_nonzero(valid)), 3):
+            # One normal per point of the cloud as given, before the non-finite
+            # filter: the filter drops points and their normals together, so a
+            # cloud with a dropped point must not need prefiltered normals.
+            if normals.shape != (cloud_size, 3):
                 raise ValueError(
-                    f"normals has shape {normals.shape} for {int(np.count_nonzero(valid))} points"
+                    f"normals has shape {normals.shape} for a cloud of {cloud_size} points; "
+                    "pass one normal per point before the non-finite filter"
                 )
+            normals = normals[valid]
             up = np.zeros(3, dtype=np.float32)
             up[up_axis] = 1.0
-            toward_up = np.abs(normals[valid] @ up)
+            toward_up = np.abs(normals @ up)
             vertical_surface = wall_band & (toward_up < WALL_NORMAL_UP_DOT)
             horizontal_patch = upper_band & (toward_up >= OVERHEAD_NORMAL_UP_DOT)
         else:
@@ -996,13 +1004,18 @@ def nearest_reachable_ground(
     rows, columns = np.nonzero(reachable)
     if rows.size == 0:
         return None
-    centres_x = grid.x0 + (columns + 0.5) * CELL_M
-    centres_z = grid.z0 + (rows + 0.5) * CELL_M
+    # to_world is the inverse of to_cell, and half a cell matters: the reachable
+    # cells of one row differ by a whole cell, so a position half a cell off maps
+    # back to its neighbour through to_cell and A* then refuses the goal.
+    centres_x = grid.x0 + columns * CELL_M
+    centres_z = grid.z0 + rows * CELL_M
     distance = np.hypot(centres_x - float(target[0]), centres_z - float(target[1]))
     best = int(np.argmin(distance))
     if float(distance[best]) > max_m:
         return None
-    return (round(float(centres_x[best]), 3), round(float(centres_z[best]), 3))
+    world_row = int(rows[best])
+    world_column = int(columns[best])
+    return grid.to_world(world_row, world_column)
 
 
 def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) -> list[tuple[float, float]]:
