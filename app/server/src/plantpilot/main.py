@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import re
 import os
+import threading
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -33,7 +36,35 @@ MESH_DIR = Path(os.environ.get("PLANTPILOT_MESHES", DATA / "objects" / "meshes" 
 OBJECT_SPLAT_DIR = Path(os.environ.get("PLANTPILOT_OBJECT_SPLATS", DATA / "objects" / "splats" / SCENE_DIR.name))
 FILTER_NAMES = ("height", "normals", "edges_base", "semantics", "anchors_overlay")
 
-app = FastAPI(title="PlantPilot", version=__version__)
+# The body heights the viewer's robots plan at: the compact AMR, the cargo AMR, and
+# the humanoid standing and crouched. A robot's layers take seconds to build the
+# first time, and a replan holds the robot still until its answer arrives.
+ROBOT_BODY_HEIGHTS_M = (0.55, 0.9, 1.35, 0.95)
+
+
+def warm_route_layers() -> None:
+    """Build each robot height's occupancy layers, so no replan waits for them."""
+    scene = SCENE_DIR / "scene.npz"
+    if not (scene.exists() and OBJECTS_FILE.exists() and MAPPED_FILE.exists()):
+        return
+    for height in ROBOT_BODY_HEIGHTS_M:
+        nav.build_route(
+            scene_path=scene,
+            objects_path=OBJECTS_FILE,
+            mapped_path=MAPPED_FILE,
+            agent_height_m=height,
+        )
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # In the background, so the room view opens while the layers build. A failure
+    # surfaces in the log and leaves the routes building on demand, as they would.
+    threading.Thread(target=warm_route_layers, name="warm-route-layers", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="PlantPilot", version=__version__, lifespan=lifespan)
 
 
 @app.get("/api/diagnosis")
