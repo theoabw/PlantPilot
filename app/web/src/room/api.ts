@@ -69,6 +69,28 @@ export type RoomAnchor = {
     method?: string
     note?: string
   }
+  // Present when multi-view instance fusion recovered the same object. The box
+  // a reviewed anchor carries is then the fused one, and the box the visual
+  // review accepted is kept beside it.
+  reviewed_box?: {
+    centre: number[]
+    axes: number[][]
+    extents: number[]
+    note?: string
+  }
+  fused?: {
+    method: string
+    views: number | null
+    score: number | null
+    vertical_coverage: number | null
+    centre_shift_m: number | null
+    floor_gap_m: number | null
+    floor_gap_reason?: string | null
+    visible_fraction: number | null
+    worst_occluder?: string | null
+    overlay?: string | null
+    note?: string
+  }
 }
 
 export type RoomAnchors = {
@@ -540,5 +562,9 @@ export const CLASS_COLOURS: Record<string, string> = {
   machine: '#f0f0f0',
   structure: '#aaaaaa',
   surface: '#778899',
+  // classes the reviewed layer uses; the proposal layer uses the shape names above
+  equipment: '#8fcaff',
+  pipework: '#60c8ff',
+  furniture: '#ffb0d8',
   unknown: '#969696',
 }
