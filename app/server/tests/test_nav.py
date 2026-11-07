@@ -505,3 +505,106 @@ def test_the_reachable_ground_fallback_lands_on_a_cell_astar_can_use():
     assert ground is not None
     assert grid.to_cell(ground) == (5, 5)
     assert nav.astar(grid, (0.5, 0.5), ground)["reachable"] is True
+
+
+def _pocket_grid() -> nav.Grid:
+    """A main room on the left and a walled pocket on the right, in 0.1 m cells."""
+    blocked = np.zeros((40, 60), dtype=np.uint8)
+    blocked[0, :] = blocked[-1, :] = 1
+    blocked[:, 0] = blocked[:, -1] = 1
+    blocked[:, 40] = 1
+    return nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 6.0, "z1": 4.0},
+        blocked_mask=blocked,
+        agent_radius_m=0.0,
+        safety_margin_m=0.0,
+    )
+
+
+def test_a_world_point_stays_in_the_cell_the_layers_rasterise_it_into():
+    grid = _pocket_grid()
+    # 0.19 m is inside cell 1 for the floor binning of the layers and the viewer.
+    assert grid.to_cell((0.19, 0.19)) == (1, 1)
+    assert grid.to_world(1, 1) == (0.15, 0.15)
+    for row, column in ((1, 1), (7, 3), (12, 39), (38, 58)):
+        assert grid.to_cell(grid.to_world(row, column)) == (row, column)
+
+
+def test_a_snapped_destination_is_stable_when_it_is_planned_again():
+    grid = _pocket_grid()
+    first = nav._nearest_free(grid, (1.33, 2.33))
+    assert first is not None
+    assert nav._nearest_free(grid, first) == first
+
+
+def test_nearest_free_says_so_when_nothing_is_free():
+    blocked = np.ones((20, 20), dtype=np.uint8)
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 2.0, "z1": 2.0},
+        blocked_mask=blocked,
+        agent_radius_m=0.0,
+        safety_margin_m=0.0,
+    )
+    assert nav._nearest_free(grid, (1.0, 1.0)) is None
+
+
+def _pocket_scene(tmp_path: Path) -> Path:
+    """A capture whose floor is only observed in a room and a detached pocket."""
+    axis_x = np.arange(0.0, 6.0, 0.03)
+    axis_z = np.arange(0.0, 4.0, 0.03)
+    floor_x, floor_z = np.meshgrid(axis_x, axis_z)
+    keep = (floor_x < 3.0) | (floor_x > 4.2)
+    floor = np.stack([floor_x[keep], np.zeros(int(keep.sum())), floor_z[keep]], axis=1)
+    path = tmp_path / "scene.npz"
+    np.savez(
+        path,
+        xyz=floor,
+        meta=np.array(json.dumps({"frame": {"up_axis_index": 1, "up_axis_sign": 1}})),
+    )
+    return path
+
+
+def test_a_destination_in_a_pocket_stops_on_ground_the_robot_can_reach(tmp_path):
+    route = nav.build_route(
+        scene_path=_pocket_scene(tmp_path),
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(1.0, 2.0),
+        goal_override=(4.6, 2.0),
+    )
+    assert route["reachable"] is True
+    assert route["target_waypoint_from"] == "goal_override_reachable"
+    assert route["target_waypoint"][0] < 3.3
+
+
+def test_a_blocker_that_cuts_the_room_is_still_refused_and_named(tmp_path):
+    scene = _pocket_scene(tmp_path)
+    route = nav.build_route(
+        scene_path=scene,
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(0.8, 2.0),
+        goal_override=(2.4, 2.0),
+        blockers=[[1.4, -1.0, 1.6, 5.0]],
+    )
+    assert route["reachable"] is False
+    assert route["reason"] == "no walkable route with this obstruction"
+
+
+def test_a_route_that_fails_with_no_blocker_does_not_blame_an_obstruction():
+    grid = _pocket_grid()
+    plan = nav.astar(grid, (1.0, 2.0), (5.0, 2.0))
+    assert plan["reachable"] is False
+    assert "obstruction" not in plan["reason"]
+
+
+def test_a_start_with_nothing_free_near_it_is_refused_not_passed_through(tmp_path):
+    route = nav.build_route(
+        scene_path=_pocket_scene(tmp_path),
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(1.5, 2.0),
+        blockers=[[0.0, 0.0, 3.0, 4.0]],
+    )
+    assert route["reachable"] is False
+    assert "does not fit" in route["reason"]

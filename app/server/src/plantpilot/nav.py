@@ -152,6 +152,10 @@ MIN_WAYPOINT_DISTANCE_M = 0.60
 # inspection then stops on the nearest ground the robot can actually reach,
 # within this radius of the asset, instead of a route ending in mid air.
 SERVICE_FALLBACK_RADIUS_M = 2.50
+# How far a destination may snap, in cells of the outward search: 2.5 m along an
+# axis, so a machine's inflated footprint never swallows its own inspection stop.
+GOAL_SNAP_CELLS = 25
+NO_ROUTE_REASON = "no walkable route from this position"
 PROXIMITY_RADIUS_M = 2.50
 PROXIMITY_STEP_M = 0.50
 
@@ -707,12 +711,17 @@ class Grid:
         return clone
 
     def to_cell(self, point: tuple[float, float] | list[float]) -> tuple[int, int]:
-        col = int(round((float(point[0]) - self.x0) / CELL_M))
-        row = int(round((float(point[1]) - self.z0) / CELL_M))
+        """The cell holding a world point, binned as the layers are rasterised."""
+        col = int(math.floor((float(point[0]) - self.x0) / CELL_M))
+        row = int(math.floor((float(point[1]) - self.z0) / CELL_M))
         return row, col
 
     def to_world(self, row: int, col: int) -> tuple[float, float]:
-        return (round(self.x0 + col * CELL_M, 3), round(self.z0 + row * CELL_M, 3))
+        """The centre of a cell, the inverse of to_cell."""
+        return (
+            round(self.x0 + (col + 0.5) * CELL_M, 3),
+            round(self.z0 + (row + 0.5) * CELL_M, 3),
+        )
 
     def walkable(self, row: int, col: int) -> bool:
         return 0 <= row < self.rows and 0 <= col < self.cols and self.free[row, col] == 1
@@ -941,7 +950,7 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
     if g not in came and g != s:
         return {
             "reachable": False,
-            "reason": "no walkable route with this obstruction",
+            "reason": NO_ROUTE_REASON,
             "path": [],
             "distance_m": 0.0,
             "clearance_m": 0.0,
@@ -1003,6 +1012,12 @@ def reachable_cells(grid: Grid, start: tuple[float, float]) -> np.ndarray:
     return reachable
 
 
+def _connected(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> bool:
+    """True when a route can join the two world points on this grid."""
+    cell = grid.nearest_walkable(*grid.to_cell(goal))
+    return cell is not None and bool(reachable_cells(grid, start)[cell])
+
+
 def nearest_reachable_ground(
     grid: Grid,
     start: tuple[float, float],
@@ -1014,11 +1029,8 @@ def nearest_reachable_ground(
     rows, columns = np.nonzero(reachable)
     if rows.size == 0:
         return None
-    # to_world is the inverse of to_cell, and half a cell matters: the reachable
-    # cells of one row differ by a whole cell, so a position half a cell off maps
-    # back to its neighbour through to_cell and A* then refuses the goal.
-    centres_x = grid.x0 + columns * CELL_M
-    centres_z = grid.z0 + rows * CELL_M
+    centres_x = grid.x0 + (columns + 0.5) * CELL_M
+    centres_z = grid.z0 + (rows + 0.5) * CELL_M
     distance = np.hypot(centres_x - float(target[0]), centres_z - float(target[1]))
     best = int(np.argmin(distance))
     if float(distance[best]) > max_m:
@@ -1166,8 +1178,14 @@ def path_height(floor_y: float, up_axis_sign: int) -> float:
     return round(float(up_axis_sign) * (float(floor_y) + 0.05), 3)
 
 
-def _nearest_free(grid: Grid, point: tuple[float, float], radius_cells: int = 6) -> tuple[float, float]:
-    """Snap a world point to the nearest free cell centre, searching outward."""
+def _nearest_free(
+    grid: Grid, point: tuple[float, float], radius_cells: int = 6
+) -> tuple[float, float] | None:
+    """Snap a world point to the nearest free cell centre, searching outward.
+
+    Returns None when nothing is free within the radius, because a caller that
+    got the point back would read that as a zero metre snap onto free ground.
+    """
     row, col = grid.to_cell(point)
     for radius in range(radius_cells + 1):
         best: tuple[int, int] | None = None
@@ -1183,12 +1201,8 @@ def _nearest_free(grid: Grid, point: tuple[float, float], radius_cells: int = 6)
                         best_distance = distance
                         best = (rr, cc)
         if best is not None:
-            col, row = best[1], best[0]
-            return (
-                grid.x0 + (col + 0.5) * CELL_M,
-                grid.z0 + (row + 0.5) * CELL_M,
-            )
-    return point
+            return grid.to_world(*best)
+    return None
 
 
 def build_route(
@@ -1380,6 +1394,7 @@ def build_route(
     horizontal = [axis for axis in range(3) if axis != up_axis]
 
     # Apply transient blockers (parked forklift, closed aisle, etc.)
+    permanent_grid = grid
     if blockers:
         grid = grid.with_blockers(blockers)
 
@@ -1391,9 +1406,10 @@ def build_route(
     start_problem = None
     if start_override is not None:
         requested_start = (float(start_override[0]), float(start_override[1]))
-        start_2d = _nearest_free(grid, requested_start)
-        snap_m = float(np.hypot(start_2d[0] - requested_start[0], start_2d[1] - requested_start[1]))
-        if snap_m > 0.8:
+        snapped_start = _nearest_free(grid, requested_start)
+        start_2d = snapped_start if snapped_start is not None else requested_start
+        snap_m = math.dist(start_2d, requested_start)
+        if snapped_start is None or snap_m > 0.8:
             start_problem = (
                 f"the robot does not fit at its current position with "
                 f"{agent_radius_m:g} m clearance"
@@ -1411,13 +1427,27 @@ def build_route(
         # A destination is an object centre, so it usually lands inside that
         # object's inflated footprint. Snap outward up to 2.5 m to the nearest
         # free cell, which becomes the inspection waypoint for the visit.
-        goal_2d = _nearest_free(
-            grid, (float(goal_override[0]), float(goal_override[1])), radius_cells=25
-        )
+        wanted = (float(goal_override[0]), float(goal_override[1]))
+        goal_2d = _nearest_free(grid, wanted, radius_cells=GOAL_SNAP_CELLS) or wanted
         goal_from = "goal_override"
+        if not _connected(grid, start_2d, goal_2d) and (
+            not blockers or not _connected(permanent_grid, start_2d, goal_2d)
+        ):
+            # The nearest free cell is a pocket no route enters, and no obstacle
+            # the user placed is the reason, so the robot stops on the nearest
+            # ground it can reach. A blocker that cuts the room stays a refusal:
+            # stopping at the blocker would hide the thing the user asked about.
+            ground = nearest_reachable_ground(
+                grid, start_2d, wanted, max_m=GOAL_SNAP_CELLS * CELL_M * math.sqrt(2)
+            )
+            if ground is not None:
+                goal_2d = ground
+                goal_from = "goal_override_reachable"
 
     # Compute A* path
     plan_result = astar(grid, start_2d, goal_2d)
+    if not plan_result["reachable"] and blockers and plan_result["reason"] == NO_ROUTE_REASON:
+        plan_result["reason"] = "no walkable route with this obstruction"
     if start_problem:
         plan_result = {"reachable": False, "path": [], "reason": start_problem}
 
