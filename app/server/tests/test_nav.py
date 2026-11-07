@@ -590,6 +590,33 @@ def test_a_blocker_that_cuts_the_room_is_still_refused_and_named(tmp_path):
     assert route["reason"] == "no walkable route with this obstruction"
 
 
+@pytest.mark.parametrize("cover_stop", [False, True])
+def test_a_blocker_cannot_move_a_pockets_inspection_stop_before_the_blocker(tmp_path, cover_stop):
+    plan = dict(
+        scene_path=_pocket_scene(tmp_path),
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(0.8, 2.0),
+        goal_override=(4.6, 2.0),
+    )
+    original = nav.build_route(**plan)
+    assert original["reachable"] is True
+    assert original["target_waypoint_from"] == "goal_override_reachable"
+
+    stop_x = original["target_waypoint"][0]
+    blocker = [stop_x - 0.2, -1.0, stop_x + 0.2, 5.0] if cover_stop else [1.4, -1.0, 1.6, 5.0]
+    blocked = nav.build_route(**plan, blockers=[blocker])
+    assert blocked["reachable"] is False
+    assert blocked["reason"] == "no walkable route with this obstruction"
+    assert blocked["path"] == []
+    assert blocked["target_waypoint"] == original["target_waypoint"]
+
+    beside_route = nav.build_route(**plan, blockers=[[0.4, 0.4, 0.6, 0.6]])
+    assert beside_route["reachable"] is True
+    assert beside_route["target_waypoint"] == original["target_waypoint"]
+    assert beside_route["path"][-1] == original["target_waypoint"]
+
+
 def test_a_route_that_fails_with_no_blocker_does_not_blame_an_obstruction():
     grid = _pocket_grid()
     plan = nav.astar(grid, (1.0, 2.0), (5.0, 2.0))

@@ -1552,7 +1552,7 @@ def build_route(
             )
 
     if goal_2d is None and target_centre_2d is not None:
-        goal_2d = nearest_reachable_ground(grid, start_2d, target_centre_2d)
+        goal_2d = nearest_reachable_ground(permanent_grid, start_2d, target_centre_2d)
         if goal_2d is not None:
             goal_from = "nearest_reachable_ground"
         else:
@@ -1566,15 +1566,13 @@ def build_route(
         wanted = (float(goal_override[0]), float(goal_override[1]))
         goal_2d = _nearest_free(grid, wanted, radius_cells=GOAL_SNAP_CELLS) or wanted
         goal_from = "goal_override"
-        if not _connected(grid, start_2d, goal_2d) and (
-            not blockers or not _connected(permanent_grid, start_2d, goal_2d)
-        ):
-            # The nearest free cell is a pocket no route enters, and no obstacle
-            # the user placed is the reason, so the robot stops on the nearest
-            # ground it can reach. A blocker that cuts the room stays a refusal:
-            # stopping at the blocker would hide the thing the user asked about.
+        permanent_goal = _nearest_free(permanent_grid, wanted, radius_cells=GOAL_SNAP_CELLS) or wanted
+        if not _connected(permanent_grid, start_2d, permanent_goal):
+            # Resolve a disconnected pocket against the permanent room first.
+            # Transient blockers must still reach that inspection stop, rather
+            # than silently moving it to this side of a newly blocked aisle.
             ground = nearest_reachable_ground(
-                grid, start_2d, wanted, max_m=GOAL_SNAP_CELLS * CELL_M * math.sqrt(2)
+                permanent_grid, start_2d, wanted, max_m=GOAL_SNAP_CELLS * CELL_M * math.sqrt(2)
             )
             if ground is not None:
                 goal_2d = ground
@@ -1588,10 +1586,18 @@ def build_route(
     # Compute A* path
     if goal_override is None and target_problem:
         plan_result = {"reachable": False, "path": [], "reason": target_problem}
+    elif (
+        blockers
+        and goal_from in {"nearest_reachable_ground", "goal_override_reachable"}
+        and not grid.walkable(*grid.to_cell(goal_2d))
+    ):
+        # A* normally snaps a blocked goal. A permanent fallback is already the
+        # chosen inspection stop, so that snap must not hide a new obstruction.
+        plan_result = {"reachable": False, "path": [], "reason": NO_ROUTE_REASON}
     else:
         plan_result = astar(grid, start_2d, goal_2d)
-        if not plan_result["reachable"] and blockers and plan_result["reason"] == NO_ROUTE_REASON:
-            plan_result["reason"] = "no walkable route with this obstruction"
+    if not plan_result["reachable"] and blockers and plan_result["reason"] == NO_ROUTE_REASON:
+        plan_result["reason"] = "no walkable route with this obstruction"
     if start_problem:
         plan_result = {"reachable": False, "path": [], "reason": start_problem}
 
