@@ -9,7 +9,6 @@ on:
 #   uv package cache   astral-sh/setup-uv, keyed on uv.lock
 #   npm tarball cache  actions/setup-node, keyed on app/web/package-lock.json
 #                      and app/web/package.json
-#   apt packages       awalsh128/cache-apt-pkgs-action, keyed on its version input
 # The test run, the type check and the vite build are rebuilt every time on
 # purpose: caching build output would let a broken build stay green.
 jobs:
