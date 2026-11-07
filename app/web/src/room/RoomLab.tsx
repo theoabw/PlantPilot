@@ -118,6 +118,7 @@ export default function RoomLab() {
   const [trip, setTrip] = useState<TripState>({ mode: 'idle', travelled: 0, total: 0 })
   const [nearby, setNearby] = useState<string[]>([])
   const [follow, setFollow] = useState(false)
+  const [cameraMove, setCameraMove] = useState(false)
   const [tripToken, setTripToken] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState('photo')
@@ -761,6 +762,7 @@ export default function RoomLab() {
             route={route}
             tripToken={tripToken}
             follow={follow}
+            cameraMove={cameraMove}
             focus={follow || driving}
             onNearby={setNearby}
             onTrip={setTrip}
@@ -1418,21 +1420,44 @@ export default function RoomLab() {
             onClick={() => {
               setResetToken((value) => value + 1)
               setFollow(false)
+              setCameraMove(false)
             }}
             className="px-3 py-1.5 hover:bg-slate-800"
           >
             Overview
           </button>
           {driving || arrived ? (
-            <button type="button" onClick={() => setFollow((value) => !value)} className={`px-3 py-1.5 hover:bg-slate-800 ${follow ? 'text-cyan-300' : ''}`}>
+            <button
+              type="button"
+              onClick={() => {
+                setCameraMove(false)
+                setFollow((value) => !value)
+              }}
+              className={`px-3 py-1.5 hover:bg-slate-800 ${follow ? 'text-cyan-300' : ''}`}
+            >
               {follow ? 'Following' : 'Follow'}
             </button>
           ) : null}
           <button
             type="button"
+            aria-pressed={cameraMove}
+            onClick={() => {
+              const next = !cameraMove
+              setCameraMove(next)
+              if (next) {
+                setFollow(false)
+              }
+            }}
+            className={`px-3 py-1.5 hover:bg-slate-800 ${cameraMove ? 'text-cyan-300' : ''}`}
+          >
+            {cameraMove ? 'Move camera · WASD' : 'Move camera'}
+          </button>
+          <button
+            type="button"
             onClick={() => {
               setResetToken((value) => value + 1)
               setFollow(false)
+              setCameraMove(false)
             }}
             className="px-3 py-1.5 hover:bg-slate-800"
           >

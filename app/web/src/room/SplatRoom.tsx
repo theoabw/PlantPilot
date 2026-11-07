@@ -70,6 +70,7 @@ type Props = {
   route: RoomRoute | null
   tripToken: number
   follow: boolean
+  cameraMove: boolean
   focus: boolean
   onNearby: (ids: string[]) => void
   onTrip: (state: TripState) => void
@@ -452,7 +453,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, crouchSpans, showRobot, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -511,6 +512,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     beaconGroup: THREE.Group
     motion: Motion
     follow: boolean
+    followOffset: THREE.Vector3 | null
+    orbitInputUntil: number
+    orbitPointerActive: boolean
+    cameraMove: boolean
+    movementKeys: Set<string>
     centre: THREE.Vector3
     radius: number
   } | null>(null)
@@ -534,6 +540,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   showRobotRef.current = showRobot
   const followRef = useRef(follow)
   followRef.current = follow
+  const cameraMoveRef = useRef(cameraMove)
+  cameraMoveRef.current = cameraMove
   const nearbyRef = useRef(onNearby)
   nearbyRef.current = onNearby
   // The framed camera is kept so the toolbar's overview and reset can restore it.
@@ -763,7 +771,60 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
     }
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
-    controls.addEventListener('change', requestRender)
+    const noteOrbitStart = () => {
+      const state = stateRef.current
+      if (state?.follow) {
+        state.orbitPointerActive = true
+        state.orbitInputUntil = performance.now() + 500
+      }
+    }
+    const noteOrbitEnd = () => {
+      const state = stateRef.current
+      if (state?.follow) {
+        state.orbitPointerActive = false
+        state.orbitInputUntil = performance.now() + 500
+      }
+    }
+    const onControlsChange = () => {
+      requestRender()
+      const state = stateRef.current
+      if (
+        state?.follow
+        && (state.orbitPointerActive || performance.now() <= state.orbitInputUntil)
+      ) {
+        state.followOffset = camera.position.clone().sub(controls.target)
+        state.smoothedCamera = camera.position.clone()
+      }
+    }
+    controls.addEventListener('start', noteOrbitStart)
+    controls.addEventListener('end', noteOrbitEnd)
+    controls.addEventListener('change', onControlsChange)
+    const onCameraKeyDown = (event: KeyboardEvent) => {
+      if (!cameraMoveRef.current || event.altKey || event.ctrlKey || event.metaKey) {
+        return
+      }
+      const target = event.target
+      if (
+        target instanceof HTMLElement
+        && target.closest('input, textarea, select, [contenteditable="true"]')
+      ) {
+        return
+      }
+      const key = event.key.toLowerCase()
+      if (!['w', 'a', 's', 'd'].includes(key)) {
+        return
+      }
+      event.preventDefault()
+      stateRef.current?.movementKeys.add(key)
+      renderRef.current()
+    }
+    const onCameraKeyUp = (event: KeyboardEvent) => {
+      stateRef.current?.movementKeys.delete(event.key.toLowerCase())
+    }
+    const clearCameraKeys = () => stateRef.current?.movementKeys.clear()
+    window.addEventListener('keydown', onCameraKeyDown)
+    window.addEventListener('keyup', onCameraKeyUp)
+    window.addEventListener('blur', clearCameraKeys)
 
     const up = new THREE.Vector3(0, 1, 0)
     const robotForward = new THREE.Vector3()
@@ -980,9 +1041,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         .addScaledVector(robotForward, -followDistance)
         .add(new THREE.Vector3(0, lookHeight + 0.8, 0))
       const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, lookHeight, 0))
-      const safeDesired = safeCameraPosition(rawDesired, desiredTarget)
       const state = stateRef.current
+      const followPosition = state?.followOffset
+        ? desiredTarget.clone().add(state.followOffset)
+        : safeCameraPosition(rawDesired, desiredTarget)
+      const safeDesired = safeCameraPosition(followPosition, desiredTarget)
       if (state) {
+        if (!state.followOffset || safeDesired.distanceTo(followPosition) > 0.05) {
+          state.followOffset = safeDesired.clone().sub(desiredTarget)
+        }
         if (!state.smoothedCamera) {
           state.smoothedCamera = safeDesired.clone()
         } else {
@@ -1014,10 +1081,37 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         camera.position.copy(before).addScaledVector(camera.position.clone().sub(before).normalize(), 0.12)
       }
       controls.target.lerp(desiredTarget, factor)
-      // OrbitControls.update() would recompute the camera position from a
-      // moving target and fight the avoidance clamp, so follow mode aims the
-      // camera directly and skips that update.
-      camera.lookAt(controls.target)
+    }
+    const moveCameraFromKeys = (dt: number) => {
+      const state = stateRef.current
+      if (!state?.cameraMove || state.movementKeys.size === 0) {
+        return
+      }
+      const forward = camera.getWorldDirection(new THREE.Vector3())
+      forward.y = 0
+      if (forward.lengthSq() < 1e-5) {
+        return
+      }
+      forward.normalize()
+      const right = new THREE.Vector3().crossVectors(forward, up).normalize()
+      const direction = new THREE.Vector3()
+      if (state.movementKeys.has('w')) direction.add(forward)
+      if (state.movementKeys.has('s')) direction.sub(forward)
+      if (state.movementKeys.has('d')) direction.add(right)
+      if (state.movementKeys.has('a')) direction.sub(right)
+      if (direction.lengthSq() === 0) {
+        return
+      }
+      direction.normalize().multiplyScalar(3 * dt)
+      camera.position.add(direction)
+      controls.target.add(direction)
+      if (state.followOffset) {
+        state.followOffset.add(direction)
+      }
+      if (state.smoothedCamera) {
+        state.smoothedCamera.add(direction)
+      }
+      renderRef.current()
     }
     const advanceMotion = (dt: number) => {
       const motion = stateRef.current?.motion
@@ -1060,6 +1154,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         if (stateRef.current?.follow && stateRef.current.motion.robot) {
           updateFollow(dt)
         }
+        moveCameraFromKeys(dt)
         const animated = stateRef.current?.motion.robot?.userData.animate as
           | ((time: number, travelled: number, moving: boolean) => void)
           | undefined
@@ -1152,9 +1247,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           }
           renderRef.current()
         }
-        if (!stateRef.current?.follow) {
-          controls.update()
-        }
+        controls.update()
         const label = labelRef.current
         if (label) {
           const chosen = selectedRef.current
@@ -1292,6 +1385,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         reached: false,
       },
       follow: followRef.current,
+      followOffset: null,
+      orbitInputUntil: 0,
+      orbitPointerActive: false,
+      cameraMove: cameraMoveRef.current,
+      movementKeys: new Set<string>(),
       centre: new THREE.Vector3(0, 1, 0),
       radius: 5,
     }
@@ -1306,7 +1404,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
-      controls.removeEventListener('change', requestRender)
+      controls.removeEventListener('start', noteOrbitStart)
+      controls.removeEventListener('end', noteOrbitEnd)
+      controls.removeEventListener('change', onControlsChange)
+      window.removeEventListener('keydown', onCameraKeyDown)
+      window.removeEventListener('keyup', onCameraKeyUp)
+      window.removeEventListener('blur', clearCameraKeys)
       const state = stateRef.current
       for (const box of state?.boxes ?? []) {
         state?.boxGroup.remove(box.lines)
@@ -1834,7 +1937,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   // Focus tween: ease the camera to a selected object in the loop.
   useEffect(() => {
     const state = stateRef.current
-    if (!state || !focusTarget) {
+    if (!state || !focusTarget || state.follow) {
       return
     }
     const centre = new THREE.Vector3(...focusTarget.centre).applyQuaternion(state.world.quaternion)
@@ -2468,12 +2571,27 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     if (stateRef.current) {
       stateRef.current.follow = follow
       if (follow) {
+        stateRef.current.focusTween = null
         stateRef.current.followTransitionStart = performance.now()
         stateRef.current.smoothedCamera = null
+        stateRef.current.followOffset = null
+        stateRef.current.orbitPointerActive = false
       }
     }
     renderRef.current()
   }, [follow])
+
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    state.cameraMove = cameraMove
+    if (!cameraMove) {
+      state.movementKeys.clear()
+    }
+    renderRef.current()
+  }, [cameraMove])
 
   if (glError) {
     return (

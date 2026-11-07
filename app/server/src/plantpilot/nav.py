@@ -272,6 +272,23 @@ class Grid:
         ).reshape(rows, cols)
         structural_cells = (per_cell >= structure_min_points).astype(np.uint8)
 
+        floor_band = np.abs(heights - floor_y) <= 0.08
+        floor_cols = np.floor((h_x[floor_band] - x0) / CELL_M).astype(np.int64)
+        floor_rows = np.floor((h_z[floor_band] - z0) / CELL_M).astype(np.int64)
+        floor_inside = (
+            (floor_cols >= 0) & (floor_cols < cols) & (floor_rows >= 0) & (floor_rows < rows)
+        )
+        floor_per_cell = np.bincount(
+            floor_rows[floor_inside] * cols + floor_cols[floor_inside],
+            minlength=rows * cols,
+        ).reshape(rows, cols)
+        floor_supported = cv2.dilate(
+            (floor_per_cell >= 1).astype(np.uint8), np.ones((5, 5), dtype=np.uint8)
+        )
+        use_floor_domain = bool(
+            np.count_nonzero(floor_supported) >= max(100, rows * cols * 0.05)
+        )
+
         # Independent camera layer, at eye level and without robot inflation.
         camera_band = (heights >= floor_y + CAMERA_BAND_MIN_M) & (
             heights <= floor_y + CAMERA_BAND_MAX_M
@@ -288,6 +305,8 @@ class Grid:
 
         blocked |= object_cells
         blocked |= structural_cells
+        if use_floor_domain:
+            blocked |= (floor_supported == 0).astype(np.uint8)
 
         grid_instance = cls(
             area={"x0": x0, "z0": z0, "x1": x1, "z1": z1},
@@ -304,6 +323,7 @@ class Grid:
         grid_instance.structure_min_points = int(structure_min_points)
         grid_instance.camera_mask = camera_cells
         grid_instance.camera_cells = int(np.sum(camera_cells == 1))
+        grid_instance.floor_domain = use_floor_domain
         grid_instance.blocked_fraction = round(blocked_cells / max(1, total_cells), 4)
         grid_instance.saturated = bool(grid_instance.blocked_fraction > MAX_BLOCKED_FRACTION)
         return grid_instance
@@ -1149,6 +1169,7 @@ def build_route(
             "structure_min_points": getattr(grid, "structure_min_points", None),
             "blocked_fraction_limit": MAX_BLOCKED_FRACTION,
             "saturated": bool(blocked_fraction > MAX_BLOCKED_FRACTION),
+            "floor_domain": bool(getattr(grid, "floor_domain", False)),
             "occupancy_fallback": bool(getattr(grid, "occupancy_fallback", False)),
             "obstacles_from": getattr(grid, "obstacles_from", "points"),
             "agent_radius_m": round(float(agent_radius_m), 3),
