@@ -9,7 +9,7 @@ import { stableHalfDepthShader } from './depthSplatShader'
 import { CLICK_MAX_DRAG_PX, isPickable, nestedPick, visiblePick } from './pickObject'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
-import { boundedStep, CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
+import { boundedStep, CAMERA_FAST_SPEED_M_S, CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -1381,7 +1381,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       // allowed to pull out, still continuously.
       const factor = smoothFactor(transitioning ? 3.2 : blockedFor > 800 ? 20 : blockedFor > 250 ? 12 : 6, Math.max(dt, 0.001))
       const lerpGoal = camera.position.clone().lerp(smoothed, factor)
-      const capped = cappedStep(camera.position, lerpGoal, CAMERA_MAX_SPEED_M_S * Math.max(dt, 0.001))
+      const maxSpeed = transitioning || blockedFor > 250 ? CAMERA_FAST_SPEED_M_S : CAMERA_MAX_SPEED_M_S
+      const capped = cappedStep(camera.position, lerpGoal, maxSpeed * Math.max(dt, 0.001))
       camera.position.set(capped.x, capped.y, capped.z)
       controls.target.lerp(desiredTarget, factor)
     }

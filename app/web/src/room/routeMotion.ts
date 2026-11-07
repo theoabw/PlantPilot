@@ -8,7 +8,9 @@
 export type Point3 = { x: number; y: number; z: number }
 
 /** The camera may not cover more than this per second while it tracks. */
-export const CAMERA_MAX_SPEED_M_S = 7.2
+export const CAMERA_MAX_SPEED_M_S = 1.6
+/** The opening move onto the robot, or pulling the camera out of structure. */
+export const CAMERA_FAST_SPEED_M_S = 4
 
 /**
  * Move `from` toward `goal`, covering at most `maxStep` metres.
@@ -152,8 +154,8 @@ export function easeFollowOffset(
   offset: Point3,
   goal: Point3,
   dt: number,
-  rate = 0.8,
-  maxTurnRadPerS = 0.7,
+  rate = 0.4,
+  maxTurnRadPerS = 0.25,
 ): Point3 {
   const blend = 1 - Math.exp(-rate * dt)
   const angle = Math.atan2(offset.x, offset.z)
