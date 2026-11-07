@@ -156,12 +156,11 @@ explanation in its message: what was wrong, why, and how the test catches it.
 
 | Path | Contents |
 | --- | --- |
-| `app/server/src/plantpilot/` | demo path: splat, segment, pack, mapping, nav, diagnose, main. Off the demo path: ocr, corpus, register, capture |
+| `app/server/src/plantpilot/` | the demo path: splat, segment, pack, assets, mapping, nav, diagnose, main |
 | `app/server/tests/` | pytest suite, offline |
 | `app/web/` | React, Vite and three.js viewer |
-| `scripts/` | the demo builds (splat asset, route, anchors, OpenAPI) and the submission check; corpus, register, plates and photo scan are off the demo path |
-| `fixtures/` | committed and small: asset register, section and action samples |
-| `proof/` | timed trials, off the demo path; the README quotes the generated artifacts instead |
+| `scripts/` | the demo builds (splat asset, route, anchors, object splats, meshes, filter channels) and the submission check |
+| `fixtures/` | committed and small: the reviewed scene anchors |
 | `docs/` | plan, roadmap, features, acceptance, video script, submission copy |
 | `.github/workflows/ci.yml` | the checks a pull request must pass |
 

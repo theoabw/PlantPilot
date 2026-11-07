@@ -28,14 +28,6 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Install poppler and Tesseract from the apt cache
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: poppler-utils tesseract-ocr
-          # Every distinct value is a separate cache. Bump it to force a fresh
-          # download, and whenever the package list changes.
-          version: "1.0"
-
       - run: uv sync --locked
       - run: uv run pytest
       - run: node scripts/sinceai_check.mjs

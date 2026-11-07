@@ -62,8 +62,7 @@ import numpy as np
 from PIL import ImageDraw
 
 from plantpilot import splat, splat_render
-from plantpilot.render import floor_height
-from plantpilot.splat import CORE_PROPERTIES, Scene, load_scene
+from plantpilot.splat import CORE_PROPERTIES, Scene, floor_height, load_scene
 
 ROOT = Path(__file__).resolve().parents[1]
 

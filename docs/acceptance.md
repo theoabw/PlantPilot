@@ -1,6 +1,6 @@
 # Acceptance
 
-What has to be true, not what we hope is true. Two parts: the rules we do not negotiate, and one checkable criterion per beat of the demo, plus one for the scene-agnostic claim. Rewritten Friday evening for the supplied splat and the builder pack.
+What has to be true, not what we hope is true. Two parts: the rules we do not negotiate, and one checkable criterion per beat of the demo. Rewritten Friday evening for the supplied splat and the builder pack.
 
 ## The constitution
 
@@ -15,9 +15,9 @@ What has to be true, not what we hope is true. Two parts: the rules we do not ne
 9. **One demo path.** A second scene, a second UI or a second target waits until the first path runs three times clean.
 10. **The product is not the pitch.** Extraction counts, timings and accuracy claims belong in the video, the README and the submission. Provenance (which scene, which mapping method, which pack) is product information and appears once.
 
-## The eight checks
+## The seven checks
 
-Each criterion is written so a person who did not build the feature can check it. Seven cover the demo beats; the eighth covers the scene-agnostic claim.
+Each criterion is written so a person who did not build the feature can check it. Each one covers a beat of the demo.
 
 ### 1. The room is on screen
 
@@ -81,14 +81,3 @@ Each criterion is written so a person who did not build the feature can check it
 
 **Pass:** every mandatory beat plays in order: the room, the frames, P-005 turning red with its card and the route, the avatar travelling with proximity labels, the diagnosis, and the end card that names the scene source, the mapping method and the offline status. The isolate view is P1; if it is cut, the script selects a nearby asset instead. Three clean runs, no manual retry, no network request, the same counts and route length each time.
 **Check:** unplug, run three times, note the numbers.
-
-### 8. The same command runs on a second scene
-
-**Required whenever the plan, the README or the pitch claims scene-agnostic generality.** If the second-scene run is cut, the claim is downgraded everywhere to "designed for compatible 3DGS PLY inputs, tested on one scene", and this check is not claimed.
-
-**Given** the reference plant written as a `.ply` with the same gaussian schema,
-**when** `make generality` runs on it with no code change,
-**then** it produces the scene, the objects and a route, and with the pack supplied it also maps and diagnoses. The object count is compared with the plant's ground truth.
-
-**Pass:** the command completes, at least 8 of the 10 reference assets are framed with a box that contains their true position, no box is more than three times the asset's footprint, and the count is printed. A hard-coded room constant anywhere in the ingest or nav path fails this check.
-**Check:** run it on the second scene; compare the boxes with `fixtures/plant/plant.json`.

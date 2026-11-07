@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sys
 import time
 from dataclasses import dataclass, field
@@ -570,6 +571,123 @@ class Scene:
     def height(self) -> np.ndarray:
         """Coordinate along the up axis, measured upwards from the frame origin."""
         return self.up_sign * self.xyz[:, self.up_index]
+
+
+def floor_height(scene: Scene) -> float:
+    """The up-axis coordinate of the densest flat slab, which is the floor.
+
+    The ingest detector signs the up axis so that the densest slab is the floor,
+    and records that slab and sign in the metadata. Falls back to the lowest
+    dense band when the evidence is missing.
+    """
+    frame = scene.meta.get("frame", {})
+    evidence = frame.get("up_axis_evidence", {}) or {}
+    slab = evidence.get("slab")
+    sign = int(evidence.get("sign", frame.get("up_axis_sign", 1)) or 1)
+    if slab is not None:
+        return float(sign) * float(slab)
+    return float(np.percentile(scene.height(), 1.0))
+
+
+def hero_camera_pose(scene: Scene) -> dict[str, list[float]]:
+    """A person's view inside the room, standing where there is space to stand.
+
+    The floor comes from the detected slab, eye height sits 1.45 m above it, and
+    the standing position is chosen on a grid over the footprint by distance to
+    the nearest thing at torso height. The camera then looks down the longest
+    open sightline, so the viewer and the rendered stills show the same room.
+    Returns eye, a forward direction and the up vector in scene coordinates.
+    """
+    import cv2
+
+    up = np.zeros(3)
+    up[scene.up_index] = float(scene.up_sign)
+    horizontal = [axis for axis in range(3) if axis != scene.up_index]
+    floor = floor_height(scene)
+    heights = scene.height()
+    points = scene.xyz
+    torso = (heights > floor + 0.7) & (heights < floor + 1.9)
+    obstacles = points[torso] if int(torso.sum()) > 500 else points
+
+    lo = np.percentile(points[:, horizontal], 2, axis=0)
+    hi = np.percentile(points[:, horizontal], 98, axis=0)
+    cell = 0.15
+    cols = max(4, int(np.ceil((hi[0] - lo[0]) / cell)))
+    rows = max(4, int(np.ceil((hi[1] - lo[1]) / cell)))
+    occupied = np.zeros((rows, cols), dtype=np.uint8)
+    cols_index = np.clip(((obstacles[:, horizontal[0]] - lo[0]) / cell).astype(int), 0, cols - 1)
+    rows_index = np.clip(((obstacles[:, horizontal[1]] - lo[1]) / cell).astype(int), 0, rows - 1)
+    occupied[rows_index, cols_index] = 1
+    free = (1 - occupied).astype(np.uint8)
+    clearance = cv2.distanceTransform(free, cv2.DIST_L2, 5) * cell
+
+    centre = points.mean(axis=0)
+    long_axis = int(np.argmax(hi - lo))
+    spans = hi - lo
+    steps = np.arange(0.12, 0.95, 0.05)
+    angles = np.linspace(0.0, 2.0 * np.pi, 32, endpoint=False)
+    best: tuple[float, np.ndarray] | None = None
+    for step in steps:
+        for angle in angles:
+            candidate = centre.copy()
+            candidate[horizontal[0]] = centre[horizontal[0]] + step * (hi[0] - lo[0]) * math.cos(angle)
+            candidate[horizontal[1]] = centre[horizontal[1]] + step * (hi[1] - lo[1]) * math.sin(angle)
+            column = int((candidate[horizontal[0]] - lo[0]) / cell)
+            row = int((candidate[horizontal[1]] - lo[1]) / cell)
+            if not (1 <= row < rows - 1 and 1 <= column < cols - 1):
+                continue
+            if occupied[row, column]:
+                continue
+            offset = abs(float(candidate[horizontal[long_axis]] - centre[horizontal[long_axis]]))
+            if offset < 0.28 * float(spans[long_axis]):
+                continue
+            score = float(clearance[row, column])
+            if best is None or score > best[0]:
+                best = (score, candidate)
+    if best is None:
+        fallback = np.zeros(3)
+        fallback[horizontal[0]] = 1.0
+        eye = centre - 0.4 * (hi[0] - lo[0]) * fallback
+    else:
+        eye = best[1]
+    eye = eye - up * float(eye @ up) + up * (floor + 1.45)
+
+    flat_eye = np.array([eye[horizontal[0]], eye[horizontal[1]]])
+    flat_centre = np.array([centre[horizontal[0]], centre[horizontal[1]]])
+    to_centre = math.atan2(flat_centre[1] - flat_eye[1], flat_centre[0] - flat_eye[0])
+    best_view: tuple[float, float] | None = None
+    for angle in np.linspace(0.0, 2.0 * np.pi, 96, endpoint=False):
+        direction = np.array([math.cos(angle), math.sin(angle)])
+        free_path = 0.0
+        for _ in range(64):
+            free_path += 0.25
+            column = int((flat_eye[0] + direction[0] * free_path - lo[0]) / cell)
+            row = int((flat_eye[1] + direction[1] * free_path - lo[1]) / cell)
+            if not (0 <= row < rows and 0 <= column < cols) or occupied[row, column]:
+                break
+        alignment = math.cos(angle - to_centre)
+        score = min(free_path, 8.0) + 0.45 * alignment
+        if best_view is None or score > best_view[0]:
+            best_view = (score, float(angle))
+    forward_flat = (
+        np.array([math.cos(best_view[1]), math.sin(best_view[1])])
+        if best_view
+        else np.array([1.0, 0.0])
+    )
+    reach = 4.0 if best_view is None else min(max(best_view[0], 1.5), 4.5)
+    target = centre - up * float(centre @ up) + up * (floor + 0.9)
+    target[horizontal[0]] = eye[horizontal[0]] + forward_flat[0] * reach
+    target[horizontal[1]] = eye[horizontal[1]] + forward_flat[1] * reach
+
+    forward = target - eye
+    forward = forward / max(float(np.linalg.norm(forward)), 1e-12)
+    up_vector = up - forward * float(up @ forward)
+    up_vector = up_vector / max(float(np.linalg.norm(up_vector)), 1e-12)
+    return {
+        "eye": [round(float(value), 4) for value in eye],
+        "forward": [round(float(value), 4) for value in forward],
+        "up": [round(float(value), 4) for value in up_vector],
+    }
 
 
 def load_scene(path: Path) -> Scene:

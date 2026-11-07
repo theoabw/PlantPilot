@@ -1,50 +1,7 @@
-import math
-from pathlib import Path
 import numpy as np
 import pytest
 
 from plantpilot import nav
-
-ROOT = Path(__file__).resolve().parents[3]
-SPEC = nav.load_spec(ROOT / "fixtures" / "plant" / "plant.json")
-START = (2.0, 0.8)
-WEST_CLOSED = [[0.0, 4.8, 4.6, 7.2]]
-
-
-def test_every_inspection_point_is_reachable():
-    for asset in SPEC["assets"]:
-        result = nav.plan(SPEC, START, asset["waypoint"])
-        assert result["reachable"] is True, asset["id"]
-        assert result["distance_m"] > 0.5
-        # Acceptance Check 4: clearance >= 0.3 m (corridor, docking zone excluded)
-        assert result["clearance_m"] >= 0.3, f"{asset['id']}: clearance={result['clearance_m']}"
-
-
-def test_the_plain_route_uses_the_west_aisle():
-    result = nav.plan(SPEC, START, (8.0, 8.8))
-    xs = [p[0] for p in result["path"]]
-    assert max(xs) < 9.0 and min(xs) < 2.0
-
-
-def test_closing_the_west_aisle_forces_a_longer_route():
-    plain = nav.plan(SPEC, START, (8.0, 8.8))
-    blocked = nav.plan(SPEC, START, (8.0, 8.8), blockers=WEST_CLOSED)
-    assert blocked["reachable"] is True
-    assert blocked["distance_m"] > plain["distance_m"] + 4.0
-    assert max(p[0] for p in blocked["path"]) > 10.0
-
-
-def test_a_wall_across_the_hall_reports_unreachable_with_a_reason():
-    result = nav.plan(SPEC, START, (8.0, 8.8), blockers=[[0.0, 1.5, 16.0, 2.2]])
-    assert result["reachable"] is False
-    assert "no walkable route" in result["reason"]
-
-
-def test_agent_width_changes_the_route():
-    wide = nav.plan(SPEC, START, (8.0, 8.8), agent_radius_m=0.9)
-    assert wide["reachable"] in (True, False)
-    if wide["reachable"]:
-        assert wide["clearance_m"] >= 0.65
 
 
 # --- New Tests for Seat B Requirements (Acceptance Checks 4 & 5) ---
@@ -91,53 +48,6 @@ def test_grid_from_cloud_and_clearance():
     corner_r, corner_c = grid.to_cell((3.0, 3.0))
     assert grid.walkable(corner_r, corner_c)
     assert grid.clearance_m[corner_r, corner_c] > 0.0
-
-
-def test_compute_service_waypoint():
-    grid = nav.Grid(SPEC)
-    pump_box = {
-        "id": "OBJ-P005",
-        "center": [4.0, 0.5, 5.0],
-        "extents": [1.0, 0.8, 1.0],
-        "class_proposal": "pump",
-    }
-    wp = nav.compute_service_waypoint(pump_box, grid, target_dist_m=0.9, min_dist_m=0.6)
-    assert wp is not None
-    # Distance from center must be >= half extent (0.5) + min_dist (0.6) = 1.1 m
-    dist_to_center = math.dist(wp, (4.0, 5.0))
-    assert dist_to_center >= 1.0
-    r, c = grid.to_cell(wp)
-    assert grid.walkable(r, c)
-
-
-def test_astar_performance_and_clearance():
-    grid = nav.Grid(SPEC)
-    start = (1.5, 1.5)
-    # Use V-203's updated waypoint (9.35, 10.0) which has proper corridor clearance
-    goal = (9.35, 10.0)
-    res = nav.astar(grid, start, goal)
-
-    assert res["reachable"] is True
-    # Acceptance Check 4: length > 2 m, clearance >= 0.3 m, A* under 500 ms
-    # The 500 ms limit is the demo laptop spec; the unit test allows 2 s to
-    # tolerate CPU contention when the full suite runs after the heavy segment
-    # tests. The make route output is the authoritative timing check.
-    assert res["distance_m"] > 2.0
-    assert res["clearance_m"] >= 0.30
-    assert res["astar_ms"] < 2000.0
-    assert len(res["path"]) > 5
-
-
-def test_smooth_path():
-    grid = nav.Grid(SPEC)
-    res = nav.astar(grid, (1.5, 1.5), (9.35, 10.0))
-    assert res["reachable"] is True
-    raw_path = res["path"]
-    smoothed = nav.smooth_path(grid, raw_path)
-
-    assert len(smoothed) <= len(raw_path)
-    assert math.dist(smoothed[0], raw_path[0]) < 0.01
-    assert math.dist(smoothed[-1], raw_path[-1]) < 0.01
 
 
 def test_compute_path_proximity_samples():
@@ -188,74 +98,6 @@ def test_build_route_contract(tmp_path):
 # ---------------------------------------------------------------------------
 # Obstacle avoidance tests
 # ---------------------------------------------------------------------------
-
-def _path_crosses_rect(path: list, x0: float, z0: float, x1: float, z1: float) -> bool:
-    """Return True if any path point falls inside the given rectangle."""
-    for p in path:
-        if x0 <= p[0] <= x1 and z0 <= p[1] <= z1:
-            return True
-    return False
-
-
-def test_blocker_across_direct_path_is_avoided():
-    """A blocker placed directly across the shortest path must not appear in the route."""
-    # The path to T-501 (6.0, 9.3) hugs x~2.0 going north.  Block that corridor.
-    blocker = [[0.0, 5.0, 3.5, 7.0]]
-    plain = nav.plan(SPEC, START, (6.0, 9.3))
-    blocked = nav.plan(SPEC, START, (6.0, 9.3), blockers=blocker)
-
-    assert blocked["reachable"] is True
-    # The core guarantee: no point on the route passes through the blocker.
-    assert not _path_crosses_rect(blocked["path"], 0.0, 5.0, 3.5, 7.0)
-    # The plain route does pass through that zone (confirming the blocker is on-path).
-    assert _path_crosses_rect(plain["path"], 0.0, 5.0, 3.5, 7.0)
-
-
-def test_two_blockers_force_a_longer_detour():
-    """Two blockers closing the direct north corridor must force a measurably longer route."""
-    # The path to M-310 (8.0, 4.3) goes north along x~2.0 then cuts east at z~3.
-    # Block the west passage between z=2.5 and z=3.5.
-    blockers = [
-        [0.0, 2.5, 3.0, 3.5],   # close the west wall corridor
-        [3.0, 2.5, 6.5, 3.5],   # close the next segment east
-    ]
-    plain = nav.plan(SPEC, START, (8.0, 4.3))
-    blocked = nav.plan(SPEC, START, (8.0, 4.3), blockers=blockers)
-
-    assert blocked["reachable"] is True
-    assert blocked["distance_m"] > plain["distance_m"] + 2.0
-
-
-def test_full_width_blocker_reports_unreachable():
-    """A wall that fully spans the room width must make the far side unreachable."""
-    full_wall = [[0.0, 1.5, 16.0, 2.2]]
-    result = nav.plan(SPEC, START, (8.0, 9.3), blockers=full_wall)
-
-    assert result["reachable"] is False
-    assert "no walkable route" in result["reason"]
-    assert result["path"] == []
-    assert result["distance_m"] == 0.0
-
-
-def test_blocker_outside_grid_bounds_is_ignored():
-    """A blocker entirely outside the grid must not raise and must not affect the route."""
-    far_away = [[100.0, 100.0, 110.0, 110.0]]
-    plain = nav.plan(SPEC, START, (8.0, 4.3))
-    with_far = nav.plan(SPEC, START, (8.0, 4.3), blockers=far_away)
-
-    assert with_far["reachable"] is True
-    assert abs(with_far["distance_m"] - plain["distance_m"]) < 0.5
-
-
-def test_blocker_on_start_forces_snap_to_nearest_free_cell():
-    """A blocker placed on the start cell must still find a route by snapping start."""
-    # Block the doorway where START (2.0, 0.8) is
-    blocker = [[1.0, 0.0, 3.5, 1.5]]
-    result = nav.plan(SPEC, START, (8.0, 4.3), blockers=blocker)
-    # Should either reroute successfully or report unreachable cleanly - never crash
-    assert "reachable" in result
-    assert "path" in result
-
 
 def test_build_route_accepts_blockers(tmp_path):
     """build_route must apply blockers and record them in the output document."""
@@ -429,28 +271,6 @@ def test_a_saturated_grid_is_kept_and_reported_not_emptied():
     # cells stay free; the grid is still saturated, not emptied
     assert int(grid.blocked.sum()) >= int(0.99 * grid.rows * grid.cols)
     assert int(grid.free.sum()) <= int(0.01 * grid.rows * grid.cols)
-
-
-def test_obstacle_raster_writes_a_png_with_the_route(tmp_path):
-    from PIL import Image
-
-    cloud = room_cloud()
-    grid = nav.Grid.from_cloud(cloud, floor_y=0.0, up_axis=1, agent_radius_m=0.15)
-    route = nav.astar(grid, (-1.5, -0.5), (1.5, -0.5))
-    document = {
-        "up_axis": "+y",
-        "start": [route["path"][0][0], 0.05, route["path"][0][1]],
-        "target_waypoint": [route["path"][-1][0], 0.05, route["path"][-1][1]],
-        "path": [[x, 0.05, z] for x, z in route["path"]],
-    }
-    out = nav.write_obstacle_png(grid, tmp_path / "grid.png", route=document, px_per_cell=6)
-
-    image = np.asarray(Image.open(out).convert("RGB"))
-    assert image.shape == (grid.rows * 6, grid.cols * 6, 3)
-    assert int(image.min()) < 60  # blocked cells stay dark
-    assert int(image.max()) > 200  # free cells stay light
-    red = (image[:, :, 0] > 180) & (image[:, :, 1] < 90) & (image[:, :, 2] < 90)
-    assert int(red.sum()) > 0
 
 
 def test_the_camera_layer_sees_eye_level_structure_the_robot_layer_misses():

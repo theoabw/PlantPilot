@@ -1,8 +1,8 @@
 """Floor, occupancy grid, A* pathfinding and proximity queries for PlantPilot.
 
-Builds an occupancy grid from either a plant specification or a 3D point cloud,
-inflates obstacles by the agent radius, computes collision-free A* routes
-to reviewed inspection waypoints, and evaluates dynamic proximity along the path.
+Builds an occupancy grid from a capture's point cloud, inflates obstacles by
+the agent radius, computes collision-free A* routes to the mapped target and
+evaluates dynamic proximity along the path.
 
 A grid built from a capture has two independent obstacle layers, because the
 extracted boxes alone cannot be trusted to enclose a room: the extraction caps
@@ -26,7 +26,6 @@ free room, so a blocked fraction above MAX_BLOCKED_FRACTION is reported as
 
 from __future__ import annotations
 
-import argparse
 import heapq
 import json
 import math
@@ -90,22 +89,6 @@ class Rect:
     z0: float
     x1: float
     z1: float
-
-
-def asset_footprint(asset: dict) -> Rect:
-    """Compute 2D horizontal bounding box for an asset."""
-    x, _, z = asset["pos"]
-    if asset.get("shape") == "cylinder":
-        r = float(asset["size"][0]) / 2.0
-        return Rect(x - r, z - r, x + r, z + r)
-    if "extents" in asset:
-        sx, _, sz = asset["extents"]
-    elif "size" in asset:
-        sx, _, sz = asset["size"]
-    else:
-        sx, sz = 1.0, 1.0
-    return Rect(x - float(sx) / 2.0, z - float(sz) / 2.0,
-                x + float(sx) / 2.0, z + float(sz) / 2.0)
 
 
 def _blocks_the_robot(obj: dict, floor_y: float, up_axis: int, up_axis_sign: int) -> bool:
@@ -179,7 +162,6 @@ class Grid:
 
     def __init__(
         self,
-        spec: dict | None = None,
         agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
         area: dict | None = None,
         blocked_mask: np.ndarray | None = None,
@@ -187,27 +169,7 @@ class Grid:
     ):
         self.agent_radius_m = agent_radius_m
         self.safety_margin_m = SAFETY_MARGIN_M if safety_margin_m is None else float(safety_margin_m)
-        if spec is not None:
-            area_spec = spec["area"]
-            self.x0 = float(area_spec["x0"])
-            self.z0 = float(area_spec["z0"])
-            self.width_m = float(area_spec["x1"]) - self.x0
-            self.depth_m = float(area_spec["z1"]) - self.z0
-            self.cols = int(round(self.width_m / CELL_M))
-            self.rows = int(round(self.depth_m / CELL_M))
-            self.blocked = np.zeros((self.rows, self.cols), dtype=np.uint8)
-
-            # Walls: perimeter border so routes never leave the scanned area
-            self.blocked[0, :] = 1
-            self.blocked[-1, :] = 1
-            self.blocked[:, 0] = 1
-            self.blocked[:, -1] = 1
-
-            for asset in spec.get("assets", []):
-                self.add_rect(asset_footprint(asset), hard=True)
-            self.base_blocked = self.blocked.copy()
-            self._inflate()
-        elif area is not None and blocked_mask is not None:
+        if area is not None and blocked_mask is not None:
             self.x0 = float(area["x0"])
             self.z0 = float(area["z0"])
             self.width_m = float(area["x1"]) - self.x0
@@ -217,7 +179,7 @@ class Grid:
             self.base_blocked = self.blocked.copy()
             self._inflate()
         else:
-            raise ValueError("Grid requires either a spec dict or (area, blocked_mask).")
+            raise ValueError("Grid requires (area, blocked_mask).")
 
     @classmethod
     def from_cloud(
@@ -759,25 +721,6 @@ def compute_path_proximity(
     return samples
 
 
-def load_spec(path: Path) -> dict:
-    """Load JSON plant specification."""
-    return json.loads(path.read_text())
-
-
-def plan(
-    spec: dict,
-    start: tuple[float, float],
-    goal: tuple[float, float],
-    blockers: list[list[float]] | None = None,
-    agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
-) -> dict[str, Any]:
-    """Plan route on a plant spec, with optional obstacle blockers."""
-    grid = Grid(spec, agent_radius_m)
-    if blockers:
-        grid = grid.with_blockers(blockers)
-    return astar(grid, start, goal)
-
-
 def path_height(floor_y: float, up_axis_sign: int) -> float:
     """Scene y for a path drawn 5 cm above the floor.
 
@@ -945,20 +888,14 @@ def build_route(
             structure_min_points=30 if float(agent_height_m) > 0.6 else None,
         )
     else:
-        # Fallback to synthetic reference plant
-        root = Path(__file__).resolve().parents[4]
-        ref_spec_path = root / "fixtures" / "plant" / "plant.json"
-        if ref_spec_path.exists():
-            spec = load_spec(ref_spec_path)
-            grid = Grid(spec, agent_radius_m=agent_radius_m)
-            floor_y = 0.0
-        else:
-            grid = Grid(
-                area={"x0": -5.0, "z0": -5.0, "x1": 5.0, "z1": 5.0},
-                blocked_mask=np.zeros((100, 100), dtype=np.uint8),
-                agent_radius_m=agent_radius_m,
-            )
-            floor_y = 0.0
+        # No scene artifact: plan on an empty floor so the route document is
+        # still structurally valid for the API tests.
+        grid = Grid(
+            area={"x0": -5.0, "z0": -5.0, "x1": 5.0, "z1": 5.0},
+            blocked_mask=np.zeros((100, 100), dtype=np.uint8),
+            agent_radius_m=agent_radius_m,
+        )
+        floor_y = 0.0
 
     # Derive start position and target waypoint
     start_2d = derive_start_position(grid, objects=objects, up_axis=up_axis)
@@ -1191,135 +1128,3 @@ def build_route(
         output_path.write_text(json.dumps(route_doc, indent=2))
 
     return route_doc
-
-
-def write_obstacle_png(
-    grid: Grid,
-    out: Path | str,
-    *,
-    route: dict[str, Any] | None = None,
-    px_per_cell: int = 6,
-) -> Path:
-    """Write a top-down PNG of the occupancy grid, blocked dark and free light.
-
-    The image is a straight view of the grid arrays: image row 0 is the low
-    edge of the second horizontal axis and image column 0 the low x edge.
-    `route` is a route document as written by `build_route`; when it holds a
-    path, the path is drawn over the raster and its start and target are marked.
-    One pixel per `px_per_cell` cells. Used by the debug CLI below and by the
-    viewer to show what the robot is avoiding.
-    """
-    from PIL import Image, ImageDraw
-
-    scale = max(1, int(px_per_cell))
-    free = grid.blocked == 0
-    raster = np.empty((grid.rows, grid.cols, 3), dtype=np.uint8)
-    raster[free] = (238, 238, 238)
-    raster[~free] = (28, 28, 28)
-    image = Image.fromarray(np.repeat(np.repeat(raster, scale, axis=0), scale, axis=1), "RGB")
-    draw = ImageDraw.Draw(image)
-
-    def to_pixel(point: list[float] | tuple[float, float]) -> tuple[float, float]:
-        return (
-            (float(point[0]) - grid.x0) / CELL_M * scale,
-            (float(point[1]) - grid.z0) / CELL_M * scale,
-        )
-
-    if route and route.get("path"):
-        up = str(route.get("up_axis", "+y"))
-        horizontal = (0, 2) if "y" in up else (0, 1)
-        path = [(p[horizontal[0]], p[horizontal[1]]) for p in route["path"]]
-        draw.line([to_pixel(point) for point in path], fill=(220, 40, 40), width=max(2, scale))
-        if route.get("start"):
-            start = [route["start"][horizontal[0]], route["start"][horizontal[1]]]
-            x, y = to_pixel(start)
-            draw.ellipse([x - scale, y - scale, x + scale, y + scale], fill=(40, 170, 80))
-        if route.get("target_waypoint"):
-            goal = [
-                route["target_waypoint"][horizontal[0]],
-                route["target_waypoint"][horizontal[1]],
-            ]
-            x, y = to_pixel(goal)
-            draw.ellipse([x - scale, y - scale, x + scale, y + scale], fill=(40, 80, 220))
-
-    out = Path(out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    image.save(out)
-    return out
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Debug CLI: rasterise one capture's occupancy grid to a PNG.
-
-    The grid is built exactly as `build_route` builds it for the same capture,
-    and the route is either computed for `--target` or read from `--route`.
-    """
-    parser = argparse.ArgumentParser(
-        prog="python -m plantpilot.nav",
-        description="Write a top-down PNG of a capture's occupancy grid and route.",
-    )
-    parser.add_argument("--scene", required=True, type=Path)
-    parser.add_argument("--objects", default=None, type=Path)
-    parser.add_argument("--mapped", default=None, type=Path)
-    parser.add_argument("--png", required=True, type=Path)
-    parser.add_argument("--route", default=None, type=Path,
-                        help="existing route.json to overlay; computed when omitted")
-    parser.add_argument("--target", default="P-005", type=str)
-    parser.add_argument("--agent-radius", default=0.20, type=float)
-    parser.add_argument("--floor-y", default=None, type=float)
-    parser.add_argument("--px-per-cell", default=6, type=int)
-    args = parser.parse_args(argv)
-
-    up_axis, up_axis_sign = 1, 1
-    data = np.load(args.scene)
-    points = data["xyz"] if "xyz" in data else data["points"]
-    if "meta" in data:
-        frame = json.loads(str(data["meta"])).get("frame", {})
-        up_axis = int(frame.get("up_axis_index", 1))
-        up_axis_sign = int(frame.get("up_axis_sign", 1))
-    floor_y = (
-        float(args.floor_y)
-        if args.floor_y is not None
-        else detect_floor(points, up_axis=up_axis, up_axis_sign=up_axis_sign)[0]
-    )
-    objects: list[dict] = []
-    if args.objects and args.objects.exists():
-        payload = json.loads(args.objects.read_text())
-        objects = payload if isinstance(payload, list) else payload.get("objects", [])
-
-    if args.route:
-        route = json.loads(args.route.read_text())
-    else:
-        route = build_route(
-            scene_path=args.scene,
-            objects_path=args.objects,
-            mapped_path=args.mapped,
-            target_asset_id=args.target,
-            agent_radius_m=args.agent_radius,
-            manual_floor_y=args.floor_y,
-        )
-
-    grid = Grid.from_cloud(
-        points=points,
-        floor_y=floor_y,
-        up_axis=up_axis,
-        up_axis_sign=up_axis_sign,
-        agent_radius_m=args.agent_radius,
-        objects=objects,
-        safety_margin_m=ROUTE_SAFETY_MARGIN_M,
-    )
-    path = write_obstacle_png(grid, args.png, route=route, px_per_cell=args.px_per_cell)
-    print(
-        f"{path}: {grid.rows}x{grid.cols} cells at {CELL_M:.2f} m, "
-        f"object cells {grid.object_cells}, structural cells {grid.structural_cells}, "
-        f"blocked {grid.blocked_fraction:.1%}, obstacles from {grid.obstacles_from}"
-    )
-    print(
-        f"route reachable {route['reachable']}, distance {route['distance_m']} m, "
-        f"clearance {route['clearance_m']} m, path points {len(route['path'])}"
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
