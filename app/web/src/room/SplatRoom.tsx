@@ -57,6 +57,10 @@ type Props = {
   robotPositionRef: { current: [number, number] | null }
   onPlaceObstacle: (point: [number, number]) => void
   showOccupancy: boolean
+  showRoute: boolean
+  frameOpacity: number
+  focusTarget: { centre: [number, number, number]; radius: number } | null
+  focusToken: number
   route: RoomRoute | null
   tripToken: number
   follow: boolean
@@ -112,7 +116,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -137,6 +141,14 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     occupancy: THREE.InstancedMesh | null
     placeRobotAt: ((dt: number) => void) | null
     updateArrows: (() => void) | null
+    focusTween: {
+      start: number
+      duration: number
+      fromPosition: THREE.Vector3
+      toPosition: THREE.Vector3
+      fromTarget: THREE.Vector3
+      toTarget: THREE.Vector3
+    } | null
     boxGroup: THREE.Group
     pickGroup: THREE.Group
     boxes: BoxView[]
@@ -315,6 +327,40 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
 
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
+    let hoveredBox: { material: THREE.LineBasicMaterial; opacity: number; color: number } | null = null
+    const clearHover = () => {
+      if (hoveredBox) {
+        hoveredBox.material.opacity = hoveredBox.opacity
+        hoveredBox.material.color.setHex(hoveredBox.color)
+        hoveredBox = null
+        requestRender()
+      }
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      const liveState = stateRef.current
+      if (!liveState || !liveState.boxGroup.visible) {
+        return
+      }
+      const rect = renderer.domElement.getBoundingClientRect()
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      raycaster.setFromCamera(pointer, camera)
+      const hit = raycaster.intersectObjects(pickGroup.children, false)[0]
+      const id = hit?.object.userData.objectId
+      const box = typeof id === 'string' ? liveState.boxes.find((entry) => entry.id === id) : undefined
+      if (box && hoveredBox?.material !== box.material) {
+        clearHover()
+        hoveredBox = { material: box.material, opacity: box.material.opacity, color: box.material.color.getHex() }
+        box.material.color.setHex(0x7dd3fc)
+        box.material.opacity = Math.max(0.9, box.material.opacity)
+        requestRender()
+      } else if (!box) {
+        clearHover()
+      }
+    }
+    const onPointerLeave = () => clearHover()
+    renderer.domElement.addEventListener('pointermove', onPointerMove)
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave)
     const onPointerDown = (event: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect()
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
@@ -365,7 +411,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const quaternion = new THREE.Quaternion()
       const forward = new THREE.Vector3(0, 0, -1)
       const matrix = new THREE.Matrix4()
-      const scale = new THREE.Vector3(0.62, 0.62, 0.62)
+      const scale = new THREE.Vector3(0.4, 0.4, 0.4)
       for (let index = 0; index < count; index += 1) {
         const distance = (motion.arrowOffset + 0.3 + index * motion.arrowSpacing) % total
         const t = Math.min(0.999, Math.max(0.001, distance / total))
@@ -410,8 +456,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       const heading = stateRef.current?.motion.heading ?? robot.rotation.y
       robotForward.set(0, 0, 1).applyAxisAngle(up, heading)
-      const desiredPosition = robot.position.clone().addScaledVector(robotForward, -2.6).add(new THREE.Vector3(0, 1.4, 0))
-      const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, 0.45, 0))
+      const desiredPosition = robot.position.clone().addScaledVector(robotForward, -2.8).add(new THREE.Vector3(0, 1.5, 0))
+      const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, 0.5, 0))
       const factor = smoothFactor(6, Math.max(dt, 0.001))
       camera.position.lerp(desiredPosition, factor)
       controls.target.lerp(desiredTarget, factor)
@@ -530,6 +576,19 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
             total: stateRef.current.motion.total,
           })
         }
+        const tween = stateRef.current?.focusTween
+        if (tween) {
+          const progress = Math.min(1, (now - tween.start) / tween.duration)
+          const eased = progress * progress * (3 - 2 * progress)
+          camera.position.lerpVectors(tween.fromPosition, tween.toPosition, eased)
+          controls.target.lerpVectors(tween.fromTarget, tween.toTarget, eased)
+          if (progress >= 1) {
+            if (stateRef.current) {
+              stateRef.current.focusTween = null
+            }
+          }
+          renderRef.current()
+        }
         controls.update()
         const label = labelRef.current
         if (label) {
@@ -637,6 +696,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       occupancy: null,
       placeRobotAt: null,
       updateArrows: null,
+      focusTween: null,
       boxGroup,
       pickGroup,
       boxes: [],
@@ -667,6 +727,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       cancelAnimationFrame(frame)
       observer.disconnect()
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      renderer.domElement.removeEventListener('pointermove', onPointerMove)
+      renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       controls.removeEventListener('change', requestRender)
       const state = stateRef.current
       for (const box of state?.boxes ?? []) {
@@ -1076,6 +1138,39 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     renderRef.current()
   }, [framesVisible])
 
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    state.routeGroup.visible = showRoute
+    state.beaconGroup.visible = showRoute
+    renderRef.current()
+  }, [showRoute])
+
+  // Focus tween: ease the camera to a selected object in the loop.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state || !focusTarget) {
+      return
+    }
+    const centre = new THREE.Vector3(...focusTarget.centre).applyQuaternion(state.world.quaternion)
+    const radius = Math.max(1.0, focusTarget.radius)
+    // Move a short way toward the object and aim at it. A full reposition
+    // invented a new viewpoint that could end up inside plant geometry.
+    const toPosition = state.camera.position.clone().lerp(centre, 0.4)
+    toPosition.y = Math.max(centre.y + Math.max(0.9, radius * 1.1), toPosition.y)
+    state.focusTween = {
+      start: performance.now(),
+      duration: 700,
+      fromPosition: state.camera.position.clone(),
+      toPosition,
+      fromTarget: state.controls.target.clone(),
+      toTarget: centre.clone(),
+    }
+    renderRef.current()
+  }, [focusTarget, focusToken])
+
   // Pastel object tint for the semantics channel: one small splat layer with
   // only the reviewed anchors, drawn over the dimmed capture so the photo still
   // reads through and the objects are the only coloured thing.
@@ -1234,9 +1329,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         color: boxColour(object, new Set(mappedIds), targetId),
         transparent: true,
         opacity: QUIET_CLASSES.has(object.class) && !mappedIds.includes(object.id)
-          ? 0.16
+          ? 0.08
           : subtle
-            ? 0.5
+            ? frameOpacity
             : 0.9,
       })
       const lines = new THREE.LineSegments(edges, material)
@@ -1450,7 +1545,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
             : QUIET_CLASSES.has(object.class) && !isMapped
               ? 0.16
               : subtle
-                ? 0.5
+                ? frameOpacity
                 : 0.9
       }
     }
@@ -1491,24 +1586,24 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const group = new THREE.Group()
     group.position.copy(worldPoint)
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.32, 0.48, 40),
+      new THREE.RingGeometry(0.18, 0.26, 36),
       new THREE.MeshBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
     )
     ring.rotation.x = -Math.PI / 2
     ring.renderOrder = 4
     group.add(ring)
     const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.018, 0.018, 1.7, 8),
-      new THREE.MeshBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity: 0.75 }),
+      new THREE.CylinderGeometry(0.012, 0.012, 1.0, 8),
+      new THREE.MeshBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity: 0.45 }),
     )
-    pole.position.y = 0.85
+    pole.position.y = 0.5
     pole.renderOrder = 4
     group.add(pole)
     const cap = new THREE.Mesh(
-      new THREE.SphereGeometry(0.07, 12, 10),
-      new THREE.MeshBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity: 0.95 }),
+      new THREE.SphereGeometry(0.045, 12, 10),
+      new THREE.MeshBasicMaterial({ color: TARGET_COLOUR, transparent: true, opacity: 0.6 }),
     )
-    cap.position.y = 1.7
+    cap.position.y = 1.0
     cap.renderOrder = 4
     group.add(cap)
     state.beaconGroup.add(group)
@@ -1585,19 +1680,19 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const arrowMaterial = new THREE.MeshBasicMaterial({
       color: ROUTE_COLOUR,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.55,
       side: THREE.DoubleSide,
       depthWrite: false,
     })
-    const arrowCount = Math.max(1, Math.min(300, Math.floor(totalLength / 0.4)))
+    const arrowCount = Math.max(1, Math.min(300, Math.floor(totalLength / 0.45)))
     const arrows = new THREE.InstancedMesh(arrowGeometry, arrowMaterial, arrowCount)
     arrows.renderOrder = 3
     state.routeGroup.add(arrows)
 
-    for (const [point, inner] of [[points[0], 0.16], [points[points.length - 1], 0.22]] as [THREE.Vector3, number][]) {
+    for (const [point, inner] of [[points[0], 0.1], [points[points.length - 1], 0.14]] as [THREE.Vector3, number][]) {
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(inner, inner + 0.06, 32),
-        new THREE.MeshBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
+        new THREE.RingGeometry(inner, inner + 0.04, 32),
+        new THREE.MeshBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 0.5, side: THREE.DoubleSide }),
       )
       ring.rotation.x = -Math.PI / 2
       ring.position.copy(point)
@@ -1636,7 +1731,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.heading = null
     motion.arrow = arrows
     motion.arrowOffset = 0
-    motion.arrowSpacing = 0.4
+    motion.arrowSpacing = 0.45
     robot.position.copy(points[0])
     state.routeGroup.add(robot)
     motion.robot = robot
