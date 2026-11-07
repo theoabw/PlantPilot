@@ -6,7 +6,6 @@ import {
   fetchRoomAssets,
   fetchRoomFilters,
   fetchRoomMapped,
-  fetchRoomMeshes,
   fetchRoomObjectSplats,
   fetchRoomObjects,
   fetchRoomRoute,
@@ -26,8 +25,6 @@ import type {
   RoomAssets,
   RoomFilters,
   RoomMapped,
-  RoomMesh,
-  RoomMeshes,
   RoomObject,
   RoomObjectSplats,
   RoomObjects,
@@ -110,7 +107,6 @@ export default function RoomLab() {
   const [assets, setAssets] = useState<RoomAssets | null>(null)
   const [filters, setFilters] = useState<RoomFilters | null>(null)
   const [objectSplats, setObjectSplats] = useState<RoomObjectSplats | null>(null)
-  const [meshes, setMeshes] = useState<RoomMeshes | null>(null)
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null)
   const [trip, setTrip] = useState<TripState>({ mode: 'idle', travelled: 0, total: 0 })
   const [nearby, setNearby] = useState<string[]>([])
@@ -214,9 +210,6 @@ export default function RoomLab() {
       .catch(() => undefined)
     fetchRoomObjectSplats()
       .then((value) => alive && setObjectSplats(value))
-      .catch(() => undefined)
-    fetchRoomMeshes()
-      .then((value) => alive && setMeshes(value))
       .catch(() => undefined)
     fetchRoomAssets()
       .then((value) => alive && setAssets(value))
@@ -746,22 +739,12 @@ export default function RoomLab() {
   const progress = trip.total > 0 ? Math.min(1, trip.travelled / trip.total) : 0
 
   const objectAssets = useMemo(() => {
-    const splats = objectSplats?.objects ?? []
-    if (splats.length > 0) {
-      return splats.map((entry) => ({
-        id: entry.anchor_id,
-        label: entry.label,
-        url: `/api/object-splat/${entry.anchor_id}`,
-        kind: 'splat' as const,
-      }))
-    }
-    return (meshes?.objects ?? []).map((entry: RoomMesh) => ({
+    return (objectSplats?.objects ?? []).map((entry) => ({
       id: entry.anchor_id,
       label: entry.label,
-      url: `/api/mesh/${entry.anchor_id}`,
-      kind: 'mesh' as const,
+      url: `/api/object-splat/${entry.anchor_id}`,
     }))
-  }, [objectSplats, meshes])
+  }, [objectSplats])
 
   const focusTarget = useMemo(() => {
     if (!selectedObject) {

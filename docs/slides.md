@@ -110,7 +110,7 @@ These files hold the data needed to populate the three.js demo scene
 
 ### Three.js demo client
 
-![PlantPilot Scene Screenshot](data/plantpilot-screenshot.png)
+![PlantPilot Scene Screenshot](slides-image.png)
 <!-- end_slide -->
 <!-- font_size: 2 -->
 <!-- incremental_lists: true -->

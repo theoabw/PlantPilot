@@ -156,7 +156,7 @@ explanation in its message: what was wrong, why, and how the test catches it.
 | `app/server/src/plantpilot/` | the demo path: splat, segment, pack, assets, mapping, nav, diagnose, main |
 | `app/server/tests/` | pytest suite, offline |
 | `app/web/` | React, Vite and three.js viewer |
-| `scripts/` | the demo builds (splat asset, route, anchors, object splats, meshes, filter channels) and the submission check |
+| `scripts/` | the demo builds (splat asset, route, anchors, object splats, filter channels) and the submission check |
 | `fixtures/` | committed and small: the reviewed scene anchors |
 | `docs/` | plan, roadmap, features, acceptance, video script, submission copy |
 | `.github/workflows/ci.yml` | the checks a pull request must pass |

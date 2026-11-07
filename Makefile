@@ -29,7 +29,7 @@ DIAGNOSIS ?= $(CAPTURE_DIR)/diagnosis.json
 # The browser viewer's copy of the capture: sane prefix only, core properties
 # only. VIEWER_PLY is set above.
 
-.PHONY: demo web web-build scene objects audit anchors object-meshes object-splats filter-assets splat-asset pack map diagnose pipeline route test check clean assets
+.PHONY: demo web web-build scene objects audit anchors object-splats filter-assets splat-asset pack map diagnose pipeline route test check clean assets
 
 ## scene: ingest the supplied capture into data/equipment/scene.npz
 scene:
@@ -48,10 +48,6 @@ audit: objects
 ## object-splats: one splat asset per reviewed anchor for the object atlas
 object-splats: anchors
 	$(PY) python scripts/make_object_splats.py --scene $(SCENE) --anchors $(ANCHORS) --out data/objects/splats
-
-## object-meshes: reconstruct one mesh per reviewed anchor (needs open3d)
-object-meshes: anchors
-	$(PY) python scripts/make_object_meshes.py --scene $(SCENE) --anchors $(ANCHORS) --out data/objects/meshes
 
 ## anchors: build the reviewed demo layer from the committed fixture
 anchors: scene

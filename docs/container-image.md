@@ -48,7 +48,6 @@ it, and the room view says what it could not load.
 | `viewer/equipment.ply` | `make splat-asset` | the capture the browser draws |
 | `viewer/filters/equipment/` | `make filter-assets` | the information channels |
 | `objects/splats/equipment/` | `make object-splats` | the object atlas |
-| `objects/meshes/equipment/` | `make object-meshes` | the object silhouettes |
 
 Most rows are optional: a 404 leaves that layer out, and the page says what it
 could not load. `scene.npz` is the row that bites. Without it the room view
@@ -61,9 +60,9 @@ drive, and the planner answers 404 when the scene is missing.
 The image defaults to the artifact layout `make demo` writes, so the command at
 the top of this page needs no extra variables. If you mount those artifacts
 under different names, set `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` to the
-mounted paths. `PLANTPILOT_FILTERS`, `PLANTPILOT_MESHES` and
-`PLANTPILOT_OBJECT_SPLATS` follow the scene directory name by default, so a
-layout like the Makefile's needs only those two variables.
+mounted paths. `PLANTPILOT_FILTERS` and `PLANTPILOT_OBJECT_SPLATS` follow the
+scene directory name by default, so a layout like the Makefile's needs only
+those two variables.
 
 ## Serving it on a public name
 

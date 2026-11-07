@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
@@ -91,7 +90,7 @@ type Props = {
   hideSplat: boolean
   occlusion: boolean
   explode: number
-  objectAssets: { id: string; label: string; url: string; kind: 'splat' | 'mesh' }[]
+  objectAssets: { id: string; label: string; url: string }[]
   mappedFrames: { id: string; tag: string; state: string; centre: [number, number, number]; axes: [number, number, number][]; extents: [number, number, number] }[]
   showMappedFrames: boolean
   obstacleMode: boolean
@@ -642,7 +641,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     contours: THREE.Points | null
     overlay: SplatMesh | null
     objectGroup: THREE.Group
-    meshGroups: Map<string, { group: THREE.Group; index: number }>
+    objectGroups: Map<string, { group: THREE.Group; index: number }>
     obstacleGroup: THREE.Group
     occupancy: THREE.InstancedMesh | null
     decorGroup: THREE.Group | null
@@ -1929,7 +1928,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       contours: null,
       overlay: null,
       objectGroup,
-      meshGroups: new Map(),
+      objectGroups: new Map(),
       obstacleGroup: new THREE.Group(),
       occupancy: null,
       decorGroup: null,
@@ -2045,7 +2044,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           }
         })
         state.objectGroup.clear()
-        state.meshGroups.clear()
+        state.objectGroups.clear()
       }
       if (state?.overlay) {
         state.world.remove(state.overlay)
@@ -2211,7 +2210,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
 
   useEffect(() => {
     const state = stateRef.current
-    if (!state || state.meshGroups.size === 0) {
+    if (!state || state.objectGroups.size === 0) {
       return
     }
     const roomCentre = new THREE.Vector3()
@@ -2221,7 +2220,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       roomCentre.multiplyScalar(1 / objectsRef.current.length)
     }
-    state.meshGroups.forEach(({ group, index }) => {
+    state.objectGroups.forEach(({ group, index }) => {
       const centre = group.userData.centre as THREE.Vector3 | undefined
       if (!centre) {
         return
@@ -2237,13 +2236,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.renderer.render(state.scene, state.camera)
   }, [explode])
 
-  // Object mode: the reviewed anchors as separate meshes, each its own node.
+  // Object mode: the reviewed anchors as separate splat assets, each its own node.
   useEffect(() => {
     const state = stateRef.current
     if (!state) {
       return
     }
-    for (const { group } of state.meshGroups.values()) {
+    for (const { group } of state.objectGroups.values()) {
       state.objectGroup.remove(group)
       group.traverse((child) => {
         const mesh = child as THREE.Mesh
@@ -2256,7 +2255,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
       })
     }
-    state.meshGroups.clear()
+    state.objectGroups.clear()
     if (!objectMode || objectAssets.length === 0) {
       renderRef.current()
       return
@@ -2280,57 +2279,30 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       direction.normalize()
       group.position.copy(direction).multiplyScalar(explodeRef.current * (1.1 + 0.25 * index))
     }
-    const loader = new PLYLoader()
     objectAssets.forEach((entry, index) => {
       const group = new THREE.Group()
       group.userData.objectId = entry.id
-      state.meshGroups.set(entry.id, { group, index })
+      state.objectGroups.set(entry.id, { group, index })
       state.objectGroup.add(group)
-      if (entry.kind === 'splat') {
-        const mesh = new SplatMesh({ url: entry.url, fileType: SplatFileType.PLY })
-        mesh.rotation.set(0, 0, 0)
-        group.add(mesh)
-        // an invisible box keeps the object clickable without a mesh surface
-        const anchor = objectsRef.current.find((object) => object.id === entry.id)
-        if (anchor) {
-          const pick = new THREE.Mesh(
-            new THREE.BoxGeometry(1, 1, 1),
-            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
-          )
-          pick.position.set(...anchor.centre)
-          pick.quaternion.copy(boxQuaternion(anchor.axes))
-          pick.scale.set(...anchor.extents)
-          pick.userData.objectId = entry.id
-          group.add(pick)
-          group.userData.centre = new THREE.Vector3(...anchor.centre)
-          layout(group, index)
-        }
-        renderRef.current()
-        return
+      const mesh = new SplatMesh({ url: entry.url, fileType: SplatFileType.PLY })
+      mesh.rotation.set(0, 0, 0)
+      group.add(mesh)
+      // an invisible box keeps the object clickable without a mesh surface
+      const anchor = objectsRef.current.find((object) => object.id === entry.id)
+      if (anchor) {
+        const pick = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 1, 1),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+        )
+        pick.position.set(...anchor.centre)
+        pick.quaternion.copy(boxQuaternion(anchor.axes))
+        pick.scale.set(...anchor.extents)
+        pick.userData.objectId = entry.id
+        group.add(pick)
+        group.userData.centre = new THREE.Vector3(...anchor.centre)
+        layout(group, index)
       }
-      loader.load(entry.url, (geometry) => {
-        geometry.computeBoundingBox()
-        geometry.computeVertexNormals()
-        const material = new THREE.MeshStandardMaterial({
-          vertexColors: true,
-          flatShading: true,
-          roughness: 0.88,
-          metalness: 0.05,
-          side: THREE.DoubleSide,
-        })
-        const mesh = new THREE.Mesh(geometry, material)
-        mesh.userData.objectId = entry.id
-        group.add(mesh)
-        const boxCentre = geometry.boundingBox?.getCenter(new THREE.Vector3())
-        if (boxCentre) {
-          group.userData.centre = boxCentre
-          layout(group, index)
-        }
-        renderRef.current()
-        // the animation loop is throttled in a background tab, so draw the
-        // object meshes directly once they are ready
-        state.renderer.render(state.scene, state.camera)
-      })
+      renderRef.current()
     })
     renderRef.current()
   }, [objectAssets, objectMode])

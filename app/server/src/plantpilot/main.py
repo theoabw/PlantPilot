@@ -32,7 +32,6 @@ ROUTE_ARTIFACT = SCENE_DIR / "route.json"
 DIAGNOSIS_FILE = SCENE_DIR / "diagnosis.json"
 SPLAT_ASSET = Path(os.environ.get("PLANTPILOT_SPLAT", DATA / "viewer" / "room.ply"))
 FILTER_DIR = Path(os.environ.get("PLANTPILOT_FILTERS", DATA / "viewer" / "filters" / SCENE_DIR.name))
-MESH_DIR = Path(os.environ.get("PLANTPILOT_MESHES", DATA / "objects" / "meshes" / SCENE_DIR.name))
 OBJECT_SPLAT_DIR = Path(os.environ.get("PLANTPILOT_OBJECT_SPLATS", DATA / "objects" / "splats" / SCENE_DIR.name))
 FILTER_NAMES = ("height", "normals", "edges_base", "semantics", "anchors_overlay")
 
@@ -212,29 +211,6 @@ def scene_reroute(payload: RerouteRequest) -> dict:
         )
     except nav.RouteInputError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@app.get("/api/scene/meshes", responses=_ARTIFACT_RESPONSES)
-def scene_meshes() -> dict:
-    """The per-object meshes of the reviewed anchors, from make object-meshes."""
-    path = MESH_DIR / "manifest.json"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="no object meshes, run make object-meshes")
-    return json.loads(path.read_text())
-
-
-@app.get(
-    "/api/mesh/{anchor_id}",
-    responses={200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}},
-)
-def object_mesh(anchor_id: str) -> FileResponse:
-    """One object mesh as a binary PLY with vertex colours."""
-    if not re.fullmatch(r"AN-[0-9a-f]{8}", anchor_id):
-        raise HTTPException(status_code=404, detail="unknown object mesh")
-    path = MESH_DIR / f"{anchor_id}.ply"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="no object mesh, run make object-meshes")
-    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/filter/contours", responses=_ARTIFACT_RESPONSES)

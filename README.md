@@ -26,7 +26,7 @@ data/supplied/builder_pack.xlsx    the supplied Valmet builder workbook
 make demo
 ```
 
-Open <http://127.0.0.1:8000>. The browser opens the boiler room scene. That target builds everything the demo path needs. The object atlas and explode view stay empty until `make object-splats` or `make object-meshes` has run for the capture; the rest of the room view works without them. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
+Open <http://127.0.0.1:8000>. The browser opens the boiler room scene. That target builds everything the demo path needs. The object atlas and explode view stay empty until `make object-splats` has run for the capture; the rest of the room view works without them. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
 
 ## Demo path
 

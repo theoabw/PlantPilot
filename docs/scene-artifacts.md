@@ -17,7 +17,6 @@ Generated artifacts are written into `data/` and never committed:
 | `data/equipment/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
 | `data/equipment/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
 | `data/objects/splats/equipment/` | `make object-splats` (`scripts/make_object_splats.py`) | API, viewer (recognizable objects for the atlas and explode) |
-| `data/objects/meshes/equipment/` | `make object-meshes` (`scripts/make_object_meshes.py`, optional Open3D) | API, viewer (silhouette and solid atlas fallback) |
 | `data/viewer/filters/equipment/` | `make filter-assets` (`scripts/make_filter_assets.py`) | API, viewer (derived channels) |
 | `data/viewer/equipment.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
@@ -142,8 +141,7 @@ mission demo screens have been removed from the frontend.
   14 core properties only and the fog gaussians dropped, 77,636,108 bytes for the
   boiler room capture instead of 395,651,019, so the browser loads it in seconds.
 - `GET /api/splat` serves that file, `GET /api/scene/anchors` serves the
-  reviewed demo layer, `GET /api/scene/meshes` serves the object mesh manifest
-  and `GET /api/mesh/<anchor-id>` serves one mesh, `GET /api/scene/assets` serves the automatic proposal
+  reviewed demo layer, `GET /api/scene/assets` serves the automatic proposal
   layer, `GET /api/scene/objects` serves the raw extraction and
   `GET /api/scene/mapped` serves the mapping when `make map` has run. Everything
   is local, so the demo makes no network calls.
@@ -423,25 +421,6 @@ shows: a front-load drum appliance, a vertical vessel, a pump-and-motor body, a
 pipe run, a door or cabinet, a floor-level hose and cover, an office chair, and
 an unidentified floor cluster. Inferred functions stay unconfirmed in the UI.
 
-## Object meshes
-
-The reference videos turn each detection into a complete 3D asset and then move
-it. `make object-meshes` does the same for the reviewed anchors, from the PLY
-alone: for each anchor it takes the owned gaussians, uses the thinnest ellipsoid
-axis as the normal, drops faint and fog gaussians, downsamples, reconstructs a
-surface with Open3D Poisson, trims the density fringe, crops to the anchor box,
-decimates to at most 20,000 triangles and copies gaussian colours onto the
-vertices. Eight anchors bake in seconds each and the manifest is
-byte-identical across runs when Poisson runs single threaded.
-
-The output is a binary PLY per object with vertex colours plus `manifest.json`
-with the world bounding box, triangle and vertex counts, owned gaussians and the
-anchor box. The meshes are coloured surfaces, not watertight solids: the density
-trim and the box crop open the surface, and there is no hole filling. They are
-meant for the object atlas and explode view, not for a claim of surveyed
-geometry. Open3D is optional; the stage fails with an install hint when it is
-missing, and every other stage runs without it.
-
 ## Robot profiles and clearance
 
 The room view offers a walking humanoid (0.18 m radius, 1.35 m standing) and a
@@ -562,10 +541,7 @@ nearby surfaces can be tinted and parts outside the boxes can still be missed.
 the anchor's own gaussians, the same layout the full-room asset uses. The object
 channel renders each of these as an independent splat mesh, so an object keeps
 the captured appearance when it is lifted out of the room and shown in the
-explode atlas. This is the recognizability that matters for a movable object; a
-Poisson surface from the same gaussians is lumpy and is not watertight.
-
-## Object meshes
+explode atlas. This is the recognizability that matters for a movable object.
 
 ## Numbers from the boiler room capture
 
