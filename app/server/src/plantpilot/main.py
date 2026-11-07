@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import os
 from pathlib import Path
 
 import numpy as np
 
+from pydantic import BaseModel
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -49,7 +51,9 @@ ROUTE_ARTIFACT = SCENE_DIR / "route.json"
 DIAGNOSIS_FILE = SCENE_DIR / "diagnosis.json"
 SPLAT_ASSET = Path(os.environ.get("PLANTPILOT_SPLAT", DATA / "viewer" / "room.ply"))
 FILTER_DIR = Path(os.environ.get("PLANTPILOT_FILTERS", DATA / "viewer" / "filters" / SCENE_DIR.name))
-FILTER_NAMES = ("height", "normals", "edges", "semantics")
+MESH_DIR = Path(os.environ.get("PLANTPILOT_MESHES", DATA / "objects" / "meshes" / SCENE_DIR.name))
+OBJECT_SPLAT_DIR = Path(os.environ.get("PLANTPILOT_OBJECT_SPLATS", DATA / "objects" / "splats" / SCENE_DIR.name))
+FILTER_NAMES = ("height", "normals", "edges_base", "semantics", "anchors_overlay")
 
 app = FastAPI(title="PlantPilot", version=__version__)
 
@@ -347,6 +351,101 @@ def scene_filters() -> dict:
     path = FILTER_DIR / "filters.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="no filter assets, run make filter-assets")
+    return json.loads(path.read_text())
+
+
+@app.get("/api/scene/object-splats", responses=_ARTIFACT_RESPONSES)
+def scene_object_splats() -> dict:
+    """The per-object splat assets of the reviewed anchors."""
+    path = OBJECT_SPLAT_DIR / "manifest.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no object splats, run make object-splats")
+    return json.loads(path.read_text())
+
+
+@app.get(
+    "/api/object-splat/{anchor_id}",
+    responses={200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def object_splat(anchor_id: str) -> FileResponse:
+    """One reviewed object's own gaussians as a core-property PLY."""
+    if not re.fullmatch(r"AN-[0-9a-f]{8}", anchor_id):
+        raise HTTPException(status_code=404, detail="unknown object splat")
+    path = OBJECT_SPLAT_DIR / f"{anchor_id}.ply"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no object splat, run make object-splats")
+    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
+
+
+class RerouteRequest(BaseModel):
+    """Transient obstacles for a live replan, in scene plane coordinates."""
+
+    blockers: list[list[float]] = []
+    start: list[float] | None = None
+    agent_radius_m: float = 0.20
+    agent_height_m: float = 0.55
+    standing_height_m: float | None = None
+    target: list[float] | None = None
+
+
+@app.post("/api/scene/reroute", responses=_ARTIFACT_RESPONSES)
+def scene_reroute(payload: RerouteRequest) -> dict:
+    """Replan the route around transient obstacles from the robot's position."""
+    if not (SCENE_DIR / "scene.npz").exists() or not OBJECTS_FILE.exists() or not MAPPED_FILE.exists():
+        raise HTTPException(status_code=404, detail="reroute needs scene, objects and mapping; run make pipeline")
+    blockers = [[float(value) for value in rect] for rect in payload.blockers if len(rect) == 4]
+    start = None
+    if payload.start and len(payload.start) >= 2:
+        start = (float(payload.start[0]), float(payload.start[1]))
+    return nav.build_route(
+        scene_path=SCENE_DIR / "scene.npz",
+        objects_path=OBJECTS_FILE,
+        mapped_path=MAPPED_FILE,
+        output_path=None,
+        blockers=blockers,
+        start_override=start,
+        agent_radius_m=float(payload.agent_radius_m),
+        agent_height_m=float(payload.agent_height_m),
+        standing_height_m=(
+            float(payload.standing_height_m) if payload.standing_height_m is not None else None
+        ),
+        goal_override=(
+            (float(payload.target[0]), float(payload.target[1]))
+            if payload.target and len(payload.target) >= 2
+            else None
+        ),
+    )
+
+
+@app.get("/api/scene/meshes", responses=_ARTIFACT_RESPONSES)
+def scene_meshes() -> dict:
+    """The per-object meshes of the reviewed anchors, from make object-meshes."""
+    path = MESH_DIR / "manifest.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no object meshes, run make object-meshes")
+    return json.loads(path.read_text())
+
+
+@app.get(
+    "/api/mesh/{anchor_id}",
+    responses={200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def object_mesh(anchor_id: str) -> FileResponse:
+    """One object mesh as a binary PLY with vertex colours."""
+    if not re.fullmatch(r"AN-[0-9a-f]{8}", anchor_id):
+        raise HTTPException(status_code=404, detail="unknown object mesh")
+    path = MESH_DIR / f"{anchor_id}.ply"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no object mesh, run make object-meshes")
+    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/filter/contours", responses=_ARTIFACT_RESPONSES)
+def filter_contours() -> dict:
+    """The thin contour overlay of the capture, from make filter-assets."""
+    path = FILTER_DIR / "contours.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no contour asset, run make filter-assets")
     return json.loads(path.read_text())
 
 

@@ -49,6 +49,11 @@ WALKABLE_HEIGHT_MAX_M = 2.00
 # exist, and an object only blocks when it reaches into the robot's body height.
 ROBOT_HEIGHT_M = 0.55
 OBSTACLE_MIN_HEIGHT_M = 0.08
+# The follow camera sits around 1.5 m above the floor, so it needs its own
+# obstacle band: robot leg height says nothing about the pipework at eye level.
+CAMERA_BAND_MIN_M = 1.15
+CAMERA_BAND_MAX_M = 1.85
+CAMERA_STRUCTURE_MIN_POINTS = 50
 LARGE_FOOTPRINT_SHARE = 0.5
 # The structural layer counts gaussians per CELL_M cell inside the robot band.
 # Measured on the two supplied captures, starting at the requested 3 to 5:
@@ -236,10 +241,10 @@ class Grid:
         the robot band and blocks a cell at `structure_min_points` or more.
         `structure_min_points=None` uses the measured module default.
 
-        `walkable_height_max_m` is kept for callers but no longer sets the
-        obstacle band: the structural layer uses the robot body band
-        (`OBSTACLE_MIN_HEIGHT_M` to `ROBOT_HEIGHT_M`), which is what a robot can
-        hit.
+        The structural band runs from `OBSTACLE_MIN_HEIGHT_M` to
+        `walkable_height_max_m`. A low AMR keeps the 0.55 m body band; a walking
+        humanoid asks for a taller band so overhead pipework blocks the route
+        instead of phasing through its torso.
 
         The union is never discarded. The grid is reported as `saturated` when
         the inflated blocked fraction passes `MAX_BLOCKED_FRACTION`, and it
@@ -293,7 +298,7 @@ class Grid:
         # the band the robot's body occupies, then keep only cells dense enough
         # to be a surface rather than noise.
         band = (heights >= floor_y + OBSTACLE_MIN_HEIGHT_M) & (
-            heights <= floor_y + ROBOT_HEIGHT_M
+            heights <= floor_y + walkable_height_max_m
         )
         band_cols = np.floor((h_x[band] - x0) / CELL_M).astype(np.int64)
         band_rows = np.floor((h_z[band] - z0) / CELL_M).astype(np.int64)
@@ -304,6 +309,20 @@ class Grid:
             band_rows[inside] * cols + band_cols[inside], minlength=rows * cols
         ).reshape(rows, cols)
         structural_cells = (per_cell >= structure_min_points).astype(np.uint8)
+
+        # Independent camera layer, at eye level and without robot inflation.
+        camera_band = (heights >= floor_y + CAMERA_BAND_MIN_M) & (
+            heights <= floor_y + CAMERA_BAND_MAX_M
+        )
+        camera_cols = np.floor((h_x[camera_band] - x0) / CELL_M).astype(np.int64)
+        camera_rows = np.floor((h_z[camera_band] - z0) / CELL_M).astype(np.int64)
+        camera_inside = (
+            (camera_cols >= 0) & (camera_cols < cols) & (camera_rows >= 0) & (camera_rows < rows)
+        )
+        camera_per_cell = np.bincount(
+            camera_rows[camera_inside] * cols + camera_cols[camera_inside], minlength=rows * cols
+        ).reshape(rows, cols)
+        camera_cells = (camera_per_cell >= CAMERA_STRUCTURE_MIN_POINTS).astype(np.uint8)
 
         blocked |= object_cells
         blocked |= structural_cells
@@ -321,6 +340,8 @@ class Grid:
         grid_instance.object_cells = int(np.sum(object_cells == 1))
         grid_instance.structural_cells = int(np.sum(structural_cells == 1))
         grid_instance.structure_min_points = int(structure_min_points)
+        grid_instance.camera_mask = camera_cells
+        grid_instance.camera_cells = int(np.sum(camera_cells == 1))
         grid_instance.blocked_fraction = round(blocked_cells / max(1, total_cells), 4)
         grid_instance.saturated = bool(grid_instance.blocked_fraction > MAX_BLOCKED_FRACTION)
         return grid_instance
@@ -767,6 +788,31 @@ def path_height(floor_y: float, up_axis_sign: int) -> float:
     return round(float(up_axis_sign) * (float(floor_y) + 0.05), 3)
 
 
+def _nearest_free(grid: Grid, point: tuple[float, float], radius_cells: int = 6) -> tuple[float, float]:
+    """Snap a world point to the nearest free cell centre, searching outward."""
+    row, col = grid.to_cell(point)
+    for radius in range(radius_cells + 1):
+        best: tuple[int, int] | None = None
+        best_distance = float("inf")
+        for dr in range(-radius, radius + 1):
+            for dc in range(-radius, radius + 1):
+                if max(abs(dr), abs(dc)) != radius:
+                    continue
+                rr, cc = row + dr, col + dc
+                if 0 <= rr < grid.rows and 0 <= cc < grid.cols and grid.blocked[rr, cc] == 0:
+                    distance = dr * dr + dc * dc
+                    if distance < best_distance:
+                        best_distance = distance
+                        best = (rr, cc)
+        if best is not None:
+            col, row = best[1], best[0]
+            return (
+                grid.x0 + (col + 0.5) * CELL_M,
+                grid.z0 + (row + 0.5) * CELL_M,
+            )
+    return point
+
+
 def build_route(
     scene_path: Path | None = None,
     objects_path: Path | None = None,
@@ -775,7 +821,11 @@ def build_route(
     output_path: Path | None = None,
     manual_floor_y: float | None = None,
     agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
+    agent_height_m: float = ROBOT_HEIGHT_M,
     blockers: list[list[float]] | None = None,
+    start_override: tuple[float, float] | None = None,
+    goal_override: tuple[float, float] | None = None,
+    standing_height_m: float | None = None,
 ) -> dict[str, Any]:
     """End-to-end execution for Seat B: produces route.json matching Acceptance Checks 4 & 5.
 
@@ -813,7 +863,7 @@ def build_route(
 
     # Load objects if available
     objects: list[dict] = []
-    walkable_height_max_m = WALKABLE_HEIGHT_MAX_M  # scene-relative override below
+    walkable_ceiling_m = WALKABLE_HEIGHT_MAX_M  # scene-relative override below
     if objects_path and objects_path.exists():
         try:
             obj_data = json.loads(objects_path.read_text())
@@ -838,7 +888,7 @@ def build_route(
                 if above_floor:
                     clearance_to_ceil = min(above_floor) - floor_h
                     # Keep 10 cm margin below the ceiling plane
-                    walkable_height_max_m = max(1.5, round(clearance_to_ceil - 0.10, 2))
+                    walkable_ceiling_m = max(1.5, round(clearance_to_ceil - 0.10, 2))
         except Exception:
             objects = []
 
@@ -887,8 +937,12 @@ def build_route(
             up_axis_sign=up_axis_sign,
             agent_radius_m=agent_radius_m,
             objects=objects,
-            walkable_height_max_m=walkable_height_max_m,
+            walkable_height_max_m=max(
+                OBSTACLE_MIN_HEIGHT_M,
+                min(float(agent_height_m), float(walkable_ceiling_m)),
+            ),
             safety_margin_m=ROUTE_SAFETY_MARGIN_M,
+            structure_min_points=30 if float(agent_height_m) > 0.6 else None,
         )
     else:
         # Fallback to synthetic reference plant
@@ -911,17 +965,50 @@ def build_route(
     if target_box:
         goal_2d = compute_service_waypoint(target_box, grid, up_axis=up_axis)
         if not goal_2d:
-            c = target_box.get("center", [0.0, 0.0, 0.0])
+            c = (
+                target_box.get("centre")
+                or target_box.get("center")
+                or target_box.get("pos")
+                or [0.0, 0.0, 0.0]
+            )
             goal_2d = (float(c[0]) + 0.9, float(c[2]) if up_axis == 1 else float(c[1]))
     else:
         goal_2d = (grid.x0 + grid.width_m * 0.7, grid.z0 + grid.depth_m * 0.7)
+
+    horizontal = [axis for axis in range(3) if axis != up_axis]
 
     # Apply transient blockers (parked forklift, closed aisle, etc.)
     if blockers:
         grid = grid.with_blockers(blockers)
 
+    # A live robot replans from where it stands, not from the artifact's start.
+    # Snapping to a free cell is fine for rounding to the grid, but a large
+    # clearance can block the robot's own dock entirely. Jumping to whichever
+    # free cell is nearest then teleports it across the room and reports a
+    # short route that the robot could never drive, so that case is refused.
+    start_problem = None
+    if start_override is not None:
+        requested_start = (float(start_override[0]), float(start_override[1]))
+        start_2d = _nearest_free(grid, requested_start)
+        snap_m = float(np.hypot(start_2d[0] - requested_start[0], start_2d[1] - requested_start[1]))
+        if snap_m > 0.8:
+            start_problem = (
+                f"the robot does not fit at its current position with "
+                f"{agent_radius_m:g} m clearance"
+            )
+
+    if goal_override is not None:
+        # A destination is an object centre, so it usually lands inside that
+        # object's inflated footprint. Snap outward up to 2.5 m to the nearest
+        # free cell, which becomes the inspection waypoint for the visit.
+        goal_2d = _nearest_free(
+            grid, (float(goal_override[0]), float(goal_override[1])), radius_cells=25
+        )
+
     # Compute A* path
     plan_result = astar(grid, start_2d, goal_2d)
+    if start_problem:
+        plan_result = {"reachable": False, "path": [], "reason": start_problem}
 
     # The route document is in scene coordinates, so the height above the floor
     # is multiplied by the sign of the up axis. Writing the height coordinate
@@ -943,6 +1030,96 @@ def build_route(
         step_m=PROXIMITY_STEP_M,
     )
 
+    # When the route was planned crouched, work out which stretches actually
+    # need it. A second grid at standing height is built and the path is checked
+    # against it, so the viewer can crouch only under the low structure instead
+    # of walking folded for the whole route.
+    crouch_spans: list[list[float]] = []
+    if (
+        standing_height_m is not None
+        and float(standing_height_m) > float(agent_height_m) + 0.01
+        and len(path_3d) >= 2
+    ):
+        # The crouch span is a question about the body column, not about
+        # navigation clearance: the route already keeps the body radius away
+        # from obstacles. A 0.12 m column approximates a humanoid turning
+        # sideways to slip past structure, which is how a person would pass
+        # pipework beside the path. Testing the full navigation inflation made
+        # the model duck for obstacles it could simply walk past.
+        standing_grid = Grid.from_cloud(
+            points=points,
+            floor_y=floor_y,
+            up_axis=up_axis,
+            up_axis_sign=up_axis_sign,
+            agent_radius_m=0.12,
+            objects=objects,
+            walkable_height_max_m=max(
+                OBSTACLE_MIN_HEIGHT_M,
+                min(float(standing_height_m), float(walkable_ceiling_m)),
+            ),
+            safety_margin_m=0.0,
+        )
+        if blockers:
+            standing_grid = standing_grid.with_blockers(blockers)
+        distances = [0.0]
+        for index in range(1, len(path_3d)):
+            previous = path_3d[index - 1]
+            current = path_3d[index]
+            distances.append(
+                distances[-1]
+                + float(np.hypot(current[0] - previous[0], current[2] - previous[2]))
+            )
+        # Route vertices are metres apart, so sampling only the vertices misses
+        # the obstacle between them. Walk every segment at 10 cm.
+        needed: list[tuple[float, float]] = []
+        open_start: float | None = None
+        travelled = 0.0
+        for index in range(1, len(path_3d)):
+            previous = path_3d[index - 1]
+            current = path_3d[index]
+            segment = max(
+                0.001,
+                float(
+                    np.hypot(current[0] - previous[0], current[2] - previous[2])
+                    if up_axis == 1
+                    else np.hypot(current[0] - previous[0], current[1] - previous[1])
+                ),
+            )
+            steps = max(1, int(np.ceil(segment / 0.1)))
+            for step in range(steps + (1 if index == len(path_3d) - 1 else 0)):
+                ratio = min(1.0, step / steps)
+                at = travelled + segment * ratio
+                if up_axis == 1:
+                    cell = standing_grid.to_cell(
+                        (
+                            float(previous[0]) + (float(current[0]) - float(previous[0])) * ratio,
+                            float(previous[2]) + (float(current[2]) - float(previous[2])) * ratio,
+                        )
+                    )
+                else:
+                    cell = standing_grid.to_cell(
+                        (
+                            float(previous[0]) + (float(current[0]) - float(previous[0])) * ratio,
+                            float(previous[1]) + (float(current[1]) - float(previous[1])) * ratio,
+                        )
+                    )
+                blocked_here = not standing_grid.walkable(*cell)
+                if blocked_here and open_start is None:
+                    open_start = max(0.0, at - 0.1)
+                elif not blocked_here and open_start is not None:
+                    needed.append((open_start, at))
+                    open_start = None
+            travelled += segment
+        if open_start is not None:
+            needed.append((open_start, travelled))
+        merged: list[list[float]] = []
+        for start_m, end_m in needed:
+            if merged and start_m - merged[-1][1] < 0.6:
+                merged[-1][1] = end_m
+            else:
+                merged.append([round(start_m, 2), round(end_m, 2)])
+        crouch_spans = merged
+
     free_count = int(np.sum(grid.free == 1))
     blocked_count = int(np.sum(grid.blocked == 1))
     total_cells = max(1, grid.rows * grid.cols)
@@ -955,6 +1132,8 @@ def build_route(
         "target_asset_id": target_asset_id,
         "target_object_id": target_box.get("id") if target_box else None,
         "target_waypoint": [round(goal_2d[0], 3), y_render, round(goal_2d[1], 3)],
+        "planned_height_m": round(float(agent_height_m), 3),
+        "crouch_spans_m": crouch_spans,
         "reachable": plan_result["reachable"],
         "reason": plan_result.get("reason"),
         "distance_m": plan_result.get("distance_m", 0.0),
@@ -963,7 +1142,32 @@ def build_route(
         "path": path_3d,
         "path_samples": samples,
         "active_blockers": blockers or [],
+        "grid": {
+            "x0": round(grid.x0, 3),
+            "z0": round(grid.z0, 3),
+            "cell_m": CELL_M,
+            "rows": grid.rows,
+            "cols": grid.cols,
+            "horizontal_axes": [horizontal[0], horizontal[1]],
+            "blocked_packed": __import__("base64").b64encode(
+                np.packbits(grid.blocked.astype(np.uint8).ravel())
+            ).decode("ascii"),
+        },
+        "camera_grid": {
+            "x0": round(grid.x0, 3),
+            "z0": round(grid.z0, 3),
+            "cell_m": CELL_M,
+            "rows": grid.rows,
+            "cols": grid.cols,
+            "horizontal_axes": [horizontal[0], horizontal[1]],
+            "blocked_packed": __import__("base64").b64encode(
+                np.packbits(np.asarray(getattr(grid, "camera_mask", np.zeros_like(grid.blocked))).astype(np.uint8).ravel())
+            ).decode("ascii"),
+            "camera_band_m": [CAMERA_BAND_MIN_M, CAMERA_BAND_MAX_M],
+            "camera_blocked_cells": int(getattr(grid, "camera_cells", 0)),
+        },
         "grid_stats": {
+            "robot_height_m": round(float(agent_height_m), 3),
             "cols": grid.cols,
             "rows": grid.rows,
             "resolution_m": CELL_M,

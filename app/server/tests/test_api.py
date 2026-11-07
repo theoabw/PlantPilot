@@ -123,6 +123,95 @@ def test_the_room_endpoints_serve_the_artifacts(monkeypatch, tmp_path):
     assert response.content.startswith(b"ply\n")
 
 
+def test_the_reroute_endpoint_requires_the_pipeline(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "SCENE_DIR", tmp_path)
+    monkeypatch.setattr(main, "OBJECTS_FILE", tmp_path / "missing.json")
+    monkeypatch.setattr(main, "MAPPED_FILE", tmp_path / "missing.json")
+    response = client.post("/api/scene/reroute", json={"blockers": [], "start": None})
+    assert response.status_code == 404
+    assert "make pipeline" in response.json()["detail"]
+
+
+def test_the_reroute_endpoint_passes_blockers_start_and_robot_radius(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    (tmp_path / "scene.npz").write_bytes(b"stub")
+    objects = tmp_path / "objects.json"
+    objects.write_text("{}")
+    mapping = tmp_path / "mapped.json"
+    mapping.write_text("{}")
+    monkeypatch.setattr(main, "SCENE_DIR", tmp_path)
+    monkeypatch.setattr(main, "OBJECTS_FILE", objects)
+    monkeypatch.setattr(main, "MAPPED_FILE", mapping)
+    captured: dict = {}
+
+    def fake_build_route(**kwargs):
+        captured.update(kwargs)
+        return {"reachable": True, "path": [], "distance_m": 2.0}
+
+    monkeypatch.setattr(main.nav, "build_route", fake_build_route)
+    body = client.post(
+        "/api/scene/reroute",
+        json={"blockers": [[0.0, 0.0, 1.0, 1.0]], "start": [0.5, 0.5]},
+    ).json()
+    assert body["reachable"] is True
+    assert captured["blockers"] == [[0.0, 0.0, 1.0, 1.0]]
+    assert captured["start_override"] == (0.5, 0.5)
+    assert captured["agent_radius_m"] == 0.2
+    assert captured["output_path"] is None
+
+
+def test_the_object_splats_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "OBJECT_SPLAT_DIR", tmp_path / "splats")
+    assert client.get("/api/scene/object-splats").status_code == 404
+    assert "make object-splats" in client.get("/api/scene/object-splats").json()["detail"]
+    assert client.get("/api/object-splat/AN-5dbcb330").status_code == 404
+
+
+def test_the_object_splats_endpoint_serves_a_manifest_and_a_ply(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    directory = tmp_path / "splats"
+    directory.mkdir()
+    (directory / "manifest.json").write_text(json.dumps({"artifact": "object_splats", "objects": []}))
+    (directory / "AN-5dbcb330.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    monkeypatch.setattr(main, "OBJECT_SPLAT_DIR", directory)
+    assert client.get("/api/scene/object-splats").json()["artifact"] == "object_splats"
+    response = client.get("/api/object-splat/AN-5dbcb330")
+    assert response.status_code == 200
+    assert response.content.startswith(b"ply")
+    assert client.get("/api/object-splat/zzz").status_code == 404
+
+
+def test_the_meshes_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "MESH_DIR", tmp_path / "meshes")
+    assert client.get("/api/scene/meshes").status_code == 404
+    assert "make object-meshes" in client.get("/api/scene/meshes").json()["detail"]
+    assert client.get("/api/mesh/AN-5dbcb330").status_code == 404
+
+
+def test_the_meshes_endpoint_serves_the_manifest_and_a_mesh(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    directory = tmp_path / "meshes"
+    directory.mkdir()
+    (directory / "manifest.json").write_text(json.dumps({"artifact": "object_meshes", "objects": []}))
+    (directory / "AN-5dbcb330.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    monkeypatch.setattr(main, "MESH_DIR", directory)
+    body = client.get("/api/scene/meshes").json()
+    assert body["artifact"] == "object_meshes"
+    response = client.get("/api/mesh/AN-5dbcb330")
+    assert response.status_code == 200
+    assert response.content.startswith(b"ply")
+    assert client.get("/api/mesh/not-an-id").status_code == 404
+
+
 def test_the_filters_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 
@@ -137,14 +226,19 @@ def test_the_filters_endpoint_serves_metadata_and_assets(monkeypatch, tmp_path):
 
     directory = tmp_path / "filters"
     directory.mkdir()
-    (directory / "filters.json").write_text(json.dumps({"artifact": "filters", "filters": ["height"]}))
+    (directory / "filters.json").write_text(json.dumps({"artifact": "filters", "filters": {"applied": ["height", "edges"]}}))
     (directory / "height.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    (directory / "edges_base.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    (directory / "contours.json").write_text(json.dumps({"artifact": "contours", "count": 1, "points": [[0, 0, 0]]}))
     monkeypatch.setattr(main, "FILTER_DIR", directory)
     body = client.get("/api/scene/filters").json()
     assert body["artifact"] == "filters"
     response = client.get("/api/filter/height")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"
+    assert client.get("/api/filter/edges_base").status_code == 200
+    contours = client.get("/api/filter/contours").json()
+    assert contours["artifact"] == "contours" and contours["count"] == 1
     assert client.get("/api/filter/nope").status_code == 404
 
 

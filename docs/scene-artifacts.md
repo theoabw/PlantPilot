@@ -16,6 +16,9 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
 | `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
 | `data/scene/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
+| `data/objects/splats/<capture>/` | `make object-splats` (`scripts/make_object_splats.py`) | API, viewer (recognizable objects for the atlas and explode) |
+| `data/objects/meshes/<capture>/` | `make object-meshes` (`scripts/make_object_meshes.py`, optional Open3D) | API, viewer (silhouette and solid atlas fallback) |
+| `data/viewer/filters/<capture>/` | `make filter-assets` (`scripts/make_filter_assets.py`) | API, viewer (derived channels) |
 | `data/viewer/room.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
@@ -127,19 +130,37 @@ a sign: the renderer and the viewer both take the axis from the artifact.
 The app renders the same capture with [Spark](https://github.com/sparkjsdev/spark)
 (MIT), a WebGL gaussian splat renderer that lives inside the three.js scene, so
 the room and the extracted boxes share one camera and one depth order. The room
-view is the default view; the scene lab with its provisional room stays behind
-the `scene lab` button.
+view is the only view; the old provisional scene lab, plate scan and plant
+mission demo screens have been removed from the frontend.
 
 - `make splat-asset` writes `data/viewer/room.ply`: the sane prefix with the 14
   core properties only, 28 MB for the supplied capture instead of 355 MB, so the
   browser loads it in seconds.
 - `GET /api/splat` serves that file, `GET /api/scene/anchors` serves the
-  reviewed demo layer, `GET /api/scene/assets` serves the automatic proposal
+  reviewed demo layer, `GET /api/scene/meshes` serves the object mesh manifest
+  and `GET /api/mesh/<anchor-id>` serves one mesh, `GET /api/scene/assets` serves the automatic proposal
   layer, `GET /api/scene/objects` serves the raw extraction and
   `GET /api/scene/mapped` serves the mapping when `make map` has run. Everything
   is local, so the demo makes no network calls.
-- The room view draws the reviewed anchors by default, as thin outlines, and
-  shows labels and provenance only on selection. If a capture has no reviewed
+- The robot is not tied to one destination. Selecting any reviewed equipment and
+pressing Send robot here plans a new route from where the robot is standing to a
+walkable waypoint beside that machine, and the arrival card keeps the robot in
+place, ready for the next leg. The mapped fault target still gets the diagnosis
+card; an arbitrary visit gets a plain arrival card and an invitation to choose
+the next machine. The follow camera keeps its framing at arrival instead of
+cutting to a new view.
+
+The room view is a contextual product shell: a minimal header, a mission card
+  with one primary action, an equipment browser on demand, an object card on
+  selection, a layers menu for the derived channels, and a developer drawer for
+  raw detections, confidence, occupancy and builder diagnostics. Only the
+  reviewed anchors are outlined, labels appear on selection or in developer
+  mode, and navigation markers exist only while a mission is running.
+- The room view draws the reviewed anchors as brighter outlines and all mapped
+  pack records as faint proposal frames. The Equipment browser lists every
+  pack record by tag and state under `Pack records`, so the full 30 of 30
+  mapping is visible without presenting every proposal as reviewed equipment.
+  Labels and provenance appear on selection. If a capture has no reviewed
   fixture it falls back to the automatic proposal layer, and the raw extraction
   stays one toggle away in the Objects panel.
 - `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` point the room view at another
@@ -153,6 +174,9 @@ the `scene lab` button.
   and up in scene coordinates. That view stands at 1.45 m above the detected
   floor and looks down the longest open sightline, so the browser and the
   rendered stills show the same room.
+- The route is drawn as a moving arrow trail on a centripetal Catmull-Rom curve
+  through the planned polyline, and the robot follows the same curve with a
+  damped heading and a damped follow camera, so corners do not snap.
 - `GET /api/scene/route` serves the route `make route` writes. The room view
   draws it on the detected floor (the artifact's path carries heights in the up
   axis, the viewer places the line and the robot on the floor plane), sends the
@@ -354,8 +378,149 @@ Each anchor: `id` (`AN-` plus the proposal id suffix), `asset_id`, `class`,
 `label`, `reviewed`, `verdict` (A or B from the audit), `note`, `centre`,
 `axes`, `extents`, `points` and the `source_object_ids` it came from. Labels are
 deliberately generic where the geometry cannot prove a machine class
-(`equipment`, `red painted equipment`), because the audit found the shape rules
-were being used as class rules.
+(`equipment`, `equipment cluster`), because the audit found the shape rules were
+being used as class rules.
+
+The seven anchors also separate observation from inference. Each carries
+`observed_type` (what the reviewed box visibly contains), `inferred_function`
+(what it is probably used for), `category`, `classification_confidence` and the
+`evidence` sentence behind the call. The Equipment card shows the observation
+first, then the likely use marked with its confidence, then the evidence. The
+builder pack record, where one exists, is shown separately as a pack record and
+its condition is labelled as the pack's condition rather than as the scene's.
+
+This is deliberately not an open-vocabulary naming pass. The red Reflex
+expansion vessels and the Grundfos pump station visible in the source video are
+not enclosed by reviewed anchors, and brand text on a tank is not proof that a
+particular reviewed box is that tank. Labels only claim what the box itself
+shows: a front-load drum appliance, a vertical vessel, a pump-and-motor body, a
+pipe run, a door or cabinet, and an unidentified floor cluster. Inferred
+functions stay unconfirmed in the UI.
+
+## Object meshes
+
+The reference videos turn each detection into a complete 3D asset and then move
+it. `make object-meshes` does the same for the reviewed anchors, from the PLY
+alone: for each anchor it takes the owned gaussians, uses the thinnest ellipsoid
+axis as the normal, drops faint and fog gaussians, downsamples, reconstructs a
+surface with Open3D Poisson, trims the density fringe, crops to the anchor box,
+decimates to at most 20,000 triangles and copies gaussian colours onto the
+vertices. Seven anchors bake in about six seconds and the manifest is
+byte-identical across runs when Poisson runs single threaded.
+
+The output is a binary PLY per object with vertex colours plus `manifest.json`
+with the world bounding box, triangle and vertex counts, owned gaussians and the
+anchor box. The meshes are coloured surfaces, not watertight solids: the density
+trim and the box crop open the surface, and there is no hole filling. They are
+meant for the object atlas and explode view, not for a claim of surveyed
+geometry. Open3D is optional; the stage fails with an install hint when it is
+missing, and every other stage runs without it.
+
+## Robot profiles and clearance
+
+The room view offers a walking humanoid (0.18 m radius, 1.35 m standing), a
+compact AMR (0.20 m, 0.55 m tall) and a cargo AMR (0.45 m, 0.90 m tall).
+Choosing a profile replans the same grid with that radius and height, so the
+route, the clearance and even the reachable set change with the robot rather
+than with a cosmetic model swap. A developer slider covers the clearance value
+by hand.
+
+Height matters in this basement: pipework crosses the aisles above AMR height
+but through a standing humanoid's torso. The structural band now runs from the
+floor to the robot's own height, so the tall robot plans around that pipework
+and the low robot plans under it. If the standing height cannot reach the
+target, the humanoid falls back to a crouched height (0.95 m), the route reports
+that it ducks under low pipework, and the model visibly crouches for that
+mission. A route the robot could not physically take is never drawn.
+
+The robot itself is procedural: a hi-vis humanoid with pelvis, two-segment legs
+and arms, joined knees, elbows and hips, a backpack, helmet and visor, or a
+wheeled AMR with chassis, four wheels, deck rails, mast, spinning lidar, camera
+bar and e-stop. Both are animated from distance travelled, so the walk or the
+wheel rotation matches the route speed.
+
+## Robot occlusion
+
+The splat pass is transparent and does not write depth, so overlays such as the
+robot were drawn on top of every machine. The viewer now renders the reviewed
+equipment volumes again as invisible depth-only boxes after the splats and
+before the robot. They write depth without colour, which gives the robot and the
+route decorations a real depth test against tanks, cabinets and other reviewed
+plant. The boxes are shrunk slightly and are disabled while the camera is inside
+one of them, so a close camera cannot make the robot vanish.
+
+This is a proxy depth, not a splat depth map: it occludes against the equipment
+boxes in the scene artifacts, so thin pipework and railings still do not hide
+the robot. A full per-pixel splat depth pass would need the Spark renderer to
+write depth, which it currently does not.
+
+## Camera avoidance
+
+The follow camera would otherwise sit behind the robot through a tank or a pipe.
+The route document now carries a second occupancy layer at eye level: the
+capture's own gaussians between 1.15 m and 1.85 m above the floor, blocked when
+a 0.10 m cell holds at least 50 points. It is deliberately separate from the
+robot grid, which stops at 0.55 m and says nothing about pipework at camera
+height. The layer is derived from the capture like every other obstacle, so it
+is scene agnostic.
+
+In follow mode the camera first tries its ideal position behind the robot. If
+that spot is blocked or too close to structure, it samples yaw, distance and
+height alternatives and scores them by clearance to the nearest blocked cell,
+preferring an open sight line. The previous choice is sticky as a robot-relative
+offset, not a world position, so hysteresis prevents flicker without freezing
+the camera. The chosen target is damped, camera movement is capped per frame,
+and while following the viewer aims the camera itself instead of letting
+OrbitControls recompute it from a moving target. A camera already inside
+structure is pulled out over a short ramp rather than teleported. Focus, reset,
+the arrival camera and the initial framing pass through the same check. If no
+candidate is free, the camera escapes above the robot, so it can always re-enter
+the scene; Overview also drops follow and restores the room view. Manual
+orbiting is left alone.
+
+## Live replanning and the area view
+
+The route document carries the occupancy grid it planned on: origin, cell size,
+row and column counts, the two horizontal scene axes, and the blocked cells
+packed as base64 bits. The viewer uses it for two things.
+
+Placing an obstacle on the floor sends a POST to `/api/scene/reroute` with the
+transient blocker rectangles and the robot's current scene position. The server
+replans the same grid with `agent_radius_m` 0.20, one inflation pass, and the
+same structural obstacles, then returns a route document with the new path,
+distance and clearance. The whole call is about 150 ms, so the path redraws
+immediately and the robot resumes from where it stood. When no alternative
+exists the response is honest: `reachable` false and the viewer says the path is
+blocked.
+
+The area view draws every blocked cell from `grid` as a faint tile on the floor,
+so the walls, machine bodies and structural obstacles the planner understands
+are visible next to the path. It is the same grid the route uses, not an
+illustration.
+
+## Information channels
+
+`make filter-assets` bakes four channels over the same gaussian geometry. Height
+is inferno over the 2nd to 98th percentile with photo luminance mixed back in and
+a neutral band under 0.15 m. Normals are the thin-axis normal after two voxel
+averaging passes and encode as 0.5 + 0.5 n with a headlight term. The edges
+channel is the photo at 30 percent luminance plus a contour overlay of 1.2 px
+points from depth discontinuity and instance boundaries, each point coloured by
+the object that owns it. Semantics is the same dim base plus a pastel overlay of
+the anchor gaussians (opacity 0.55) and the contour overlay, so object regions
+are tinted while the room still reads as a photograph. The viewer draws the
+contours as screen-space points and hides the wireframe boxes in these channels.
+
+## Object splats
+
+`make object-splats` writes one core-property 3DGS PLY per reviewed anchor with
+the anchor's own gaussians, the same layout the full-room asset uses. The object
+channel renders each of these as an independent splat mesh, so an object keeps
+the captured appearance when it is lifted out of the room and shown in the
+explode atlas. This is the recognizability that matters for a movable object; a
+Poisson surface from the same gaussians is lumpy and is not watertight.
+
+## Object meshes
 
 ## Numbers from the supplied capture
 

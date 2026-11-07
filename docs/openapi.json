@@ -1032,6 +1032,73 @@
         "title": "RegisterAsset",
         "type": "object"
       },
+      "RerouteRequest": {
+        "description": "Transient obstacles for a live replan, in scene plane coordinates.",
+        "properties": {
+          "agent_height_m": {
+            "default": 0.55,
+            "title": "Agent Height M",
+            "type": "number"
+          },
+          "agent_radius_m": {
+            "default": 0.2,
+            "title": "Agent Radius M",
+            "type": "number"
+          },
+          "blockers": {
+            "default": [],
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "standing_height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Standing Height M"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "title": "RerouteRequest",
+        "type": "object"
+      },
       "RouteRequest": {
         "additionalProperties": true,
         "description": "Ask for a route to an asset id or a goal point, with optional blocked rectangles.",
@@ -1643,6 +1710,68 @@
         "summary": "Explain"
       }
     },
+    "/api/filter/contours": {
+      "get": {
+        "description": "The thin contour overlay of the capture, from make filter-assets.",
+        "operationId": "filter_contours_api_filter_contours_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Filter Contours Api Filter Contours Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Filter Contours"
+      }
+    },
     "/api/filter/{name}": {
       "get": {
         "description": "One baked information channel as a gaussian PLY for the viewer.",
@@ -1703,6 +1832,94 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/mesh/{anchor_id}": {
+      "get": {
+        "description": "One object mesh as a binary PLY with vertex colours.",
+        "operationId": "object_mesh_api_mesh__anchor_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "anchor_id",
+            "required": true,
+            "schema": {
+              "title": "Anchor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Object Mesh"
+      }
+    },
+    "/api/object-splat/{anchor_id}": {
+      "get": {
+        "description": "One reviewed object's own gaussians as a core-property PLY.",
+        "operationId": "object_splat_api_object_splat__anchor_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "anchor_id",
+            "required": true,
+            "schema": {
+              "title": "Anchor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Object Splat"
       }
     },
     "/api/plant": {
@@ -2063,6 +2280,130 @@
         "summary": "Scene Mapped"
       }
     },
+    "/api/scene/meshes": {
+      "get": {
+        "description": "The per-object meshes of the reviewed anchors, from make object-meshes.",
+        "operationId": "scene_meshes_api_scene_meshes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Meshes Api Scene Meshes Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Meshes"
+      }
+    },
+    "/api/scene/object-splats": {
+      "get": {
+        "description": "The per-object splat assets of the reviewed anchors.",
+        "operationId": "scene_object_splats_api_scene_object_splats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Object Splats Api Scene Object Splats Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Object Splats"
+      }
+    },
     "/api/scene/objects": {
       "get": {
         "description": "The framed objects of the supplied capture, as make objects writes them.",
@@ -2123,6 +2464,88 @@
           }
         },
         "summary": "Scene Objects"
+      }
+    },
+    "/api/scene/reroute": {
+      "post": {
+        "description": "Replan the route around transient obstacles from the robot's position.",
+        "operationId": "scene_reroute_api_scene_reroute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Reroute Api Scene Reroute Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scene Reroute"
       }
     },
     "/api/scene/route": {

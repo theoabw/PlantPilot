@@ -21,6 +21,11 @@ export type RoomObject = {
   source_object_ids?: string[]
   method?: string
   reviewed?: boolean
+  observed_type?: string
+  inferred_function?: string
+  category?: string
+  classification_confidence?: 'high' | 'medium' | 'low'
+  evidence?: string
 }
 
 export type RoomAnchor = {
@@ -37,6 +42,11 @@ export type RoomAnchor = {
   points: number
   mean_rgb?: number[] | null
   source_object_ids: string[]
+  observed_type?: string
+  inferred_function?: string
+  category?: string
+  classification_confidence?: 'high' | 'medium' | 'low'
+  evidence?: string
 }
 
 export type RoomAnchors = {
@@ -90,6 +100,39 @@ export type RoomRoute = {
   clearance_m: number
   floor_height_m: number
   up_axis: string
+  active_blockers?: number[][]
+  planned_height_m?: number
+  crouch_spans_m?: [number, number][]
+  camera_grid?: {
+    x0: number
+    z0: number
+    cell_m: number
+    rows: number
+    cols: number
+    horizontal_axes: number[]
+    blocked_packed: string
+    camera_band_m?: number[]
+    camera_blocked_cells?: number
+  }
+  grid_stats?: {
+    cols?: number
+    rows?: number
+    resolution_m?: number
+    blocked_fraction?: number
+    blocked_cells?: number
+    structural_blocked_cells?: number
+    object_blocked_cells?: number
+    obstacles_from?: string
+  }
+  grid?: {
+    x0: number
+    z0: number
+    cell_m: number
+    rows: number
+    cols: number
+    horizontal_axes: number[]
+    blocked_packed: string
+  }
 }
 
 export type DiagnosisEvidence = {
@@ -210,6 +253,72 @@ export type RoomMapped = {
 
 export const SPLAT_URL = '/api/splat'
 
+export type RoomObjectSplat = {
+  anchor_id: string
+  label: string
+  class?: string
+  file: string
+  gaussians: number
+}
+
+export type RoomObjectSplats = {
+  artifact: string
+  version: number
+  capture?: string
+  counts?: { objects?: number; gaussians?: number }
+  objects: RoomObjectSplat[]
+}
+
+export async function fetchRoomObjectSplats(): Promise<RoomObjectSplats> {
+  const response = await fetch('/api/scene/object-splats')
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'no per-object splats on the server, run make object-splats'
+        : `/api/scene/object-splats answered ${response.status}`,
+    )
+  }
+  return (await response.json()) as RoomObjectSplats
+}
+
+export function objectSplatUrl(anchorId: string): string {
+  return `/api/object-splat/${anchorId}`
+}
+
+export type RoomMesh = {
+  anchor_id: string
+  label: string
+  class?: string
+  file: string
+  vertices: number
+  triangles: number
+  owned_gaussians?: number
+}
+
+export type RoomMeshes = {
+  artifact: string
+  version: number
+  source?: { scene?: string; anchors?: string }
+  counts?: { objects?: number }
+  objects: RoomMesh[]
+}
+
+export async function fetchRoomMeshes(): Promise<RoomMeshes> {
+  const response = await fetch('/api/scene/meshes')
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'no object meshes on the server, run make object-meshes'
+        : `/api/scene/meshes answered ${response.status}`,
+    )
+  }
+  return (await response.json()) as RoomMeshes
+}
+
+export function meshAssetUrl(anchorId: string): string {
+  return `/api/mesh/${anchorId}`
+}
+
 export type RoomFilters = {
   artifact: string
   version: number
@@ -232,7 +341,9 @@ export async function fetchRoomFilters(): Promise<RoomFilters> {
 }
 
 export function filterAssetUrl(name: string): string {
-  return `/api/filter/${name}`
+  // edges and semantics sit on a dimmed capture: edges adds thin contours,
+  // semantics adds the pastel anchor overlay and object contours
+  return name === 'edges' || name === 'semantics' ? '/api/filter/edges_base' : `/api/filter/${name}`
 }
 
 export async function fetchRoomAnchors(): Promise<RoomAnchors> {
@@ -278,6 +389,31 @@ export function splatAssetUrl(version?: number): string {
 }
 
 /** The navigation route, or null when make route has not run yet. */
+export async function fetchReroute(
+  blockers: number[][],
+  start: [number, number] | null,
+  agentRadiusM = 0.2,
+  agentHeightM = 0.55,
+  options: { target?: [number, number] | null; standingHeightM?: number | null } = {},
+): Promise<RoomRoute> {
+  const response = await fetch('/api/scene/reroute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      blockers,
+      start,
+      agent_radius_m: agentRadiusM,
+      agent_height_m: agentHeightM,
+      target: options.target ?? null,
+      standing_height_m: options.standingHeightM ?? null,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(`/api/scene/reroute answered ${response.status}`)
+  }
+  return (await response.json()) as RoomRoute
+}
+
 export async function fetchRoomRoute(): Promise<RoomRoute | null> {
   const response = await fetch('/api/scene/route')
   if (response.status === 404) {
