@@ -666,6 +666,8 @@ def compute_path_proximity(
     """
     if not path_3d:
         return []
+    if len(path_3d) == 1:
+        path_3d = [path_3d[0], path_3d[0]]
 
     # Build mapping lookup table by object_id
     map_by_obj: dict[str, dict] = {}

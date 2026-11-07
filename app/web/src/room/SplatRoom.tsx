@@ -2322,6 +2322,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     dispose()
     const motion = state.motion
+    const previousRobot = motion.robot
     motion.active = false
     motion.travelled = 0
     motion.total = 0
@@ -2356,7 +2357,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.smoothedCamera = null
 
     if (!route || !route.reachable || route.path.length < 2) {
+      if (previousRobot) {
+        state.routeGroup.add(previousRobot)
+        motion.robot = previousRobot
+      }
       tripRef.current({ mode: 'idle', travelled: 0, total: 0 })
+      renderRef.current()
       return
     }
 

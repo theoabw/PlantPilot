@@ -752,7 +752,7 @@ export default function RoomLab() {
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}
-            showRobot={trip.mode !== 'idle'}
+            showRobot={trip.mode !== 'idle' || Boolean(route && !route.reachable)}
             crouchSpans={crouchSpans}
             focusTarget={focusTarget}
             focusToken={focusToken}
