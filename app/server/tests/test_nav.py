@@ -812,3 +812,129 @@ def test_the_standoff_of_a_destination_is_measured_to_that_destinations_box(tmp_
     gap_z = max(1.7 - stop[1], 0.0, stop[1] - 2.3)
     assert route["target_waypoint_standoff_m"] == pytest.approx(math.hypot(gap_x, gap_z), abs=0.01)
     assert route["target_waypoint_standoff_m"] < 0.5
+
+
+# ---------------------------------------------------------------------------
+# The route's inputs: no silent substitute target, no hidden load failure
+# ---------------------------------------------------------------------------
+
+def _route_inputs(tmp_path, mappings, objects=None):
+    """A flat floor, one object at the far side and a mapping, written as artifacts."""
+    axis = np.arange(-3.0, 3.0, 0.05)
+    floor_x, floor_z = np.meshgrid(axis, axis)
+    points = np.stack([floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1)
+    scene = tmp_path / "scene.npz"
+    np.savez(scene, xyz=points, meta=np.array(json.dumps({"frame": {"up_axis_index": 1, "up_axis_sign": 1}})))
+    objects_path = tmp_path / "objects.json"
+    objects_path.write_text(json.dumps({"objects": objects if objects is not None else [{
+        "id": "OBJ-001",
+        "class": "pump",
+        "centre": [1.5, 0.3, 1.5],
+        "axes": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        "extents": [0.4, 0.6, 0.4],
+        "points": 500,
+    }]}))
+    mapped = tmp_path / "mapped.json"
+    mapped.write_text(json.dumps({"mappings": mappings}))
+    return {"scene_path": scene, "objects_path": objects_path, "mapped_path": mapped, "manual_floor_y": 0.0}
+
+
+UNRESOLVED = {"asset_id": "A-5", "tag": "P-005", "object_id": None, "reason": "no object cleared the rule"}
+
+
+def test_an_unresolved_target_is_refused_not_replaced_by_another_object(tmp_path):
+    route = nav.build_route(**_route_inputs(tmp_path, [UNRESOLVED]))
+
+    assert route["reachable"] is False
+    assert route["path"] == []
+    assert route["target_object_id"] is None
+    assert route["target_waypoint_from"] == "unresolved_target"
+    assert "P-005" in route["reason"] and "no object cleared the rule" in route["reason"]
+
+
+def test_a_target_absent_from_the_mapping_is_refused(tmp_path):
+    route = nav.build_route(**_route_inputs(tmp_path, [{"asset_id": "A-1", "tag": "V-001", "object_id": "OBJ-001"}]))
+
+    assert route["reachable"] is False
+    assert "not in the mapping" in route["reason"]
+
+
+def test_a_target_mapped_to_a_missing_object_is_refused(tmp_path):
+    route = nav.build_route(**_route_inputs(tmp_path, [{"asset_id": "A-5", "tag": "P-005", "object_id": "OBJ-999"}]))
+
+    assert route["reachable"] is False
+    assert "OBJ-999" in route["reason"]
+
+
+def test_an_explicit_destination_still_plans_when_the_target_is_unresolved(tmp_path):
+    route = nav.build_route(
+        **_route_inputs(tmp_path, [UNRESOLVED]),
+        agent_radius_m=0.20,
+        start_override=(-1.0, -1.0),
+        goal_override=(1.0, 1.0),
+    )
+
+    assert route["reachable"] is True
+    assert route["target_waypoint_from"] == "goal_override"
+
+
+def test_a_resolved_target_routes_to_its_own_object(tmp_path):
+    route = nav.build_route(
+        **_route_inputs(tmp_path, [{"asset_id": "A-5", "tag": "P-005", "object_id": "OBJ-001"}]),
+        agent_radius_m=0.20,
+        start_override=(-2.0, -2.0),
+    )
+
+    assert route["reachable"] is True
+    assert route["target_object_id"] == "OBJ-001"
+
+
+@pytest.mark.parametrize("artifact", ["objects_path", "mapped_path", "scene_path"])
+def test_a_corrupt_artifact_stops_the_route_and_names_the_file(tmp_path, artifact):
+    inputs = _route_inputs(tmp_path, [UNRESOLVED])
+    inputs[artifact].write_text("not an artifact {")
+
+    with pytest.raises(nav.RouteInputError, match=inputs[artifact].name):
+        nav.build_route(**inputs)
+
+
+@pytest.mark.parametrize("artifact", ["objects_path", "mapped_path", "scene_path"])
+def test_a_missing_artifact_stops_the_route_and_names_the_file(tmp_path, artifact):
+    inputs = _route_inputs(tmp_path, [UNRESOLVED])
+    inputs[artifact].unlink()
+
+    with pytest.raises(nav.RouteInputError, match=inputs[artifact].name):
+        nav.build_route(**inputs)
+
+
+@pytest.mark.parametrize(
+    ("up_sign", "normal", "offset"),
+    [
+        # y-down capture, floor 1.0 below the origin along up, ceiling 1.5 above it.
+        (-1, [0.0, -1.0, 0.0], -1.5),
+        (-1, [0.0, 1.0, 0.0], 1.5),
+        # y-up capture with the same heights along up.
+        (1, [0.0, 1.0, 0.0], -1.5),
+        (1, [0.0, -1.0, 0.0], 1.5),
+    ],
+)
+def test_the_walkable_ceiling_is_measured_from_the_plane_height(up_sign, normal, offset):
+    doc = {
+        "floor": {"height": -1.0},
+        "planes": {"items": [{"horizontal": True, "normal": normal, "offset": offset}]},
+    }
+
+    # 2.5 m from floor to ceiling, less the 10 cm margin, whichever way the normal points.
+    assert nav._walkable_ceiling(doc, 1, up_sign) == pytest.approx(2.4)
+
+
+def test_the_walkable_ceiling_ignores_planes_at_the_floor_and_walls():
+    doc = {
+        "floor": {"height": 0.0},
+        "planes": {"items": [
+            {"horizontal": True, "normal": [0.0, 1.0, 0.0], "offset": 0.0},
+            {"horizontal": False, "normal": [1.0, 0.0, 0.0], "offset": -0.5},
+        ]},
+    }
+
+    assert nav._walkable_ceiling(doc, 1, 1) == nav.WALKABLE_HEIGHT_MAX_M

@@ -10,7 +10,7 @@ Generated artifacts are written into `data/` and never committed:
 | File | Written by | Read by |
 | --- | --- | --- |
 | `data/scene/pack.json` | `make pack` (`plantpilot.pack`) | mapping, diagnosis, API |
-| `data/scene/mapped.json` | `make map` (`plantpilot.mapping`) | route, diagnosis, API, viewer |
+| `data/scene/mapped.json` | `make map` (`plantpilot.mapping`) | route, API, viewer |
 | `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer |
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`, then `plantpilot.classes`) | mapping, route proximity, API, viewer |
@@ -524,6 +524,14 @@ distance and clearance. The whole call is about 150 ms, so the path redraws
 immediately and the robot resumes from where it stood. When no alternative
 exists the response is honest: `reachable` false and the viewer says the path is
 blocked.
+
+The route never substitutes another object for its target. When the target is
+unresolved in `mapped.json` or its object is not in `objects.json`, the document
+has `reachable` false, `target_waypoint_from` `unresolved_target` and a `reason`,
+and `make route` exits non-zero. A reroute with an explicit `target` still plans,
+because it names its own destination. A missing or unreadable artifact raises
+`nav.RouteInputError`, which fails `make route` and makes the reroute endpoint
+answer 500 with the file in `detail`.
 
 The area view draws every blocked cell from `grid` as a faint tile on the floor,
 so the walls, machine bodies and structural obstacles the planner understands

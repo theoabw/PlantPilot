@@ -1,5 +1,7 @@
 # PlantPilot: six slides for the Valmet evaluator
 
+Build the slides on [`brand/background-1920x1080-dark.png`](brand/background-1920x1080-dark.png). [`brand/README.md`](brand/README.md) has the colours and logo rules.
+
 ## Slide 1: A capture is not a map
 
 **On the slide**

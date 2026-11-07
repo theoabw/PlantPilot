@@ -129,6 +129,11 @@ export default function RoomLab() {
   const [tripToken, setTripToken] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState('photo')
+  const [topDown, setTopDown] = useState(false)
+  const topDownRef = useRef(topDown)
+  topDownRef.current = topDown
+  const [topDownToken, setTopDownToken] = useState(0)
+  const [cutHeight, setCutHeight] = useState(1.5)
   const [showOutlines, setShowOutlines] = useState(true)
   const [boxedSplatsOnly, setBoxedSplatsOnly] = useState(false)
   const [showMappedFrames, setShowMappedFrames] = useState(false)
@@ -634,7 +639,7 @@ export default function RoomLab() {
       )
       if (intent.startAfter) {
         setSelectedId(null)
-        setFollow(true)
+        setFollow(!topDownRef.current)
         setArrivalDismissed(false)
         setTripToken((value) => value + 1)
       } else if (resume) {
@@ -830,7 +835,7 @@ export default function RoomLab() {
   const showArrival = arrived && !arrivalDismissed
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-slate-950 text-slate-100">
+    <div className="relative h-screen w-full overflow-hidden bg-brand-navy text-slate-100">
       <div className="absolute inset-0">
         {data ? (
           <SplatRoom
@@ -847,6 +852,8 @@ export default function RoomLab() {
             upAxis={data.source.up_axis}
             floorHeight={data.floor.height}
             resetToken={resetToken}
+            topDownToken={topDownToken}
+            heightCutoff={topDown ? cutHeight : null}
             characterResetToken={characterResetToken}
             selectedId={selectedId}
             mappedIds={mappedIds}
@@ -878,7 +885,7 @@ export default function RoomLab() {
             showRoute={driving}
             showRobot={manualControl || robotDeployed || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
             crouchSpans={crouchSpans}
-            focusTarget={focusTarget}
+            focusTarget={topDown ? null : focusTarget}
             focusToken={focusToken}
             robotProfile={robot.id}
             manualControl={manualControl}
@@ -898,7 +905,8 @@ export default function RoomLab() {
             }}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-400">
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-sm font-semibold text-slate-400">
+            <img src="/brand/plantpilot-stacked-on-dark.svg" alt="" className="h-40 w-auto" />
             {error ?? (loading ? 'Loading the captured scene' : 'No scene loaded')}
           </div>
         )}
@@ -912,9 +920,8 @@ export default function RoomLab() {
 
       {/* Header */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-3 px-4 py-3">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-white/5 bg-slate-950/55 px-3 py-2 backdrop-blur">
-          <span className="grid h-5 w-5 place-items-center rounded bg-cyan-400 text-[10px] font-black text-slate-950">P</span>
-          <span className="text-sm font-black tracking-tight text-white">PlantPilot</span>
+        <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-white/5 bg-brand-navy/85 py-1 pl-1 pr-3 backdrop-blur">
+          <img src="/brand/plantpilot-horizontal-on-dark.svg" alt="PlantPilot" className="h-10 w-auto" />
           <span className="hidden h-4 w-px bg-slate-700 sm:block" />
           <span className="hidden text-xs font-semibold text-slate-300 sm:block">{sceneName}</span>
           <span className="flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">
@@ -935,7 +942,7 @@ export default function RoomLab() {
             }}
             className="rounded-lg border border-white/5 bg-slate-950/55 px-3 py-2 text-xs font-bold text-slate-200 backdrop-blur hover:border-slate-500"
           >
-            Equipment <span className="text-cyan-300">{reviewed.length}</span>
+            Equipment <span className="text-brand-mint">{reviewed.length}</span>
           </button>
           <div className="relative">
             <button
@@ -966,11 +973,12 @@ export default function RoomLab() {
                     type="button"
                     onClick={() => {
                       setView(option.id)
+                      setTopDown(false)
                       setBoxedSplatsOnly(false)
                       setLayersOpen(false)
                     }}
                     className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-semibold ${
-                      view === option.id ? 'bg-cyan-500/15 text-cyan-200' : 'text-slate-300 hover:bg-slate-800'
+                      view === option.id ? 'bg-brand-mint/15 text-brand-mint' : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
                     {option.label}
@@ -984,12 +992,13 @@ export default function RoomLab() {
                     disabled={reviewed.length === 0}
                     onClick={() => {
                       setView('photo')
+                      setTopDown(false)
                       setBoxedSplatsOnly((value) => !value)
                     }}
                     className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Only splats in equipment boxes
-                    {boxedSplatsOnly ? <span className="text-[10px] text-cyan-200">on</span> : null}
+                    {boxedSplatsOnly ? <span className="text-[10px] text-brand-mint">on</span> : null}
                   </button>
                   <p className="px-2 pb-1 text-[10px] text-slate-500">
                     {reviewed.length === 0
@@ -1002,7 +1011,7 @@ export default function RoomLab() {
                       type="checkbox"
                       checked={showOutlines}
                       onChange={(event) => setShowOutlines(event.target.checked)}
-                      className="accent-cyan-400"
+                      className="accent-brand-mint"
                     />
                   </label>
                   <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800">
@@ -1011,7 +1020,7 @@ export default function RoomLab() {
                       type="checkbox"
                       checked={showMappedFrames}
                       onChange={(event) => setShowMappedFrames(event.target.checked)}
-                      className="accent-cyan-400"
+                      className="accent-brand-mint"
                     />
                   </label>
                   <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800">
@@ -1020,7 +1029,7 @@ export default function RoomLab() {
                       type="checkbox"
                       checked={showOccupancy}
                       onChange={(event) => setShowOccupancy(event.target.checked)}
-                      className="accent-cyan-400"
+                      className="accent-brand-mint"
                     />
                   </label>
                   <button
@@ -1056,6 +1065,7 @@ export default function RoomLab() {
                 <button
                   type="button"
                   onClick={() => {
+                    setTopDown(false)
                     setResetToken((value) => value + 1)
                     setFollow(false)
                     setSettingsOpen(false)
@@ -1070,7 +1080,7 @@ export default function RoomLab() {
                     type="checkbox"
                     checked={devMode}
                     onChange={(event) => setDevMode(event.target.checked)}
-                    className="accent-cyan-400"
+                    className="accent-brand-mint"
                   />
                 </label>
               </div>
@@ -1093,7 +1103,7 @@ export default function RoomLab() {
               value={browserQuery}
               onChange={(event) => setBrowserQuery(event.target.value)}
               placeholder="Search equipment"
-              className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs font-semibold text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs font-semibold text-slate-100 placeholder:text-slate-500 focus:border-brand-mint focus:outline-none"
             />
             <div className="mt-2 flex gap-1">
               {(['all', 'attention', 'reviewed'] as const).map((filter) => (
@@ -1102,7 +1112,7 @@ export default function RoomLab() {
                   type="button"
                   onClick={() => setBrowserFilter(filter)}
                   className={`rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide ${
-                    browserFilter === filter ? 'bg-cyan-500/20 text-cyan-200' : 'text-slate-400 hover:bg-slate-800'
+                    browserFilter === filter ? 'bg-brand-mint/20 text-brand-mint' : 'text-slate-400 hover:bg-slate-800'
                   }`}
                 >
                   {filter}
@@ -1121,7 +1131,7 @@ export default function RoomLab() {
                   setFocusToken((value) => value + 1)
                 }}
                 className={`mb-1 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left ${
-                  selectedId === record.id ? 'bg-cyan-500/10 ring-1 ring-cyan-400/40' : 'hover:bg-slate-800/80'
+                  selectedId === record.id ? 'bg-brand-mint/10 ring-1 ring-brand-mint/40' : 'hover:bg-slate-800/80'
                 }`}
               >
                 <span className="min-w-0">
@@ -1237,14 +1247,14 @@ export default function RoomLab() {
                 <p className="text-[10px] font-semibold leading-snug text-slate-500">{selectedObject.evidence}</p>
               ) : null}
               {selectedObject.sam3 ? (
-                <p className="text-[10px] font-semibold leading-snug text-cyan-300/80">
+                <p className="text-[10px] font-semibold leading-snug text-brand-mint/80">
                   SAM 3 check: {selectedObject.sam3.label} · score {selectedObject.sam3.score.toFixed(2)} ·{' '}
                   {selectedObject.sam3.views} views · centre agrees within{' '}
                   {selectedObject.sam3.centre_delta_m.toFixed(2)} m
                 </p>
               ) : null}
               {selectedAnchor?.fused && (selectedAnchor.fused.views ?? 0) > 0 ? (
-                <p className="text-[10px] font-semibold leading-snug text-cyan-300/80">
+                <p className="text-[10px] font-semibold leading-snug text-brand-mint/80">
                   Fusion check:{' '}
                   {[
                     `${selectedAnchor.fused.views} views`,
@@ -1294,7 +1304,7 @@ export default function RoomLab() {
             <button
               type="button"
               onClick={sendToEquipment}
-              className="flex-1 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-400"
+              className="flex-1 rounded-lg bg-brand-mint px-3 py-2 text-xs font-black text-brand-navy hover:bg-brand-teal"
             >
               Send robot here
             </button>
@@ -1306,7 +1316,7 @@ export default function RoomLab() {
       {showMission && mission ? (
         <section className="absolute bottom-4 left-4 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700/80 bg-slate-950/90 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-300">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-brand-mint">
               Mission
             </p>
             <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
@@ -1354,7 +1364,7 @@ export default function RoomLab() {
                   onClick={() => changeRobot(option.id)}
                   className={`flex-1 rounded-md px-1 py-1 text-[9px] font-black uppercase tracking-wide ${
                     robotId === option.id && customRadius === null
-                      ? 'bg-cyan-500/20 text-cyan-200'
+                      ? 'bg-brand-mint/20 text-brand-mint'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
@@ -1371,7 +1381,7 @@ export default function RoomLab() {
               type="button"
               onClick={startMission}
               disabled={!mission}
-              className="flex-1 rounded-lg bg-cyan-500 px-3 py-2.5 text-sm font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              className="flex-1 rounded-lg bg-brand-mint px-3 py-2.5 text-sm font-black text-brand-navy hover:bg-brand-teal disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
               Send robot
             </button>
@@ -1392,10 +1402,10 @@ export default function RoomLab() {
         <section className="absolute bottom-5 left-1/2 z-30 w-[24rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl border border-slate-700/80 bg-slate-950/90 px-4 py-3 shadow-2xl backdrop-blur">
           <div className="flex items-center justify-between text-xs font-bold text-slate-200">
             <span>Driving to {destinationTag ?? destinationLabel ?? mission?.tag ?? 'the target'}</span>
-            <span className="text-cyan-300">{remaining.toFixed(1)} m</span>
+            <span className="text-brand-mint">{remaining.toFixed(1)} m</span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
-            <div className="h-full rounded-full bg-cyan-400 transition-[width] duration-300" style={{ width: `${Math.max(3, progress * 100)}%` }} />
+            <div className="h-full rounded-full bg-brand-mint transition-[width] duration-300" style={{ width: `${Math.max(3, progress * 100)}%` }} />
           </div>
           {nearbyEquipment.length > 0 ? (
             <p className="mt-2 text-[9px] font-black uppercase tracking-wide text-amber-300/70">
@@ -1551,7 +1561,7 @@ export default function RoomLab() {
                   setSelectedId(destinationObjectId ?? targetAnchor?.id ?? mapped?.target_object_id ?? null)
                   setArrivalDismissed(true)
                 }}
-                className="flex-1 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-400"
+                className="flex-1 rounded-lg bg-brand-mint px-3 py-2 text-xs font-black text-brand-navy hover:bg-brand-teal"
               >
                 Open equipment
               </button>
@@ -1582,7 +1592,7 @@ export default function RoomLab() {
               step={0.05}
               value={explode}
               onChange={(event) => setExplode(Number(event.target.value))}
-              className="mt-1 w-full accent-cyan-400"
+              className="mt-1 w-full accent-brand-mint"
             />
           </label>
         ) : null}
@@ -1590,6 +1600,7 @@ export default function RoomLab() {
           <button
             type="button"
             onClick={() => {
+              setTopDown(false)
               setResetToken((value) => value + 1)
               setFollow(false)
               setCameraMove(false)
@@ -1601,10 +1612,45 @@ export default function RoomLab() {
           </button>
           <button
             type="button"
+            disabled={!data?.objects.length || data.floor.height === null || !/^[+-][xyz]$/.test(data.source.up_axis)}
+            title="Hide splats above the selected height"
+            aria-pressed={topDown}
+            onClick={() => {
+              setTopDown(true)
+              setTopDownToken((value) => value + 1)
+              setView('photo')
+              setBoxedSplatsOnly(false)
+              setFollow(false)
+              setManualControl(false)
+              setCameraMove(false)
+              setFirstPerson(false)
+            }}
+            className={`px-3 py-1.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 ${topDown ? 'text-cyan-300' : ''}`}
+          >
+            Top down · height cut
+          </button>
+          {topDown ? (
+            <label className="w-48 px-3 py-2 text-[10px] text-slate-400">
+              Cut height: {cutHeight.toFixed(2)} scene units above floor
+              <input
+                type="range"
+                min={0.1}
+                max={4}
+                step={0.05}
+                value={cutHeight}
+                onChange={(event) => setCutHeight(Number(event.target.value))}
+                className="mt-1 w-full accent-cyan-400"
+              />
+              Hides splat centres above the cut, including equipment.
+            </label>
+          ) : null}
+          <button
+            type="button"
             aria-pressed={manualControl}
             onClick={() => {
               cancelPlan()
               const next = !manualControl
+              if (next) setTopDown(false)
               setManualControl(next)
               setCameraMove(false)
               setFirstPerson(false)
@@ -1614,7 +1660,7 @@ export default function RoomLab() {
                 setArrivalDismissed(true)
               }
             }}
-            className={`px-3 py-1.5 hover:bg-slate-800 ${manualControl ? 'text-cyan-300' : ''}`}
+            className={`px-3 py-1.5 hover:bg-slate-800 ${manualControl ? 'text-brand-mint' : ''}`}
           >
             {manualControl ? 'Manual control · WASD / arrows' : 'Manual control'}
           </button>
@@ -1632,7 +1678,7 @@ export default function RoomLab() {
                   setFirstPerson(false)
                   setFollow(true)
                 }}
-                className={`px-3 py-1.5 hover:bg-slate-800 ${!firstPerson ? 'text-cyan-300' : ''}`}
+                className={`px-3 py-1.5 hover:bg-slate-800 ${!firstPerson ? 'text-brand-mint' : ''}`}
               >
                 Third person
               </button>
@@ -1643,7 +1689,7 @@ export default function RoomLab() {
                   setFollow(false)
                   setFirstPerson(true)
                 }}
-                className={`px-3 py-1.5 hover:bg-slate-800 ${firstPerson ? 'text-cyan-300' : ''}`}
+                className={`px-3 py-1.5 hover:bg-slate-800 ${firstPerson ? 'text-brand-mint' : ''}`}
               >
                 First person
               </button>
@@ -1654,9 +1700,10 @@ export default function RoomLab() {
               type="button"
               onClick={() => {
                 setCameraMove(false)
+                if (!follow) setTopDown(false)
                 setFollow((value) => !value)
               }}
-              className={`px-3 py-1.5 hover:bg-slate-800 ${follow ? 'text-cyan-300' : ''}`}
+              className={`px-3 py-1.5 hover:bg-slate-800 ${follow ? 'text-brand-mint' : ''}`}
             >
               {follow ? 'Following' : 'Follow'}
             </button>
@@ -1672,7 +1719,7 @@ export default function RoomLab() {
                   setFollow(false)
                 }
               }}
-              className={`px-3 py-1.5 hover:bg-slate-800 ${cameraMove ? 'text-cyan-300' : ''}`}
+              className={`px-3 py-1.5 hover:bg-slate-800 ${cameraMove ? 'text-brand-mint' : ''}`}
             >
               {cameraMove ? 'Move camera · WASD / arrows' : 'Move camera'}
             </button>
@@ -1681,6 +1728,7 @@ export default function RoomLab() {
             type="button"
             onClick={() => {
               cancelPlan()
+              setTopDown(false)
               setResetToken((value) => value + 1)
               setCharacterResetToken((value) => value + 1)
               setRobotDeployed(false)

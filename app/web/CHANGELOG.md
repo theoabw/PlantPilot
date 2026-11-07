@@ -3,6 +3,17 @@
 Changes to the scene lab demo frontend, tracked against
 [`Feedback.md`](Feedback.md).
 
+## 2026-11-07 - Brand identity
+
+Branch: `feat/brand-identity`
+
+### Features
+
+- **The page carries the PlantPilot brand.** The header and the loading screens
+  use the logo, the tab has the favicon, the page installs with its app icons,
+  and the interface accent and the robot trim are the brand mint. State colours,
+  mapped frames and the selection glow keep their meaning and their colours.
+
 ## 2026-11-06 - The real capture
 
 Branch: `feat/spark-room`

@@ -1,4 +1,11 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/plantpilot-horizontal-on-dark.svg">
+  <img src="docs/brand/plantpilot-horizontal-on-light.svg" alt="PlantPilot" width="320">
+</picture>
+
 # PlantPilot
+
+**From scan to service.**
 
 PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival. The demo runs on the complete capture the organisers re-uploaded after the first delivery was found truncated; the capture the brief names is also processed, with its numbers reported. There is no network at demo time.
 
@@ -39,7 +46,7 @@ Build and serve the complete capture:
 make demo
 ```
 
-Open <http://127.0.0.1:8000>. The browser opens the room view. That target builds everything it serves. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
+Open <http://127.0.0.1:8000>. The browser opens the room view. That target builds everything the demo path needs. The object atlas and explode view stay empty until `make object-splats` or `make object-meshes` has run for the capture; the rest of the room view works without them. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
 
 The first delivery declares 1,506,136 gaussians in the file the brief names and only 502,483 rows hold data; the rest is unreadable, so the loader keeps the contiguous sane prefix and that scene covers part of the room. The complete capture was re-uploaded by the organisers and is the demo default. Build and serve the named capture instead:
 
@@ -94,6 +101,12 @@ During a mission, use **Follow** to track the selected character while orbiting 
 
 In **Layers**, use **Only splats in equipment boxes** to hide splats whose centres are outside all reviewed equipment boxes. Toggle it again to restore the capture. This is a visual box filter, not object segmentation: background inside a box can remain, and splats that overlap a box but have centres outside it are hidden. The control is unavailable when there are no reviewed boxes.
 
+**Top down** hides splats whose centres are above an adjustable height from the
+detected floor, initially 1.5 scene units. Tall equipment and overhead services
+are cut too, and splats below the cutoff can still overlap it. Sending the robot
+keeps this view while it moves; **Follow** switches back to the robot camera and
+**Overview** restores the original view.
+
 ## Numbers
 
 Every number comes from a run on the two supplied captures in `data/supplied/`; ingest and segmentation read the PLY, mapping and route read the generated artifacts. Times are single runs, not a benchmark.
@@ -145,5 +158,6 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 - `docs/slides.md`: the six-slide deck content and speaker notes.
 - `docs/video-script.md`: the shooting script for the demo video.
 - `docs/acceptance.md`: the checks the pipeline is held to.
+- `docs/brand/README.md`: the logo, colours and the assets for the deck and video.
 
 The code is MIT, see `LICENCE`.
