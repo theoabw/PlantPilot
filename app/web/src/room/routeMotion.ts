@@ -332,6 +332,50 @@ export type PlanIntent = {
   objectId?: string | null
 }
 
+/** Destination metadata is committed only when the latest plan finishes. */
+export type DestinationPlanState = {
+  committed: PlanIntent
+  pending: PlanIntent | null
+}
+
+type DestinationPlanAction =
+  | { type: 'begin'; intent: PlanIntent }
+  | { type: 'commit'; intent: PlanIntent; waypoint: [number, number] | null }
+  | { type: 'cancel' }
+
+/** Replans inherit the pending goal, but cancellation falls back to the committed one. */
+export function destinationTarget(state: DestinationPlanState): [number, number] | null {
+  return state.pending?.target ?? state.committed.target
+}
+
+/** Keep a pending request separate from the destination of the route still in use. */
+export function transitionDestinationPlan(
+  state: DestinationPlanState,
+  action: DestinationPlanAction,
+): DestinationPlanState {
+  if (action.type === 'begin') {
+    return { ...state, pending: supersedePlan(state.pending, action.intent) }
+  }
+  if (action.type === 'cancel') {
+    return { ...state, pending: null }
+  }
+  // A cancelled or superseded response cannot publish its destination metadata.
+  if (state.pending !== action.intent) {
+    return state
+  }
+  const intent = action.intent
+  return {
+    committed: {
+      target: nextDestination(intent.target, action.waypoint),
+      label: intent.label || state.committed.label,
+      tag: intent.tag !== undefined ? intent.tag : state.committed.tag,
+      condition: intent.condition !== undefined ? intent.condition : state.committed.condition,
+      objectId: intent.objectId !== undefined ? intent.objectId : state.committed.objectId,
+    },
+    pending: null,
+  }
+}
+
 const SAME_DESTINATION_M = 0.001
 
 /**

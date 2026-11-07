@@ -35,7 +35,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
-import { nextDestination, prefersCrouched, routeStatusText, shouldTryCrouched, supersedePlan, type PlanIntent } from './routeMotion'
+import { destinationTarget, prefersCrouched, routeStatusText, shouldTryCrouched, transitionDestinationPlan, type DestinationPlanState } from './routeMotion'
 
 type MissionTarget = {
   tag: string
@@ -168,9 +168,8 @@ export default function RoomLab() {
   const motionPausedRef = useRef(false)
   const planRequestRef = useRef(0)
   const resumeAfterPlanRef = useRef(false)
-  const pendingPlanRef = useRef<PlanIntent | null>(null)
   const initialStartRef = useRef<[number, number] | null>(null)
-  const destinationXZRef = useRef<[number, number] | null>(null)
+  const destinationPlanRef = useRef<DestinationPlanState>({ committed: { target: null }, pending: null })
 
   useEffect(() => {
     let alive = true
@@ -199,7 +198,10 @@ export default function RoomLab() {
           if (value?.target_waypoint) {
             const waypoint = value.target_waypoint
             setDestinationScene([waypoint[0], waypoint[1], waypoint[2]])
-            destinationXZRef.current = [waypoint[0], waypoint[2]]
+            destinationPlanRef.current = {
+              ...destinationPlanRef.current,
+              committed: { ...destinationPlanRef.current.committed, target: [waypoint[0], waypoint[2]] },
+            }
           }
         }
       })
@@ -577,14 +579,15 @@ export default function RoomLab() {
     } = {},
   ) => {
     const start = robotPositionRef.current ?? initialStartRef.current
-    const target = options.target ?? destinationXZRef.current
-    // A replan sent while this one is out aims at the same place, because the
-    // destination it reads is already this one. Its request replaces this one, so
-    // it takes over what this one was for.
-    const intent = supersedePlan(pendingPlanRef.current, { ...options, target })
-    pendingPlanRef.current = intent
-    const previousDestination = destinationXZRef.current
-    destinationXZRef.current = target
+    const target = options.target ?? destinationTarget(destinationPlanRef.current)
+    // A replacement inherits the pending intent without changing the destination
+    // of the route still in use. Cancellation discards only that pending intent.
+    const planning = transitionDestinationPlan(destinationPlanRef.current, {
+      type: 'begin',
+      intent: { ...options, target },
+    })
+    destinationPlanRef.current = planning
+    const intent = planning.pending!
     // The robot holds still while a replan is out, across both requests of a
     // crouch fallback, so the route it gets starts where it actually stands.
     // Only the latest request counts: an older answer is from an older position.
@@ -606,7 +609,6 @@ export default function RoomLab() {
       const resume = resumeAfterPlanRef.current
       resumeAfterPlanRef.current = false
       motionPausedRef.current = false
-      pendingPlanRef.current = null
       setRoute(result)
       const waypoint = result.target_waypoint
       let waypointXZ: [number, number] | null = null
@@ -615,20 +617,17 @@ export default function RoomLab() {
         setDestinationScene([waypoint[0], waypoint[1], waypoint[2]])
         waypointXZ = [waypoint[axes[0]], waypoint[axes[1]]]
       }
-      destinationXZRef.current = nextDestination(target, waypointXZ)
+      destinationPlanRef.current = transitionDestinationPlan(destinationPlanRef.current, {
+        type: 'commit',
+        intent,
+        waypoint: waypointXZ,
+      })
+      const destination = destinationPlanRef.current.committed
       setCrouchSpans(crouched ? result.crouch_spans_m ?? [] : [])
-      if (intent.label) {
-        setDestinationLabel(intent.label)
-      }
-      if (intent.tag !== undefined) {
-        setDestinationTag(intent.tag)
-      }
-      if (intent.condition !== undefined) {
-        setDestinationCondition(intent.condition)
-      }
-      if (intent.objectId !== undefined) {
-        setDestinationObjectId(intent.objectId)
-      }
+      setDestinationLabel(destination.label ?? null)
+      setDestinationTag(destination.tag ?? null)
+      setDestinationCondition(destination.condition ?? null)
+      setDestinationObjectId(destination.objectId ?? null)
       if (!result.reachable) {
         setRerouteNote(note ?? `No safe route for this robot at ${radius.toFixed(2)} m clearance`)
         return
@@ -672,8 +671,7 @@ export default function RoomLab() {
         // The old route is still valid, so a paused robot carries on along it.
         resumeAfterPlanRef.current = false
         motionPausedRef.current = false
-        pendingPlanRef.current = null
-        destinationXZRef.current = previousDestination
+        destinationPlanRef.current = transitionDestinationPlan(destinationPlanRef.current, { type: 'cancel' })
         setRerouteNote('Route replan failed')
       })
   }
@@ -684,7 +682,7 @@ export default function RoomLab() {
     planRequestRef.current += 1
     resumeAfterPlanRef.current = false
     motionPausedRef.current = false
-    pendingPlanRef.current = null
+    destinationPlanRef.current = transitionDestinationPlan(destinationPlanRef.current, { type: 'cancel' })
   }
 
   const obstacleBlockers = () =>
@@ -696,7 +694,7 @@ export default function RoomLab() {
     ])
 
   const replanForRobot = (radius: number, note?: string) => {
-    planRoute(obstacleBlockers(), radius, robot, note, { target: destinationXZRef.current })
+    planRoute(obstacleBlockers(), radius, robot, note, { target: destinationTarget(destinationPlanRef.current) })
   }
 
   const changeRobot = (id: RobotOption['id'], radius?: number) => {
@@ -714,7 +712,7 @@ export default function RoomLab() {
       chosenRadius,
       option,
       `${chosenRadius.toFixed(2)} m clearance for the ${option.label.toLowerCase()}`,
-      { target: destinationXZRef.current },
+      { target: destinationTarget(destinationPlanRef.current) },
     )
   }
 
@@ -753,7 +751,7 @@ export default function RoomLab() {
   }, [selectedObject])
 
   const startMission = () => {
-    if (!routeReady && !destinationXZRef.current) {
+    if (!routeReady && !destinationTarget(destinationPlanRef.current)) {
       return
     }
     setBrowserOpen(false)
@@ -763,7 +761,7 @@ export default function RoomLab() {
     // Always plan from where the robot stands now, so it can walk from one
     // destination to the next without teleporting back to the dock.
     planRoute(obstacleBlockers(), clearanceRadius, robot, undefined, {
-      target: destinationXZRef.current,
+      target: destinationTarget(destinationPlanRef.current),
       startAfter: true,
       label: destinationLabel ?? undefined,
       tag: destinationTag,
@@ -813,7 +811,7 @@ export default function RoomLab() {
     ])
     blockers.push(blocker)
     planRoute(blockers, clearanceRadius, robot, 'Rerouted live · obstacles on the path', {
-      target: destinationXZRef.current,
+      target: destinationTarget(destinationPlanRef.current),
     })
   }
 

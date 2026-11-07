@@ -169,6 +169,104 @@ test('the pending labels win over ones filled in from the previous trip', () => 
   assert.equal(merged.startAfter, true)
 })
 
+const destinationA = {
+  target: [1, 2], label: 'Pump A', tag: 'P-A', condition: 'Watch', objectId: 'A',
+}
+const destinationB = {
+  target: [3, 4], label: 'Motor B', tag: 'M-B', condition: 'Healthy', objectId: 'B',
+}
+const destinationC = {
+  target: [5, 6], label: 'Valve C', tag: 'V-C', condition: 'Fault', objectId: 'C',
+}
+
+function withCommittedDestination(intent) {
+  const planning = motion.transitionDestinationPlan({ committed: { target: null }, pending: null }, {
+    type: 'begin', intent,
+  })
+  return motion.transitionDestinationPlan(planning, {
+    type: 'commit', intent: planning.pending, waypoint: [9, 9],
+  })
+}
+
+for (const control of ['Reset', 'Manual control']) {
+  test(`${control} during a pending destination restores the committed goal for Start`, () => {
+    let state = withCommittedDestination(destinationA)
+    state = motion.transitionDestinationPlan(state, { type: 'begin', intent: { ...destinationB, startAfter: true } })
+    const cancelled = state.pending
+    assert.deepEqual(motion.destinationTarget(state), destinationB.target)
+    assert.deepEqual(state.committed, destinationA)
+
+    // Both controls discard the pending plan without publishing its metadata.
+    state = motion.transitionDestinationPlan(state, { type: 'cancel' })
+    assert.deepEqual(motion.destinationTarget(state), destinationA.target)
+    assert.deepEqual(state.committed, destinationA)
+    const afterCancel = state
+    assert.equal(motion.transitionDestinationPlan(state, {
+      type: 'commit', intent: cancelled, waypoint: [3.2, 4.2],
+    }), afterCancel)
+
+    state = motion.transitionDestinationPlan(state, {
+      type: 'begin', intent: { ...state.committed, target: motion.destinationTarget(state), startAfter: true },
+    })
+    assert.deepEqual(state.pending, { ...destinationA, startAfter: true })
+    state = motion.transitionDestinationPlan(state, { type: 'commit', intent: state.pending, waypoint: [1.2, 2.2] })
+    // The coordinates, labels, condition and arrival-facing object all stay on A.
+    assert.deepEqual(state.committed, destinationA)
+    assert.equal(state.pending, null)
+  })
+}
+
+test('overlapping requests that fail restore the last committed destination, not an uncommitted one', () => {
+  let state = withCommittedDestination(destinationA)
+  state = motion.transitionDestinationPlan(state, { type: 'begin', intent: { ...destinationB, startAfter: true } })
+  const superseded = state.pending
+  state = motion.transitionDestinationPlan(state, { type: 'begin', intent: { ...destinationC, startAfter: true } })
+  const failed = state.pending
+  assert.deepEqual(motion.destinationTarget(state), destinationC.target)
+  assert.equal(motion.transitionDestinationPlan(state, {
+    type: 'commit', intent: superseded, waypoint: destinationB.target,
+  }), state)
+
+  // A final request failure takes the same discard transition as cancellation.
+  state = motion.transitionDestinationPlan(state, { type: 'cancel' })
+  assert.deepEqual(state.committed, destinationA)
+  assert.deepEqual(motion.destinationTarget(state), destinationA.target)
+  assert.equal(state.pending, null)
+  assert.equal(motion.transitionDestinationPlan(state, {
+    type: 'commit', intent: failed, waypoint: destinationC.target,
+  }), state)
+  state = motion.transitionDestinationPlan(state, {
+    type: 'begin', intent: { target: motion.destinationTarget(state), startAfter: true },
+  })
+  state = motion.transitionDestinationPlan(state, { type: 'commit', intent: state.pending, waypoint: [1.1, 2.1] })
+  assert.deepEqual(state.committed, destinationA)
+})
+
+test('a replacement replan inherits the pending destination and commits its metadata together', () => {
+  let state = withCommittedDestination(destinationA)
+  state = motion.transitionDestinationPlan(state, { type: 'begin', intent: { ...destinationB, startAfter: true } })
+  state = motion.transitionDestinationPlan(state, {
+    type: 'begin', intent: { ...destinationA, target: motion.destinationTarget(state) },
+  })
+  assert.deepEqual(state.pending, { ...destinationB, startAfter: true })
+  assert.deepEqual(state.committed, destinationA)
+  state = motion.transitionDestinationPlan(state, { type: 'commit', intent: state.pending, waypoint: [3.2, 4.2] })
+  assert.deepEqual(state.committed, destinationB)
+  assert.deepEqual(motion.destinationTarget(state), destinationB.target)
+  assert.equal(state.pending, null)
+})
+
+test('committing metadata preserves omitted fields but honors explicit nulls', () => {
+  let state = withCommittedDestination(destinationA)
+  state = motion.transitionDestinationPlan(state, {
+    type: 'begin', intent: { target: destinationA.target, tag: null, condition: null, objectId: null },
+  })
+  state = motion.transitionDestinationPlan(state, { type: 'commit', intent: state.pending, waypoint: null })
+  assert.deepEqual(state.committed, {
+    target: destinationA.target, label: destinationA.label, tag: null, condition: null, objectId: null,
+  })
+})
+
 test('a reachable route with nowhere to go says the robot is there, not that it failed', () => {
   assert.equal(motion.routeStatusText({ reachable: true, reason: null }), 'The robot is already at this stop.')
   assert.equal(
