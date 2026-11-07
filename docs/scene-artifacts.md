@@ -598,7 +598,7 @@ second scene in its own right, and it is the better demo material.
 | Objects framed | 150 (capped from 380 clusters) | `make objects` |
 | Points inside objects | 47.4 percent | `make objects` |
 | Largest object share | 1.2 percent of points | `make objects` |
-| Extraction time | 10.2 s | `make objects` |
+| Extraction time | 10.71 s | `make objects` |
 
 Run it with its own paths, so the boiler room artifacts stay where the other
 stages expect them:

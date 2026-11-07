@@ -34,7 +34,7 @@ Every stage writes a file, so any number here can be opened and checked. The art
 **On the slide**
 - The named capture declares 1,506,136 gaussians; only 502,483 rows hold data, so the loader keeps the 33 percent sane prefix.
 - Plane removal, voxel clustering and oversized-component splits produce 130 framed objects.
-- Largest object holds 3.7 percent of points, median 431 points, extraction 3.35 s.
+- Largest object holds 3.7 percent of points, median 431 points, extraction 2.73 s.
 - Classes such as valve, pump, duct and motor are geometric proposals with a confidence, never identifications.
 - The brief allows procedural mapping; the interface shows confidence.
 
@@ -47,9 +47,9 @@ Density is the first rubric line at 30 percent, and 130 frames is the answer to 
 ## Slide 4: The route avoids the boxes it extracted
 
 **On the slide**
-- Obstacle cells come from the extracted object boxes, not point density alone; the artifact records `obstacles_from: objects`.
+- Obstacle cells come from the extracted object boxes and from the capture's own points in the robot's band; the artifact records `obstacles_from: objects+structure`.
 - The grid is built once and inflated once, with a 0.20 m agent radius and a 0.02 m margin.
-- The route to P-005 is 5.19 m with 3 path points and 0.58 m minimum clearance; A* takes 15.9 ms.
+- The route to P-005 on the named capture is 5.19 m with 3 path points and 0.58 m minimum clearance; A* takes 20.0 ms.
 - Before this, a saturated point grid fell back to an empty one and the route ran through machines.
 
 **Visual**
@@ -61,11 +61,11 @@ This fixes the failure easiest to see in a demo: a robot walking through a boile
 ## Slide 5: The demo a judge can drive
 
 **On the slide**
-- The robot follows the planned polyline at 1.15 m/s with a follow camera in the browser room view.
+- On the complete capture, the robot follows the planned polyline at 0.5 m/s with a follow camera in the browser room view.
 - Nearby mapped assets highlight as it passes; the panel shows tag, class and state.
 - Arrival triggers the diagnosis card: `attention_required`, health 44, `FOULING` with high urgency.
 - The card rests on 144 telemetry rows, 34 alarms, 9 data-quality cases and 2 cited documents; next safe check: inspect the hydraulic path.
-- Viewer asset: 502,483 gaussians, 28,139,499 bytes, local only.
+- Viewer asset on the complete capture: 1,386,351 gaussians, 77,636,108 bytes, local only.
 
 **Visual**
 Screenshot with the robot mid route, one nearby asset highlighted, the diagnosis card open, and the evidence line inset.

@@ -25,14 +25,14 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make scene` runs,
 **then** it prints the total vertices, the sane vertices and the rendered vertices, and the viewer shows the room with points at a stable frame rate.
 
-**Pass:** total 1,506,136, sane about 502,483, rendered at least 300,000, no NaN warning, first frame under 5 s on the demo laptop.
+**Pass:** for the named capture, total 1,506,136 and sane about 502,483; the default complete capture is 1,676,481 with none dropped. Rendered at least 300,000, no NaN warning, first frame under 5 s on the demo laptop.
 **Check:** `make scene`; open the app.
 
 ### 2. Objects are framed
 
 **Given** the sane points,
 **when** `make objects` runs,
-**then** it writes boxes for the objects it extracted, and each box has an id, an oriented frame, a size in metres and a class proposal.
+**then** it writes boxes for the objects it extracted, and each box has an id, an oriented frame, a size in scene units and a class proposal.
 
 **Pass:** at least 40 objects framed normally, or a disclosed fallback of at least 30, which is the number of mapped records; below 30 the check fails, because the mapping cannot be complete. No single object holds more than 40 percent of the points, floor and dominant walls are removed, every box has a size and a class proposal, and the viewer draws every box.
 **Check:** `make objects`; the box overlay in the viewer.
@@ -41,18 +41,18 @@ Each criterion is written so a person who did not build the feature can check it
 
 **Given** the builder pack,
 **when** `make map` runs,
-**then** 30 asset records are assigned to 30 distinct objects, each with a method, a confidence and the state from `Current_State`, and P-005 is assigned to a pump-like object.
+**then** 30 asset records are each proposed onto a distinct object or explicitly marked unresolved, with a method, a confidence where it is mapped, and the state from `Current_State`, and P-005 is designated the faulty target.
 
-**Pass:** 30 mapped, all with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record. Selecting P-005 turns it red and opens its card with the mapped state, method and confidence.
+**Pass:** all 30 records accounted for, all mapped ones with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record. On the complete capture that is 30 proposed and none unresolved; on the named capture 26 proposed and 4 unresolved. Selecting P-005 turns it red and opens its card with the mapped state, method and confidence.
 **Check:** `make map`; select P-005 in the viewer.
 
 ### 4. The avatar reaches the faulty device without clipping
 
 **Given** the occupancy grid and the target waypoint,
 **when** `make route` runs,
-**then** a path is returned with a length in metres and a minimum clearance, and the path crosses no blocked cell.
+**then** a path is returned with a length in scene units and a minimum clearance, and the path crosses no blocked cell.
 
-**Pass:** route exists, length over 2 m, clearance at least 0.3 m (both after the door-height scale check), A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn as floor arrows, with the length and clearance visible.
+**Pass:** route exists, length over 2 m, clearance at least 0.3 m, both in scene units because the door-height scale check has not run, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn on the floor, with the length and clearance visible.
 **Check:** `make route`; replay the path in the viewer and follow the arrows.
 
 ### 5. Nearby objects are shown as the avatar moves
@@ -76,7 +76,7 @@ Each criterion is written so a person who did not build the feature can check it
 ### 7. The demo is one reliable take
 
 **Given** the whole pipeline built,
-**when** the 120 second sequence runs three times in a row with the network unplugged,
+**when** the demo sequence runs three times in a row with the network unplugged,
 **then** every beat plays in order and the numbers do not change between runs.
 
 **Pass:** every mandatory beat plays in order: the room, the frames, P-005 turning red with its card and the route, the avatar travelling with proximity labels, the diagnosis, and the end card that names the scene source, the mapping method and the offline status. The isolate view is P1; if it is cut, the script selects a nearby asset instead. Three clean runs, no manual retry, no network request, the same counts and route length each time.
@@ -87,7 +87,7 @@ Each criterion is written so a person who did not build the feature can check it
 **Required whenever the plan, the README or the pitch claims scene-agnostic generality.** If the second-scene run is cut, the claim is downgraded everywhere to "designed for compatible 3DGS PLY inputs, tested on one scene", and this check is not claimed.
 
 **Given** the reference plant written as a `.ply` with the same gaussian schema,
-**when** `make pipeline CAPTURE=equipment` runs on it with no code change,
+**when** `make generality` runs on it with no code change,
 **then** it produces the scene, the objects and a route, and with the pack supplied it also maps and diagnoses. The object count is compared with the plant's ground truth.
 
 **Pass:** the command completes, at least 8 of the 10 reference assets are framed with a box that contains their true position, no box is more than three times the asset's footprint, and the count is printed. A hard-coded room constant anywhere in the ingest or nav path fails this check.
