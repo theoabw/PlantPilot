@@ -76,3 +76,23 @@ test('a character on a blocked cell can walk out, but not off the grid', () => {
   assert.deepEqual(motion.slideStep({ x: 0, z: 0 }, { x: 0.1, z: 0 }, free, () => true), { x: 0.1, z: 0 })
   assert.equal(motion.slideStep({ x: 0, z: 0 }, { x: 0.1, z: 0 }, free, () => false), null)
 })
+
+test('a sight line is blocked by structure between the ends', () => {
+  const wall = (point) => Math.abs(point.x - 1) < 0.06
+  assert.equal(motion.sightClear({ x: 0, y: 1, z: 0 }, { x: 2, y: 1, z: 0 }, wall), false)
+  assert.equal(motion.sightClear({ x: 0, y: 1, z: 0 }, { x: 0.8, y: 1, z: 0 }, wall), true)
+})
+
+test('structure right beside the focus does not block the sight line', () => {
+  const wallAtFocus = (point) => point.x < 0.2
+  assert.equal(motion.sightClear({ x: 0, y: 1, z: 0 }, { x: 2, y: 1, z: 0 }, wallAtFocus), true)
+})
+
+test('easing between opposite offsets keeps the camera away from the robot', () => {
+  let offset = { x: 0, y: 0.8, z: -2 }
+  for (let frame = 0; frame < 600; frame += 1) {
+    offset = motion.easeFollowOffset(offset, { x: 0, y: 0.8, z: 2 }, 1 / 60)
+    assert.ok(Math.hypot(offset.x, offset.z) > 1.9)
+  }
+  assert.ok(offset.z > 1)
+})

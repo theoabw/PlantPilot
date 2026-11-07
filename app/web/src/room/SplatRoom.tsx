@@ -7,7 +7,7 @@ import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
-import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, joinRouteToRobot, slideStep } from './routeMotion'
+import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, sightClear, slideStep } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -179,6 +179,21 @@ const followTargetHeight: Record<RobotProfile, number> = {
   amr: 0.28,
   cargo: 0.45,
 }
+
+// Route points and the robot's origin sit this far above the floor.
+const ROBOT_FLOOR_OFFSET_M = 0.07
+// The room's overhead structure starts around 1.95 m, and the camera's obstacle
+// band ends at 1.85 m: above this the band says nothing about the camera.
+const CAMERA_MAX_HEIGHT_M = 1.75
+// The first attempts stay near the wanted view; the later ones are closer or
+// from the other side, for a robot boxed in where only one direction sees it.
+const CAMERA_ATTEMPTS: [number, number, number][] = [
+  [0.3, 1, 1.0], [-0.3, 1, 1.0], [0.6, 0.92, 1.15], [-0.6, 0.92, 1.15],
+  [0.9, 0.8, 0.85], [-0.9, 0.8, 0.85], [1.25, 0.75, 1.1], [-1.25, 0.75, 1.1],
+  [0, 0.8, 1.5], [0.45, 0.62, 0.7], [-0.45, 0.62, 0.7], [0, 0.6, 1.85],
+  [1.7, 0.7, 0.9], [-1.7, 0.7, 0.9], [2.3, 0.6, 0.9], [-2.3, 0.6, 0.9],
+  [Math.PI, 0.6, 0.9], [0.3, 0.5, 0.75], [-0.3, 0.5, 0.75],
+]
 
 const followDistances: Record<RobotProfile, number> = {
   humanoid: 2.55,
@@ -569,6 +584,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion: Motion
     follow: boolean
     followOffset: THREE.Vector3 | null
+    followOffsetFromUser: boolean
     orbitInputUntil: number
     orbitPointerActive: boolean
     cameraMove: boolean
@@ -939,6 +955,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         && (state.orbitPointerActive || performance.now() <= state.orbitInputUntil)
       ) {
         state.followOffset = camera.position.clone().sub(controls.target)
+        state.followOffsetFromUser = true
         state.smoothedCamera = camera.position.clone()
       }
     }
@@ -1098,22 +1115,32 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       return 1.5
     }
-    const segmentFree = (from: THREE.Vector3, to: THREE.Vector3, marginM = 0.12): boolean => {
-      const steps = Math.max(3, Math.ceil(from.distanceTo(to) / 0.1))
-      for (let step = 1; step < steps; step += 1) {
-        const point = from.clone().lerp(to, step / steps)
-        if (!cameraFree(point, marginM)) {
-          return false
-        }
+    const hasSight = (focus: THREE.Vector3, candidate: THREE.Vector3): boolean => {
+      const mask = stateRef.current?.cameraMask
+      if (!mask) {
+        return true
       }
-      return true
+      const probe = new THREE.Vector3()
+      return sightClear(focus, candidate, (point) => {
+        const xz = sceneXZOf(probe.set(point.x, point.y, point.z))
+        return xz
+          ? cellBlocked(Math.floor((xz[0] - mask.x0) / mask.cell_m), Math.floor((xz[1] - mask.z0) / mask.cell_m))
+          : false
+      })
     }
     const safeCameraPosition = (desired: THREE.Vector3, focus: THREE.Vector3): THREE.Vector3 => {
-      if (!stateRef.current?.cameraMask) {
+      const state = stateRef.current
+      if (!state?.cameraMask) {
         return desired
       }
-      if (cameraFree(desired, 0.12) && nearestStructure(desired) > 0.25) {
-        stateRef.current.stickyCamera = desired.clone().sub(focus)
+      const robot = state.motion.robot
+      const maxY = robot
+        ? robot.position.y - ROBOT_FLOOR_OFFSET_M + CAMERA_MAX_HEIGHT_M
+        : Number.POSITIVE_INFINITY
+      // A height the user orbited to is theirs to keep; the sight line still holds.
+      const heightFine = state.followOffsetFromUser || desired.y <= maxY
+      if (heightFine && cameraFree(desired, 0.12) && nearestStructure(desired) > 0.25 && hasSight(focus, desired)) {
+        state.stickyCamera = desired.clone().sub(focus)
         return desired
       }
       const baseDirection = desired.clone().sub(focus)
@@ -1124,53 +1151,54 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       baseDirection.normalize()
       const up = new THREE.Vector3(0, 1, 0)
-      const attempts: [number, number, number][] = [
-        [0.3, 1, 1.0], [-0.3, 1, 1.0], [0.6, 0.92, 1.15], [-0.6, 0.92, 1.15],
-        [0.9, 0.8, 0.85], [-0.9, 0.8, 0.85], [1.25, 0.75, 1.1], [-1.25, 0.75, 1.1],
-        [0, 0.8, 1.5], [0.45, 0.62, 0.7], [-0.45, 0.62, 0.7], [0, 0.6, 1.85],
-      ]
+      // A position that cannot see the robot only wins when no other is free.
       let best: THREE.Vector3 | null = null
       let bestScore = -Infinity
-      for (const [angle, distanceScale, heightM] of attempts) {
+      let blind: THREE.Vector3 | null = null
+      let blindScore = -Infinity
+      for (const [angle, distanceScale, heightM] of CAMERA_ATTEMPTS) {
         const direction = baseDirection.clone().applyAxisAngle(up, angle)
         const horizontal = Math.max(0.85, length * distanceScale)
         const candidate = new THREE.Vector3(
           focus.x + direction.x * horizontal,
-          Math.max(focus.y + heightM, desired.y - 0.4),
+          Math.min(maxY, Math.max(focus.y + heightM, desired.y - 0.4)),
           focus.z + direction.z * horizontal,
         )
         if (!cameraFree(candidate, 0.1)) {
           continue
         }
-        const clearance = nearestStructure(candidate)
-        const sightLine = segmentFree(focus, candidate, 0.05) ? 0.25 : 0
-        const score = clearance + sightLine - 0.14 * Math.abs(angle) - 0.18 * (1 - distanceScale)
-        if (score > bestScore) {
-          bestScore = score
-          best = candidate
+        const score = nearestStructure(candidate) - 0.14 * Math.abs(angle) - 0.18 * (1 - distanceScale)
+        if (hasSight(focus, candidate)) {
+          if (score > bestScore) {
+            bestScore = score
+            best = candidate
+          }
+        } else if (score > blindScore) {
+          blindScore = score
+          blind = candidate
         }
       }
-      const previousOffset = stateRef.current?.stickyCamera ?? null
-      const previous = previousOffset ? focus.clone().add(previousOffset) : null
-      let chosen = best
-      if (best && previous && cameraFree(previous, 0.1)) {
-        const previousClearance = nearestStructure(previous)
-        const previousSightline = segmentFree(focus, previous, 0.05) ? 0.25 : 0
-        const previousScore = previousClearance + previousSightline
-        // Keep the previous spot unless the new one is clearly better. Without
-        // this the candidate search flips between symmetric aisle positions and
-        // the camera appears to flicker while tracking.
-        if (previousScore >= bestScore - 0.2) {
-          chosen = previous
-        }
+      const previous = state.stickyCamera ? focus.clone().add(state.stickyCamera) : null
+      let chosen = best ?? blind
+      // Keep the previous spot unless the new one is clearly better. Without
+      // this the candidate search flips between symmetric aisle positions and
+      // the camera appears to flicker while tracking.
+      if (
+        previous
+        && previous.y <= maxY + 0.01
+        && cameraFree(previous, 0.1)
+        && hasSight(focus, previous)
+        && (!best || nearestStructure(previous) >= bestScore - 0.2)
+      ) {
+        chosen = previous
       }
       if (chosen) {
-        stateRef.current.stickyCamera = chosen.clone().sub(focus)
+        state.stickyCamera = chosen.clone().sub(focus)
         return chosen
       }
-      // Guaranteed escape: directly above the robot, above the avoidance band.
-      const escape = new THREE.Vector3(focus.x + 0.18, focus.y + 2.35, focus.z + 0.18)
-      stateRef.current.stickyCamera = escape.clone().sub(focus)
+      // Nothing is free: stand over the robot, as high as the room allows.
+      const escape = new THREE.Vector3(focus.x + 0.18, Math.min(maxY, focus.y + 2.35), focus.z + 0.18)
+      state.stickyCamera = escape.clone().sub(focus)
       return escape
     }
     if (stateRef.current) {
@@ -1194,6 +1222,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         .add(new THREE.Vector3(0, lookHeight + 0.8, 0))
       const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, lookHeight, 0))
       const state = stateRef.current
+      // Drift back behind a driving robot, so it walks away from the camera
+      // instead of toward it. A view the user orbited to stays, and manual walking
+      // is relative to the camera, so turning the camera there would curve it.
+      if (state?.followOffset && state.motion.active && !state.manualControl && !state.followOffsetFromUser) {
+        const eased = easeFollowOffset(state.followOffset, rawDesired.clone().sub(desiredTarget), dt)
+        state.followOffset.set(eased.x, eased.y, eased.z)
+      }
       const followPosition = state?.followOffset
         ? desiredTarget.clone().add(state.followOffset)
         : safeCameraPosition(rawDesired, desiredTarget)
@@ -1644,6 +1679,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       },
       follow: followRef.current,
       followOffset: null,
+      followOffsetFromUser: false,
       orbitInputUntil: 0,
       orbitPointerActive: false,
       cameraMove: cameraMoveRef.current,
@@ -2740,6 +2776,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     state.stickyCamera = null
     state.smoothedCamera = null
+    // A new route is a new view: the offset was chosen for the old one.
+    if (!manualControl) {
+      state.followOffset = null
+      state.followOffsetFromUser = false
+    }
 
     if (!route || !route.reachable || route.path.length === 0) {
       if (previousRobot) {
@@ -2903,6 +2944,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       scenePosition.getComponent(axes[1]),
     ]
     state.followOffset = null
+    state.followOffsetFromUser = false
     state.smoothedCamera = null
     state.stickyCamera = null
     state.updateArrows?.()
@@ -2942,6 +2984,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         stateRef.current.followTransitionStart = performance.now()
         stateRef.current.smoothedCamera = null
         stateRef.current.followOffset = null
+        stateRef.current.followOffsetFromUser = false
         stateRef.current.orbitPointerActive = false
       }
     }
@@ -2980,6 +3023,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       state.manualYaw = state.motion.robot.rotation.y + Math.PI
       state.manualPitch = 0
       state.followOffset = null
+      state.followOffsetFromUser = false
     } else if (manualControl && state.follow && state.motion.robot) {
       const person = state.motion.robot
       const forward = new THREE.Vector3(0, 0, 1)
@@ -2994,6 +3038,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       state.controls.target.copy(target)
       state.camera.lookAt(target)
       state.followOffset = eye.sub(target)
+      state.followOffsetFromUser = false
       state.smoothedCamera = state.camera.position.clone()
       state.followTransitionStart = performance.now()
     }
