@@ -31,3 +31,30 @@ test('a snapped waypoint never replaces the requested destination', () => {
   assert.deepEqual(motion.nextDestination(null, [1.4, 2.6]), [1.4, 2.6])
   assert.equal(motion.nextDestination(null, null), null)
 })
+
+test('a new route starts from the robot, not from the planned first point', () => {
+  const robot = { x: 0, y: 0, z: 0, id: 'robot' }
+  const path = [{ x: 0.3, y: 0, z: 0.4 }, { x: 3, y: 0, z: 0 }]
+  const joined = motion.joinRouteToRobot(path, robot)
+  assert.equal(joined.points[0], robot)
+  assert.equal(joined.points.length, 3)
+  assert.ok(Math.abs(joined.offsetM - 0.5) < 1e-9)
+})
+
+test('a robot almost on the first point replaces it instead of adding a stub', () => {
+  const robot = { x: 0, y: 0, z: 0 }
+  const joined = motion.joinRouteToRobot([{ x: 0.01, y: 0, z: 0 }, { x: 3, y: 0, z: 0 }], robot)
+  assert.equal(joined.points.length, 2)
+  assert.equal(joined.points[0], robot)
+  assert.equal(joined.offsetM, 0)
+})
+
+test('a robot far from the route does not get a line through the room', () => {
+  const path = [{ x: 5, y: 0, z: 0 }, { x: 6, y: 0, z: 0 }]
+  assert.equal(motion.joinRouteToRobot(path, { x: 0, y: 0, z: 0 }).points, path)
+})
+
+test('a path with no direction keeps the current heading', () => {
+  assert.equal(motion.headingFromTangent(0, 0, 1.25), 1.25)
+  assert.ok(Math.abs(motion.headingFromTangent(1, 0, 0) - Math.PI / 2) < 1e-9)
+})

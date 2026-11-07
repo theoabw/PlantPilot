@@ -7,7 +7,7 @@ import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
-import { CAMERA_MAX_SPEED_M_S, cappedStep } from './routeMotion'
+import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, joinRouteToRobot } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -73,6 +73,7 @@ type Props = {
   obstacleMode: boolean
   obstacles: [number, number][]
   robotPositionRef: { current: [number, number] | null }
+  motionPausedRef: { current: boolean }
   onPlaceObstacle: (point: [number, number]) => void
   showOccupancy: boolean
   showRoute: boolean
@@ -508,7 +509,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -1018,7 +1019,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const position = motion.curve.getPointAt(t)
       const tangent = motion.curve.getTangentAt(t)
       motion.robot.position.copy(position)
-      const targetHeading = Math.atan2(tangent.x, tangent.z)
+      const targetHeading = headingFromTangent(tangent.x, tangent.z, motion.heading ?? motion.robot.rotation.y)
       if (motion.heading === null) {
         motion.heading = targetHeading
       } else {
@@ -1357,6 +1358,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       if (!motion || !motion.active || !motion.robot || !motion.curve) {
         return
       }
+      // A replan is on its way and will start from here, so hold still instead
+      // of being pulled back when the answer arrives.
+      if (motionPausedRef.current) {
+        return
+      }
       // slow enough to watch the proximity highlights change during the demo
       motion.travelled = Math.min(motion.total, motion.travelled + 0.5 * dt)
       motion.arrowOffset = (motion.arrowOffset + 0.9 * dt) % Math.max(0.01, motion.total)
@@ -1412,7 +1418,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           animated(
             now / 1000,
             live?.manualControl ? live.manualTravelled : live?.motion.travelled ?? 0,
-            live?.manualControl ? manualMoving : live?.motion.active ?? false,
+            live?.manualControl ? manualMoving : (live?.motion.active ?? false) && !motionPausedRef.current,
           )
           if (stateRef.current?.motion.active) {
             renderRef.current()
@@ -2768,7 +2774,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     // planner returns a reachable route containing only that point. Keep the
     // robot visible by representing it as a stationary two-point path.
     const routePath = route.path.length === 1 ? [route.path[0], route.path[0]] : route.path
-    const points = routePath.map(toWorld)
+    const planned = routePath.map(toWorld)
+    const liveRobot = !manualControl && previousRobot
+      ? previousRobot.position.clone().setY(planned[0].y)
+      : null
+    const { points } = joinRouteToRobot(planned, liveRobot)
     const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5)
     curve.arcLengthDivisions = 400
     const totalLength = Math.max(0.01, curve.getLength())
@@ -2903,7 +2913,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.active = true
     motion.travelled = 0
     motion.reached = false
-    motion.heading = null
+    // Turn from the heading the robot has rather than snapping onto the route.
+    // The curve starts under a robot that was on it, so this copy does not move
+    // one; only a robot too far away to be on the route is placed on its start.
+    motion.heading = motion.robot.rotation.y
     motion.arrowOffset = 0
     if (motion.curve) {
       motion.robot.position.copy(motion.curve.getPointAt(0))

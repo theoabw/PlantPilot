@@ -44,3 +44,38 @@ export function nextDestination(
 ): [number, number] | null {
   return requested ?? waypoint
 }
+
+/** A live robot further than this from a new route's start is not on it. */
+export const ROUTE_JOIN_LIMIT_M = 1.5
+/** Closer than this, the robot's position simply replaces the first point. */
+const ROUTE_JOIN_MERGE_M = 0.05
+
+/**
+ * Join a new route to where the robot actually stands.
+ *
+ * The planner snaps its start to a free cell, and the robot may have stopped a
+ * little after the request was sent, so the first path point is rarely under
+ * the robot. Starting the curve from the robot means nothing jumps when a trip
+ * begins. A robot too far away to be on this route keeps the route as planned.
+ */
+export function joinRouteToRobot<T extends Point3>(
+  points: T[],
+  robot: T | null,
+): { points: T[]; offsetM: number } {
+  if (!robot || points.length === 0) {
+    return { points, offsetM: 0 }
+  }
+  const gap = Math.hypot(robot.x - points[0].x, robot.z - points[0].z)
+  if (gap > ROUTE_JOIN_LIMIT_M) {
+    return { points, offsetM: 0 }
+  }
+  if (gap < ROUTE_JOIN_MERGE_M) {
+    return { points: [robot, ...points.slice(1)], offsetM: 0 }
+  }
+  return { points: [robot, ...points], offsetM: gap }
+}
+
+/** Heading of a tangent, or the current heading when there is no direction. */
+export function headingFromTangent(x: number, z: number, current: number): number {
+  return Math.hypot(x, z) < 1e-4 ? current : Math.atan2(x, z)
+}

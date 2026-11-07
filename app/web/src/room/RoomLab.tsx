@@ -171,6 +171,9 @@ export default function RoomLab() {
   const [characterResetToken, setCharacterResetToken] = useState(0)
   const [arrivalDismissed, setArrivalDismissed] = useState(false)
   const robotPositionRef = useRef<[number, number] | null>(null)
+  const motionPausedRef = useRef(false)
+  const planRequestRef = useRef(0)
+  const resumeAfterPlanRef = useRef(false)
   const initialStartRef = useRef<[number, number] | null>(null)
   const destinationXZRef = useRef<[number, number] | null>(null)
 
@@ -562,12 +565,27 @@ export default function RoomLab() {
   ) => {
     const start = robotPositionRef.current ?? initialStartRef.current
     const target = options.target ?? destinationXZRef.current
+    // The robot holds still while a replan is out, across both requests of a
+    // crouch fallback, so the route it gets starts where it actually stands.
+    // Only the latest request counts: an older answer is from an older position.
+    const request = planRequestRef.current + 1
+    planRequestRef.current = request
+    if (driving) {
+      motionPausedRef.current = true
+      resumeAfterPlanRef.current = true
+    }
     const planWithHeight = (height: number, standingHeightM: number | null = null) =>
       fetchReroute(blockers, start, radius, height, {
         target: target ?? null,
         standingHeightM,
       })
     const finish = (result: RoomRoute, crouched: boolean) => {
+      if (request !== planRequestRef.current) {
+        return
+      }
+      const resume = resumeAfterPlanRef.current
+      resumeAfterPlanRef.current = false
+      motionPausedRef.current = false
       setRoute(result)
       const waypoint = result.target_waypoint
       let waypointXZ: [number, number] | null = null
@@ -603,7 +621,7 @@ export default function RoomLab() {
         setFollow(true)
         setArrivalDismissed(false)
         setTripToken((value) => value + 1)
-      } else if (driving) {
+      } else if (resume) {
         setTripToken((value) => value + 1)
       }
     }
@@ -625,7 +643,15 @@ export default function RoomLab() {
           )
           .catch(() => finish(result, false))
       })
-      .catch(() => setRerouteNote('Route replan failed'))
+      .catch(() => {
+        if (request !== planRequestRef.current) {
+          return
+        }
+        // The old route is still valid, so a paused robot carries on along it.
+        resumeAfterPlanRef.current = false
+        motionPausedRef.current = false
+        setRerouteNote('Route replan failed')
+      })
   }
 
   const obstacleBlockers = () =>
@@ -817,6 +843,7 @@ export default function RoomLab() {
             obstacleMode={obstacleMode}
             obstacles={obstacles}
             robotPositionRef={robotPositionRef}
+            motionPausedRef={motionPausedRef}
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}
