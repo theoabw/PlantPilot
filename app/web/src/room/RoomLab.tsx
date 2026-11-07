@@ -701,6 +701,7 @@ export default function RoomLab({ onLeave }: Props) {
             hideSplat={view === 'objects'}
             explode={explode}
             objectAssets={objectAssets}
+            occluderObjects={reviewed}
             obstacleMode={obstacleMode}
             obstacles={obstacles}
             robotPositionRef={robotPositionRef}
