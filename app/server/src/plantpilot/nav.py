@@ -156,7 +156,7 @@ MIN_WAYPOINT_DISTANCE_M = 0.60
 # within this radius of the asset, instead of a route ending in mid air.
 SERVICE_FALLBACK_RADIUS_M = 2.50
 # How far a live start may snap before it is refused as a robot that does not fit.
-# The Cargo AMR at the door dock snaps 0.85 m, and its body is 0.9 m wide.
+# This limit still permits a nearby free cell when the current position is blocked.
 START_SNAP_LIMIT_M = 0.90
 # How far a destination may snap, in cells of the outward search: 2.5 m along an
 # axis, so a machine's inflated footprint never swallows its own inspection stop.

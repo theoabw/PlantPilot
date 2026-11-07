@@ -33,7 +33,7 @@ test('local logo has the actual PNG format and expected dimensions', async () =>
   assert.equal(image.readUInt32BE(20), 768)
 })
 
-for (const profile of ['humanoid', 'amr', 'cargo']) {
+for (const profile of ['humanoid', 'amr']) {
   test(`${profile} has logo badges and retains safety equipment colors`, () => {
     const texture = new THREE.Texture()
     const robot = buildRobotBody(profile, texture)

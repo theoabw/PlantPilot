@@ -270,7 +270,7 @@ def test_warming_builds_the_layers_of_every_robot_height(tmp_path, monkeypatch):
 
     server.warm_route_layers()
 
-    assert sorted(heights) == [0.55, 0.9, 0.95, 1.35]
+    assert sorted(heights) == [0.55, 0.95, 1.35]
 
 
 def test_warming_does_nothing_before_the_pipeline_has_run(tmp_path, monkeypatch):

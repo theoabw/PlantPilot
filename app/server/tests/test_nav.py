@@ -803,8 +803,7 @@ def test_a_start_may_snap_to_the_limit_and_is_refused_beyond_it(tmp_path):
         start_override=(1.5, 2.0),
         goal_override=(2.8, 3.8),
     )
-    # A square blocker round the start: free ground begins 0.85 m away, the door
-    # dock's snap for the Cargo AMR, and past the limit when it is 0.2 m larger.
+    # Free ground begins 0.85 m away, and beyond the limit for the larger blocker.
     fits = nav.build_route(**plan, blockers=[[0.8, 1.3, 2.2, 2.7]])
     assert fits["reachable"] is True
     assert math.dist((fits["start"][0], fits["start"][2]), (1.5, 2.0)) <= nav.START_SNAP_LIMIT_M

@@ -11,11 +11,15 @@ const js = ts.transpileModule(source, {
 }).outputText.replace('"react/jsx-runtime"', JSON.stringify(import.meta.resolve('react/jsx-runtime')))
 const { default: CharacterSelector } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`)
 
-const options = [
-  { id: 'humanoid', label: 'Humanoid', radius: 0.18, height: 1.35 },
-  { id: 'amr', label: 'Compact AMR', radius: 0.2, height: 0.55 },
-  { id: 'cargo', label: 'Cargo AMR', radius: 0.45, height: 0.9 },
-]
+const roomSource = await readFile(new URL('../src/room/RoomLab.tsx', import.meta.url), 'utf8')
+const room = ts.createSourceFile('RoomLab.tsx', roomSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+const declaration = room.statements
+  .filter(ts.isVariableStatement)
+  .flatMap((statement) => [...statement.declarationList.declarations])
+  .find((entry) => entry.name.getText(room) === 'ROBOTS')
+assert.ok(declaration?.initializer, 'room character options exist')
+const optionsJs = ts.transpile(`export const options = ${declaration.initializer.getText(room)}`, { module: ts.ModuleKind.ESNext })
+const { options } = await import(`data:text/javascript;base64,${Buffer.from(optionsJs).toString('base64')}`)
 
 function buttons(element) {
   if (!element || typeof element !== 'object') return []
@@ -27,14 +31,16 @@ test('header selector shows one selected character and calls the shared selectio
   const chosen = []
   const props = { options, selected: 'amr', open: true, ready: true, onToggle() {}, onSelect: (id) => chosen.push(id) }
   const html = renderToStaticMarkup(createElement(CharacterSelector, props))
+  assert.deepEqual(options.map((option) => option.id), ['humanoid', 'amr'])
   assert.match(html, /Character <span[^>]*>Compact AMR/)
   assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 1)
   const choices = buttons(CharacterSelector(props))
-  assert.equal(choices.length, 4)
+  assert.equal(choices.length, 3)
   assert.equal(choices[2].props['aria-pressed'], true)
   choices[1].props.onClick()
-  choices[3].props.onClick()
-  assert.deepEqual(chosen, ['humanoid', 'cargo'])
+  choices[2].props.onClick()
+  assert.deepEqual(chosen, ['humanoid', 'amr'])
+  assert.doesNotMatch(html, /Cargo AMR/)
 })
 
 test('selector remains available without equipment while the start loads', () => {

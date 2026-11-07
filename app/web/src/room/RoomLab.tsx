@@ -90,7 +90,6 @@ const VERDICT_CLASSES: Record<ReasoningDifferential['verdict'], string> = {
 const ROBOTS: CharacterOption[] = [
   { id: 'humanoid', label: 'Humanoid', radius: 0.18, height: 1.35, crouchHeight: 0.95 },
   { id: 'amr', label: 'Compact AMR', radius: 0.2, height: 0.55 },
-  { id: 'cargo', label: 'Cargo AMR', radius: 0.45, height: 0.9 },
 ]
 
 const routeMessage = (route: RoomRoute | null): string => routeStatusText(route)
