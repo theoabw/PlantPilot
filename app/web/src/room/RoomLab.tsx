@@ -140,6 +140,11 @@ export default function RoomLab() {
   const [tripToken, setTripToken] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState('photo')
+  const [topDown, setTopDown] = useState(false)
+  const topDownRef = useRef(topDown)
+  topDownRef.current = topDown
+  const [topDownToken, setTopDownToken] = useState(0)
+  const [cutHeight, setCutHeight] = useState(1.5)
   const [showOutlines, setShowOutlines] = useState(true)
   const [boxedSplatsOnly, setBoxedSplatsOnly] = useState(false)
   const [showMappedFrames, setShowMappedFrames] = useState(false)
@@ -597,7 +602,7 @@ export default function RoomLab() {
       )
       if (options.startAfter) {
         setSelectedId(null)
-        setFollow(true)
+        setFollow(!topDownRef.current)
         setArrivalDismissed(false)
         setTripToken((value) => value + 1)
       } else if (driving) {
@@ -790,6 +795,8 @@ export default function RoomLab() {
             upAxis={data.source.up_axis}
             floorHeight={data.floor.height}
             resetToken={resetToken}
+            topDownToken={topDownToken}
+            heightCutoff={topDown ? cutHeight : null}
             characterResetToken={characterResetToken}
             selectedId={selectedId}
             mappedIds={mappedIds}
@@ -819,7 +826,7 @@ export default function RoomLab() {
             showRoute={driving}
             showRobot={manualControl || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
             crouchSpans={crouchSpans}
-            focusTarget={focusTarget}
+            focusTarget={topDown ? null : focusTarget}
             focusToken={focusToken}
             robotProfile={robot.id}
             manualControl={manualControl}
@@ -907,6 +914,7 @@ export default function RoomLab() {
                     type="button"
                     onClick={() => {
                       setView(option.id)
+                      setTopDown(false)
                       setBoxedSplatsOnly(false)
                       setLayersOpen(false)
                     }}
@@ -925,6 +933,7 @@ export default function RoomLab() {
                     disabled={reviewed.length === 0}
                     onClick={() => {
                       setView('photo')
+                      setTopDown(false)
                       setBoxedSplatsOnly((value) => !value)
                     }}
                     className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
@@ -997,6 +1006,7 @@ export default function RoomLab() {
                 <button
                   type="button"
                   onClick={() => {
+                    setTopDown(false)
                     setResetToken((value) => value + 1)
                     setFollow(false)
                     setSettingsOpen(false)
@@ -1531,6 +1541,7 @@ export default function RoomLab() {
           <button
             type="button"
             onClick={() => {
+              setTopDown(false)
               setResetToken((value) => value + 1)
               setFollow(false)
               setCameraMove(false)
@@ -1542,9 +1553,44 @@ export default function RoomLab() {
           </button>
           <button
             type="button"
+            disabled={!data?.objects.length || data.floor.height === null || !/^[+-][xyz]$/.test(data.source.up_axis)}
+            title="Hide splats above the selected height"
+            aria-pressed={topDown}
+            onClick={() => {
+              setTopDown(true)
+              setTopDownToken((value) => value + 1)
+              setView('photo')
+              setBoxedSplatsOnly(false)
+              setFollow(false)
+              setManualControl(false)
+              setCameraMove(false)
+              setFirstPerson(false)
+            }}
+            className={`px-3 py-1.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 ${topDown ? 'text-cyan-300' : ''}`}
+          >
+            Top down · height cut
+          </button>
+          {topDown ? (
+            <label className="w-48 px-3 py-2 text-[10px] text-slate-400">
+              Cut height: {cutHeight.toFixed(2)} scene units above floor
+              <input
+                type="range"
+                min={0.1}
+                max={4}
+                step={0.05}
+                value={cutHeight}
+                onChange={(event) => setCutHeight(Number(event.target.value))}
+                className="mt-1 w-full accent-cyan-400"
+              />
+              Hides splat centres above the cut, including equipment.
+            </label>
+          ) : null}
+          <button
+            type="button"
             aria-pressed={manualControl}
             onClick={() => {
               const next = !manualControl
+              if (next) setTopDown(false)
               setManualControl(next)
               setCameraMove(false)
               setFirstPerson(false)
@@ -1594,6 +1640,7 @@ export default function RoomLab() {
               type="button"
               onClick={() => {
                 setCameraMove(false)
+                if (!follow) setTopDown(false)
                 setFollow((value) => !value)
               }}
               className={`px-3 py-1.5 hover:bg-slate-800 ${follow ? 'text-brand-mint' : ''}`}
@@ -1620,6 +1667,7 @@ export default function RoomLab() {
           <button
             type="button"
             onClick={() => {
+              setTopDown(false)
               setResetToken((value) => value + 1)
               setCharacterResetToken((value) => value + 1)
               setTrip({ mode: 'idle', travelled: 0, total: 0 })
