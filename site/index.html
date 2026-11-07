@@ -265,7 +265,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
     <canvas id="gl" aria-hidden="true"></canvas>
     <canvas id="hud" aria-hidden="true"></canvas>
     <div class="scrim"></div>
-    <p class="tag-note">Illustration, not the capture</p>
+    <p class="tag-note">Generated illustration</p>
   </div>
 
   <div class="panels">
@@ -290,7 +290,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
     <div class="panel" id="route">
       <div>
         <h2>Walk only on floor it has seen.</h2>
-        <p class="body">A 10 cm occupancy grid gives A* the observed floor and nothing else. The robot drives to a stand-off point beside P-005, and assets within 2.5 m light up as it passes.</p>
+        <p class="body">A 10 cm occupancy grid gives A* only the observed floor. The robot drives to a stand-off point beside P-005, and assets within 2.5 m light up as it passes.</p>
         <div class="chips"><span>4 obstacle layers</span><span>1.91 m route</span><span>0.32 m clearance</span></div>
       </div>
     </div>
@@ -318,7 +318,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
 <section class="block alt" id="extraction">
   <div class="wrap split">
     <div class="copy-col">
-      <h2>Geometry first. Names only when earned.</h2>
+      <h2>Geometry first, then names.</h2>
       <p class="lede">Most of a capture is room, and a wall that stays in the cloud welds everything standing against it into one blob. So extraction starts by taking the room away.</p>
       <ul class="points">
         <li><b>Each gaussian knows its surface.</b> The thinnest axis of its ellipsoid is a normal. Removing walls whole cut the largest component from 24 to 3.8 percent of the capture.</li>
@@ -360,7 +360,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
     </div>
     <div class="copy-col">
       <h2>A* that keeps to the middle of the aisle.</h2>
-      <p class="lede">Shortest is not the same as safest. Every step costs more as it nears an obstacle, so the route gives machines room without being told where the aisles are.</p>
+      <p class="lede">Every step costs more as it nears an obstacle, so the route finds the aisles by itself and gives machines room.</p>
       <ul class="points">
         <li><b>The grid comes from the scan.</b> 10 cm cells, with obstacles inflated by the robot's radius and a 2 cm margin. Ground nobody observed is not walkable.</li>
         <li><b>Corners stay clear.</b> The search is 8-connected, and a diagonal step between two obstacles is refused.</li>
@@ -373,7 +373,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
 <section class="block alt" id="occlusion">
   <div class="wrap split">
     <div class="copy-col">
-      <h2>The robot goes behind the machine, not over it.</h2>
+      <h2>The robot passes behind the machine.</h2>
       <p class="lede">Splats are blended back to front and write no depth, so anything added to the scene would float on top of the room. PlantPilot draws the capture twice to fix that.</p>
       <ul class="points">
         <li><b>Depth first.</b> A colourless pass writes the capture into the depth buffer. It draws every second gaussian, which leaves no gaps at half the fill.</li>
@@ -394,7 +394,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
         </div>
         <div class="demo-bar" style="border-top:0;padding-top:0"><p class="demo-read" id="occl-read" aria-live="polite"></p></div>
       </div>
-      <p class="demo-note">The viewer's draw order running live on a generated scene, not the capture.</p>
+      <p class="demo-note">The viewer's draw order, running live on a generated scene.</p>
     </div>
   </div>
 </section>
@@ -402,7 +402,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
 <section class="block" id="agnostic">
   <div class="wrap">
     <div>
-      <h2>The room is an input, not a constant.</h2>
+      <h2>The room is an input.</h2>
       <p class="lede">Up axis, floor height and voxel size are measured from each capture. The robot is a parameter too, so the same rules give each body its own route, clearance and reachable floor.</p>
     </div>
     <div class="tables">
@@ -440,7 +440,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
   <div class="wrap diag-grid">
     <div>
       <h2>It says why, and what it argues against.</h2>
-      <p class="lede">The reasoning comes from computed changes in the telemetry and fixed thresholds, not a model. The same pack gives the same answer every time.</p>
+      <p class="lede">The reasoning comes from computed changes in the telemetry and fixed thresholds, so the same pack gives the same answer every time.</p>
       <div class="feeds" aria-label="Evidence feeding the diagnosis">
         <div><b>144</b><span>telemetry rows</span></div>
         <div><b>34</b><span>alarms</span></div>
@@ -468,7 +468,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
         <li><em>Less likely</em><span>Flow sensor drift, because a sensor that drifts does not load the motor</span></li>
         <li><em>Next check</em><span><code>inspect hydraulic path</code>, from <code>DOC-FIELD-SAFETY</code></span></li>
       </ul>
-      <p class="card-foot">A summary of the diagnosis, not a screenshot. P-005's records are synthetic data from the supplied Valmet builder pack, not measurements of a physical machine.</p>
+      <p class="card-foot">A summary of the diagnosis. P-005's records are synthetic data from the supplied Valmet builder pack.</p>
     </article>
   </div>
 </section>
@@ -477,7 +477,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
   <div class="wrap">
     <div>
       <h2>What is real, what is proposed and what is synthetic.</h2>
-      <p class="lede">The viewer keeps these apart on screen too, so a pack condition never reads as a measurement of the machine it was assigned to.</p>
+      <p class="lede">The viewer keeps these apart on screen too.</p>
     </div>
     <div class="status">
       <div class="col r">
@@ -490,7 +490,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
       <div class="col p">
         <h3>Proposed</h3>
         <dl>
-          <dt>Equipment mapping</dt><dd>A match score, not a calibrated probability. The pack has no measured positions, so P-005 on OBJ-037 is a proposal, not an identification.</dd>
+          <dt>Equipment mapping</dt><dd>An uncalibrated match score. The pack has no measured positions, so P-005 on OBJ-037 is a proposal.</dd>
           <dt>Class labels</dt><dd>Geometric proposals. 8 objects are named by multi-view fusion, and SAM 3 text prompts were tried and not used for placing assets.</dd>
         </dl>
       </div>
@@ -498,7 +498,7 @@ footer.foot-bar { position: relative; z-index: 3; background: var(--ink); border
         <h3>Synthetic</h3>
         <dl>
           <dt>Telemetry and alarms</dt><dd>Supplied synthetic Valmet data, labelled as a scenario in the viewer.</dd>
-          <dt>The robot</dt><dd>A viewer marker following the planned path at 0.5 m/s, not a physics simulation.</dd>
+          <dt>The robot</dt><dd>A viewer marker following the planned path at 0.5 m/s, with no physics simulation.</dd>
         </dl>
       </div>
     </div>
