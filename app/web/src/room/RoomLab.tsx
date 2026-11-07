@@ -245,6 +245,7 @@ export default function RoomLab() {
       category: anchor.category,
       classification_confidence: anchor.classification_confidence,
       evidence: anchor.evidence,
+      sam3: anchor.sam3,
     }))
   }, [anchors])
 
@@ -1089,6 +1090,13 @@ export default function RoomLab() {
               ) : null}
               {selectedObject.evidence ? (
                 <p className="text-[10px] font-semibold leading-snug text-slate-500">{selectedObject.evidence}</p>
+              ) : null}
+              {selectedObject.sam3 ? (
+                <p className="text-[10px] font-semibold leading-snug text-cyan-300/80">
+                  SAM 3 check: {selectedObject.sam3.label} · score {selectedObject.sam3.score.toFixed(2)} ·{' '}
+                  {selectedObject.sam3.views} views · centre agrees within{' '}
+                  {selectedObject.sam3.centre_delta_m.toFixed(2)} m
+                </p>
               ) : null}
             </div>
           ) : (

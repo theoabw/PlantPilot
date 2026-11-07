@@ -226,7 +226,30 @@
       "inferred_function": "expansion or process vessel, not confirmed",
       "category": "mechanical",
       "classification_confidence": "high",
-      "evidence": "A blue vertical cylinder with a domed top sits inside the reviewed box; no readable nameplate faces the capture."
+      "evidence": "A blue vertical cylinder with a domed top sits inside the reviewed box; no readable nameplate faces the capture.",
+      "sam3": {
+        "label": "blue tank",
+        "score": 0.9375,
+        "views": 4,
+        "centre": [
+          -2.455,
+          0.358,
+          0.953
+        ],
+        "extents": [
+          1.226,
+          0.655,
+          0.666
+        ],
+        "centre_delta_m": 0.08,
+        "extent_ratio": [
+          1.08,
+          1.03,
+          1.1
+        ],
+        "method": "multi_view_sam3_instance_fusion",
+        "note": "Independent SAM 3 segment agrees with the reviewed box centre within 8 cm and extents within 10 percent."
+      }
     },
     {
       "id": "AN-2368abf6",
@@ -316,7 +339,30 @@
       "inferred_function": "laundry washing",
       "category": "appliance",
       "classification_confidence": "high",
-      "evidence": "A round front-load door, control fascia and plinth are visible inside the reviewed box."
+      "evidence": "A round front-load door, control fascia and plinth are visible inside the reviewed box.",
+      "sam3": {
+        "label": "washing machine",
+        "score": 0.9141,
+        "views": 3,
+        "centre": [
+          -0.755,
+          0.5,
+          -0.585
+        ],
+        "extents": [
+          0.841,
+          0.82,
+          0.566
+        ],
+        "centre_delta_m": 0.11,
+        "extent_ratio": [
+          1.09,
+          1.39,
+          1.72
+        ],
+        "method": "multi_view_sam3_instance_fusion",
+        "note": "Independent SAM 3 segment agrees on the class and centre within 11 cm; its box is larger because the masks include surroundings."
+      }
     }
   ]
 }

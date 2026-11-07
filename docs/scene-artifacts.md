@@ -400,6 +400,8 @@ deliberately generic where the geometry cannot prove a machine class
 (`equipment`, `equipment cluster`), because the audit found the shape rules were
 being used as class rules.
 
+Two anchors carry an independent SAM 3 corroboration: `sam3.label`, `sam3.score`, `sam3.views`, the SAM 3 box and its agreement with the reviewed box. The blue-tank segment agrees within 8 cm at the centre and 10 percent in extents; the washing-machine segment agrees on class and within 11 cm, with a larger box because the masks include surroundings. The equipment card shows this as a SAM 3 check. It is not part of the demo path.
+
 The seven anchors also separate observation from inference. Each carries
 `observed_type` (what the reviewed box visibly contains), `inferred_function`
 (what it is probably used for), `category`, `classification_confidence` and the
