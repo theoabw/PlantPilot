@@ -117,7 +117,7 @@ def test_build_route_contract(tmp_path):
     assert "grid_stats" in route
 
 
-def test_equipment_capture_uses_reviewed_door_start(tmp_path):
+def test_equipment_capture_uses_the_reviewed_dock(tmp_path):
     # A floor observed in every cell: a random scatter leaves cells with no
     # ground under them, and those are blocked by the floor rule.
     floor_axis = np.arange(-6.0, 6.0, 0.05)

@@ -14,8 +14,9 @@ retained box while walking through a wall the extraction omitted.
   larger than half the room is skipped and that the footprints are inflated once.
 - The floor layer blocks every cell where the capture never saw floor, meaning
   no gaussian within FLOOR_TOLERANCE_M of the floor plane. Ground that was not
-  observed is not ground to walk on, and this is what stops the planner from
-  driving into the space outside the room or behind a wall.
+  observed is not ground to walk on. On a truncated capture this is what stops
+  the planner leaving the room; where a capture sees floor nearly everywhere,
+  as the complete one does, the object and overhead layers hold the perimeter.
 - The vertical-surface layer blocks a cell when a wall crosses the robot's path.
   Each gaussian's own ellipsoid gives its surface normal: the thinnest `size`
   axis, rotated by the `rot` quaternion into the scene frame. A cell blocks when

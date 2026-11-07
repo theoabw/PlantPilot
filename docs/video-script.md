@@ -36,11 +36,11 @@ Scores criterion 1, 30 percent; feeds criterion 3.
 
 Scores criterion 2, 25 percent.
 
-**On screen.** This shot starts on the click, because the route is only drawn while the robot moves. Click Send robot, then pull back and hold the floor: the path and the target ring are visible, and the mission card bottom left reads "1.9 m route" and "0.32 m clearance".
+**On screen.** This shot starts on the click, because the route is only drawn while the robot moves. Click Send robot, then pull back and hold the floor: the path and the target ring are visible, and the mission card bottom left reads "0.6 m route" and "0.43 m clearance".
 
 **Voiceover.** "Obstacles come from the extracted boxes, from the floor the capture never saw, from near-vertical surfaces that run the room's height, and from overhead structure. The grid is inflated once for a 0.20 agent radius and a 0.02 safety margin. A star search plans a route of 1.91, clearing the nearest object surface by 0.32. The viewer labels those numbers as metres; the door-height scale check has not been done."
 
-**Counts if.** The path and the target ring are visible; the mission card shows a distance and "0.32 m clearance"; the robot is near the start.
+**Counts if.** The path and the target ring are visible; the mission card shows a distance and "0.43 m clearance"; the robot is near the start.
 
 ## Beat 4. Walk (1:36 to 2:00, 24 s)
 
@@ -93,5 +93,5 @@ Scores criterion 4, 15 percent.
 - Build: `make demo` builds the artifacts, the filter assets, the web page and the server, then serves at `http://127.0.0.1:8000`. Open that; the room view is first.
 - 1920 by 1080, 100 percent, one tab, bookmarks and notifications off. Record 60 fps, export 30.
 - Terminal: `export PS1='plantpilot $ '` so no local path shows.
-- Dry run once; confirm the mission card reads 1.4 m and 0.32 m clear. Run `make test`; if it fails, fix it or cut the shot.
+- Dry run once; confirm the mission card reads 0.6 m and 0.43 m clear. Run `make test`; if it fails, fix it or cut the shot.
 - Do not open: developer tools unless a shot calls for them. Do not show: the editor, chat, server logs, other tabs, or any number the app is not printing. No captions over numbers.
