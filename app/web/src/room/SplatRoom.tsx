@@ -5,7 +5,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
-import { cameraGridClearance } from './cameraGrid'
+import { cameraGridClearance, cameraGridIsFree } from './cameraGrid'
+import { followCameraGoal, FollowOrbitInput } from './followOrbit'
 import { stableHalfDepthShader } from './depthSplatShader'
 import { nextRenderScale } from './renderScale'
 import { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, visiblePick } from './pickObject'
@@ -674,8 +675,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     follow: boolean
     followOffset: THREE.Vector3 | null
     followOffsetFromUser: boolean
-    orbitInputUntil: number
-    orbitPointerActive: boolean
+    followOrbit: FollowOrbitInput
     cameraMove: boolean
     movementKeys: Set<string>
     manualControl: boolean
@@ -1079,31 +1079,26 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
     renderer.domElement.addEventListener('pointerup', onPointerUp)
     renderer.domElement.addEventListener('pointercancel', onPointerCancel)
+    const followOrbit = new FollowOrbitInput()
     const noteOrbitStart = () => {
       const state = stateRef.current
       if (state?.follow) {
-        state.orbitPointerActive = true
-        state.orbitInputUntil = performance.now() + 500
+        followOrbit.start()
       }
     }
     const noteOrbitEnd = () => {
+      followOrbit.end()
+    }
+    const captureOrbit = () => {
       const state = stateRef.current
-      if (state?.follow) {
-        state.orbitPointerActive = false
-        state.orbitInputUntil = performance.now() + 500
-      }
+      if (!state?.follow) return
+      state.followOffset = camera.position.clone().sub(controls.target)
+      state.followOffsetFromUser = true
+      state.smoothedCamera = camera.position.clone()
     }
     const onControlsChange = () => {
       requestRender()
-      const state = stateRef.current
-      if (
-        state?.follow
-        && (state.orbitPointerActive || performance.now() <= state.orbitInputUntil)
-      ) {
-        state.followOffset = camera.position.clone().sub(controls.target)
-        state.followOffsetFromUser = true
-        state.smoothedCamera = camera.position.clone()
-      }
+      if (followOrbit.isInputChange()) captureOrbit()
     }
     controls.addEventListener('start', noteOrbitStart)
     controls.addEventListener('end', noteOrbitEnd)
@@ -1232,10 +1227,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       return cameraGridClearance(mask, xz[0], xz[1], limit)
     }
     const cameraFree = (world: THREE.Vector3, marginM = 0.2): boolean => {
-      if (!stateRef.current?.cameraMask || !sceneXZOf(world)) {
+      const mask = stateRef.current?.cameraMask
+      const xz = sceneXZOf(world)
+      if (!mask || !xz) {
         return true
       }
-      return cameraClearance(world, marginM) > marginM
+      return cameraGridIsFree(mask, xz[0], xz[1], marginM)
     }
     const nearestStructure = (world: THREE.Vector3): number => {
       return cameraClearance(world)
@@ -1336,7 +1333,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       stateRef.current.cameraFree = cameraFree
     }
 
-    const updateFollow = (dt: number) => {
+    const updateFollow = (dt: number, robotMoving: boolean) => {
       const robot = stateRef.current?.motion.robot
       if (!robot) {
         return
@@ -1362,7 +1359,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const followPosition = state?.followOffset
         ? desiredTarget.clone().add(state.followOffset)
         : safeCameraPosition(rawDesired, desiredTarget)
-      const safeDesired = safeCameraPosition(followPosition, desiredTarget)
+      const safeDesired = followCameraGoal(
+        followPosition,
+        state?.followOffsetFromUser ?? false,
+        robotMoving,
+        (position) => safeCameraPosition(position, desiredTarget),
+      )
       if (state) {
         if (!state.followOffsetFromUser && (!state.followOffset || safeDesired.distanceTo(followPosition) > 0.05)) {
           state.followOffset = safeDesired.clone().sub(desiredTarget)
@@ -1648,10 +1650,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           if (stateRef.current.firstPerson) {
             updateFirstPersonCamera()
           } else if (stateRef.current.follow) {
-            updateFollow(dt)
+            updateFollow(dt, manualMoving)
           }
         } else if (stateRef.current?.follow && stateRef.current.motion.robot) {
-          updateFollow(dt)
+          updateFollow(dt, stateRef.current.motion.active && !motionPausedRef.current)
         }
         moveCameraFromKeys(dt)
         const animated = stateRef.current?.motion.robot?.userData.animate as
@@ -1746,7 +1748,14 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           renderRef.current()
         }
         if (!stateRef.current?.firstPerson) {
-          controls.update()
+          const beforePosition = camera.position.clone()
+          const beforeTarget = controls.target.clone()
+          const orbitChanged = followOrbit.update(
+            () => controls.update(),
+            () => camera.position.distanceToSquared(beforePosition) > 1e-12
+              || controls.target.distanceToSquared(beforeTarget) > 1e-12,
+          )
+          if (orbitChanged) captureOrbit()
           const cameraFloorY = stateRef.current?.cameraFloorY ?? null
           if (cameraFloorY !== null && camera.position.y < cameraFloorY + CAMERA_FLOOR_CLEARANCE_M) {
             camera.position.y = cameraFloorY + CAMERA_FLOOR_CLEARANCE_M
@@ -1922,8 +1931,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       follow: followRef.current,
       followOffset: null,
       followOffsetFromUser: false,
-      orbitInputUntil: 0,
-      orbitPointerActive: false,
+      followOrbit,
       cameraMove: cameraMoveRef.current,
       movementKeys: new Set<string>(),
       manualControl: manualControlRef.current,
@@ -3061,8 +3069,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     state.stickyCamera = null
     state.smoothedCamera = null
-    // A new route is a new view: the offset was chosen for the old one.
-    if (!manualControl) {
+    if (!manualControl && !(state.follow && state.followOffsetFromUser)) {
       state.followOffset = null
       state.followOffsetFromUser = false
     }
@@ -3294,6 +3301,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   useEffect(() => {
     if (stateRef.current) {
       stateRef.current.follow = follow
+      stateRef.current.followOrbit.reset()
       if (follow) {
         stateRef.current.focusTween = null
         stateRef.current.followTransitionStart = performance.now()
@@ -3301,7 +3309,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         stateRef.current.followOffset = null
         stateRef.current.followOffsetFromUser = false
         stateRef.current.stickyCamera = null
-        stateRef.current.orbitPointerActive = false
       }
     }
     renderRef.current()

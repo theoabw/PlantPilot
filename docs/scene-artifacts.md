@@ -507,8 +507,10 @@ OrbitControls recompute it from a moving target. A camera already inside
 structure is pulled out over a short ramp rather than teleported. Focus, reset,
 the arrival camera and the initial framing pass through the same check. If no
 candidate is free, the camera escapes above the robot, so it can always re-enter
-the scene; Overview also drops follow and restores the room view. Manual
-orbiting is left alone.
+the scene; Overview also drops follow and restores the room view. Dragging or
+zooming chooses a follow angle that stays with the robot, including across
+replans, until follow mode is restarted. Avoidance can temporarily adjust it
+while the robot moves; a stationary robot keeps the user-selected orbit.
 
 ## Live replanning and the area view
 

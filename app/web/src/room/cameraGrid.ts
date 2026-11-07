@@ -48,3 +48,13 @@ export function cameraGridClearance(
   }
   return clearance
 }
+
+/** Whether a camera point has more than the required clearance. */
+export function cameraGridIsFree(
+  mask: CameraGridMask,
+  x: number,
+  z: number,
+  margin: number,
+): boolean {
+  return cameraGridClearance(mask, x, z, margin + mask.cell_m) > margin
+}
