@@ -575,6 +575,7 @@ def test_a_destination_in_a_pocket_stops_on_ground_the_robot_can_reach(tmp_path)
     assert route["reachable"] is True
     assert route["target_waypoint_from"] == "goal_override_reachable"
     assert route["target_waypoint"][0] < 3.3
+    assert route["goal_snap_m"] == pytest.approx(4.6 - route["target_waypoint"][0], abs=0.1)
 
 
 def test_a_blocker_that_cuts_the_room_is_still_refused_and_named(tmp_path):

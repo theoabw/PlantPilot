@@ -1675,6 +1675,14 @@ def build_route(
         "target_waypoint": [round(goal_2d[0], 3), y_render, round(goal_2d[1], 3)],
         "target_waypoint_from": goal_from,
         "target_waypoint_standoff_m": round(goal_standoff_m, 2),
+        # How far the stop is from the destination the viewer asked for. A large
+        # figure with "goal_override_reachable" means a taller body could not get
+        # near it, so a crouched plan may stop closer.
+        "goal_snap_m": (
+            round(math.dist(goal_2d, (float(goal_override[0]), float(goal_override[1]))), 2)
+            if goal_override is not None
+            else 0.0
+        ),
         "planned_height_m": round(float(agent_height_m), 3),
         "crouch_spans_m": crouch_spans,
         "reachable": plan_result["reachable"],
