@@ -145,6 +145,7 @@ export type RoomRoute = {
     structural_blocked_cells?: number
     object_blocked_cells?: number
     obstacles_from?: string
+    floor_domain?: boolean
   }
   grid?: {
     x0: number

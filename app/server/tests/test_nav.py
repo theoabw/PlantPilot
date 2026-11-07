@@ -124,10 +124,16 @@ def test_equipment_capture_uses_reviewed_door_start(tmp_path):
         })),
     )
 
-    route = nav.build_route(scene_path=scene_path, output_path=None, agent_radius_m=0.20)
+    route = nav.build_route(
+        scene_path=scene_path,
+        output_path=None,
+        agent_radius_m=0.20,
+        manual_floor_y=0.0,
+    )
 
     assert route["start"][0] == pytest.approx(-0.585, abs=0.1)
     assert route["start"][2] == pytest.approx(-4.144, abs=0.1)
+    assert route["grid_stats"]["floor_domain"] is True
     assert nav._configured_start_position("another-capture.ply") is None
 
     reroute = nav.build_route(
@@ -138,6 +144,21 @@ def test_equipment_capture_uses_reviewed_door_start(tmp_path):
     )
     assert reroute["start"][0] == pytest.approx(1.0, abs=0.1)
     assert reroute["start"][2] == pytest.approx(1.0, abs=0.1)
+
+
+def test_capture_grid_blocks_cells_outside_measured_floor():
+    rng = np.random.default_rng(7)
+    floor = rng.uniform(low=[-3.0, 0.0, -3.0], high=[3.0, 0.0, 3.0], size=(4000, 3))
+    exterior = rng.uniform(
+        low=[6.0, 0.2, 6.0], high=[8.0, 1.0, 8.0], size=(500, 3)
+    )
+    grid = nav.Grid.from_cloud(
+        np.vstack([floor, exterior]), floor_y=0.0, up_axis=1, objects=[]
+    )
+
+    assert grid.floor_domain is True
+    assert grid.walkable(*grid.to_cell((0.0, 0.0)))
+    assert not grid.walkable(*grid.to_cell((7.0, 7.0)))
 
 
 # ---------------------------------------------------------------------------
