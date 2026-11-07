@@ -7,6 +7,7 @@ import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
+import { boundedStep, CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -27,6 +28,11 @@ type Motion = {
   arrowSpacing: number
   robot: THREE.Group | null
   reached: boolean
+  faceHeading: number | null
+  // Arc length along the curve at each vertex, next to `cumulative` (polyline
+  // metres), and where the planner's own metres start on that polyline.
+  arcAtVertex: number[]
+  plannedFromM: number
 }
 
 type WalkMask = {
@@ -72,6 +78,8 @@ type Props = {
   obstacleMode: boolean
   obstacles: [number, number][]
   robotPositionRef: { current: [number, number] | null }
+  motionPausedRef: { current: boolean }
+  arrivalCentre: [number, number, number] | null
   onPlaceObstacle: (point: [number, number]) => void
   showOccupancy: boolean
   showRoute: boolean
@@ -177,6 +185,32 @@ const followTargetHeight: Record<RobotProfile, number> = {
   amr: 0.28,
   cargo: 0.45,
 }
+
+// Route points and the robot's origin sit this far above the floor.
+const ROBOT_FLOOR_OFFSET_M = 0.07
+// The room's overhead structure starts around 1.95 m, and the camera's obstacle
+// band ends at 1.85 m: above this the band says nothing about the camera.
+const CAMERA_MAX_HEIGHT_M = 1.75
+// The first attempts stay near the wanted view; the later ones are closer or
+// from the other side, for a robot boxed in where only one direction sees it.
+const CAMERA_ATTEMPTS: [number, number, number][] = [
+  [0.3, 1, 1.0], [-0.3, 1, 1.0], [0.6, 0.92, 1.15], [-0.6, 0.92, 1.15],
+  [0.9, 0.8, 0.85], [-0.9, 0.8, 0.85], [1.25, 0.75, 1.1], [-1.25, 0.75, 1.1],
+  [0, 0.8, 1.5], [0.45, 0.62, 0.7], [-0.45, 0.62, 0.7], [0, 0.6, 1.85],
+  [1.7, 0.7, 0.9], [-1.7, 0.7, 0.9], [2.3, 0.6, 0.9], [-2.3, 0.6, 0.9],
+  [Math.PI, 0.6, 0.9], [0.3, 0.5, 0.75], [-0.3, 0.5, 0.75],
+]
+
+// How much lower a fully crouched humanoid's eyes are, matching its folded body.
+const CROUCH_EYE_DROP_M = 0.31
+// Off the route by more than this, its crouch spans say nothing about the place.
+const CROUCH_ROUTE_REACH_M = 0.6
+
+// The orbit may look up from low down, but never swing fully under its target.
+const ORBIT_MAX_POLAR_RAD = Math.PI * 0.7
+const CAMERA_FLOOR_CLEARANCE_M = 0.12
+// How far past the mapped floor the free camera may wander.
+const FREE_CAMERA_MARGIN_M = 1
 
 const followDistances: Record<RobotProfile, number> = {
   humanoid: 2.55,
@@ -337,12 +371,14 @@ function buildRobot(profile: RobotProfile): THREE.Group {
     group.scale.setScalar(0.79)
     let crouch = 0
 
-    group.userData.animate = (_time: number, travelled: number, moving: boolean) => {
+    group.userData.crouch = 0
+    group.userData.animate = (_time: number, travelled: number, moving: boolean, spanAt = -1) => {
       const withinSpan = robotCrouchSpans.some(
-        ([from, to]) => travelled >= from - 0.12 && travelled <= to + 0.12,
+        ([from, to]) => spanAt >= from - 0.12 && spanAt <= to + 0.12,
       )
       const wantCrouch = withinSpan ? 1 : 0
       crouch += (wantCrouch - crouch) * 0.22
+      group.userData.crouch = crouch
       const phase = travelled * 3.9
       const swing = moving ? 0.55 : 0
       legPivots[0].rotation.x = Math.sin(phase) * swing + crouch * 0.35
@@ -507,7 +543,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -567,6 +603,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion: Motion
     follow: boolean
     followOffset: THREE.Vector3 | null
+    followOffsetFromUser: boolean
     orbitInputUntil: number
     orbitPointerActive: boolean
     cameraMove: boolean
@@ -580,6 +617,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     lastPointerX: number
     lastPointerY: number
     walkMask: WalkMask | null
+    cameraFloorY: number | null
     centre: THREE.Vector3
     radius: number
   } | null>(null)
@@ -603,6 +641,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   cameraMoveRef.current = cameraMove
   const manualControlRef = useRef(manualControl)
   manualControlRef.current = manualControl
+  const arrivalCentreRef = useRef(arrivalCentre)
+  arrivalCentreRef.current = arrivalCentre
   const robotProfileRef = useRef(robotProfile)
   robotProfileRef.current = robotProfile
   const firstPersonRef = useRef(firstPerson)
@@ -664,6 +704,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     controls.enableDamping = true
     controls.minDistance = 0.4
     controls.maxDistance = 80
+    controls.maxPolarAngle = ORBIT_MAX_POLAR_RAD
 
     let needsRender = true
     let warmupUntil = performance.now() + 2_500
@@ -937,6 +978,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         && (state.orbitPointerActive || performance.now() <= state.orbitInputUntil)
       ) {
         state.followOffset = camera.position.clone().sub(controls.target)
+        state.followOffsetFromUser = true
         state.smoothedCamera = camera.position.clone()
       }
     }
@@ -1017,7 +1059,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const position = motion.curve.getPointAt(t)
       const tangent = motion.curve.getTangentAt(t)
       motion.robot.position.copy(position)
-      const targetHeading = Math.atan2(tangent.x, tangent.z)
+      const targetHeading = headingFromTangent(tangent.x, tangent.z, motion.heading ?? motion.robot.rotation.y)
       if (motion.heading === null) {
         motion.heading = targetHeading
       } else {
@@ -1096,22 +1138,32 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       return 1.5
     }
-    const segmentFree = (from: THREE.Vector3, to: THREE.Vector3, marginM = 0.12): boolean => {
-      const steps = Math.max(3, Math.ceil(from.distanceTo(to) / 0.1))
-      for (let step = 1; step < steps; step += 1) {
-        const point = from.clone().lerp(to, step / steps)
-        if (!cameraFree(point, marginM)) {
-          return false
-        }
+    const hasSight = (focus: THREE.Vector3, candidate: THREE.Vector3): boolean => {
+      const mask = stateRef.current?.cameraMask
+      if (!mask) {
+        return true
       }
-      return true
+      const probe = new THREE.Vector3()
+      return sightClear(focus, candidate, (point) => {
+        const xz = sceneXZOf(probe.set(point.x, point.y, point.z))
+        return xz
+          ? cellBlocked(Math.floor((xz[0] - mask.x0) / mask.cell_m), Math.floor((xz[1] - mask.z0) / mask.cell_m))
+          : false
+      })
     }
     const safeCameraPosition = (desired: THREE.Vector3, focus: THREE.Vector3): THREE.Vector3 => {
-      if (!stateRef.current?.cameraMask) {
+      const state = stateRef.current
+      if (!state?.cameraMask) {
         return desired
       }
-      if (cameraFree(desired, 0.12) && nearestStructure(desired) > 0.25) {
-        stateRef.current.stickyCamera = desired.clone().sub(focus)
+      const robot = state.motion.robot
+      const maxY = robot
+        ? robot.position.y - ROBOT_FLOOR_OFFSET_M + CAMERA_MAX_HEIGHT_M
+        : Number.POSITIVE_INFINITY
+      // A height the user orbited to is theirs to keep; the sight line still holds.
+      const heightFine = state.followOffsetFromUser || desired.y <= maxY
+      if (heightFine && cameraFree(desired, 0.12) && nearestStructure(desired) > 0.25 && hasSight(focus, desired)) {
+        state.stickyCamera = desired.clone().sub(focus)
         return desired
       }
       const baseDirection = desired.clone().sub(focus)
@@ -1122,53 +1174,54 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       baseDirection.normalize()
       const up = new THREE.Vector3(0, 1, 0)
-      const attempts: [number, number, number][] = [
-        [0.3, 1, 1.0], [-0.3, 1, 1.0], [0.6, 0.92, 1.15], [-0.6, 0.92, 1.15],
-        [0.9, 0.8, 0.85], [-0.9, 0.8, 0.85], [1.25, 0.75, 1.1], [-1.25, 0.75, 1.1],
-        [0, 0.8, 1.5], [0.45, 0.62, 0.7], [-0.45, 0.62, 0.7], [0, 0.6, 1.85],
-      ]
+      // A position that cannot see the robot only wins when no other is free.
       let best: THREE.Vector3 | null = null
       let bestScore = -Infinity
-      for (const [angle, distanceScale, heightM] of attempts) {
+      let blind: THREE.Vector3 | null = null
+      let blindScore = -Infinity
+      for (const [angle, distanceScale, heightM] of CAMERA_ATTEMPTS) {
         const direction = baseDirection.clone().applyAxisAngle(up, angle)
         const horizontal = Math.max(0.85, length * distanceScale)
         const candidate = new THREE.Vector3(
           focus.x + direction.x * horizontal,
-          Math.max(focus.y + heightM, desired.y - 0.4),
+          Math.min(maxY, Math.max(focus.y + heightM, desired.y - 0.4)),
           focus.z + direction.z * horizontal,
         )
         if (!cameraFree(candidate, 0.1)) {
           continue
         }
-        const clearance = nearestStructure(candidate)
-        const sightLine = segmentFree(focus, candidate, 0.05) ? 0.25 : 0
-        const score = clearance + sightLine - 0.14 * Math.abs(angle) - 0.18 * (1 - distanceScale)
-        if (score > bestScore) {
-          bestScore = score
-          best = candidate
+        const score = nearestStructure(candidate) - 0.14 * Math.abs(angle) - 0.18 * (1 - distanceScale)
+        if (hasSight(focus, candidate)) {
+          if (score > bestScore) {
+            bestScore = score
+            best = candidate
+          }
+        } else if (score > blindScore) {
+          blindScore = score
+          blind = candidate
         }
       }
-      const previousOffset = stateRef.current?.stickyCamera ?? null
-      const previous = previousOffset ? focus.clone().add(previousOffset) : null
-      let chosen = best
-      if (best && previous && cameraFree(previous, 0.1)) {
-        const previousClearance = nearestStructure(previous)
-        const previousSightline = segmentFree(focus, previous, 0.05) ? 0.25 : 0
-        const previousScore = previousClearance + previousSightline
-        // Keep the previous spot unless the new one is clearly better. Without
-        // this the candidate search flips between symmetric aisle positions and
-        // the camera appears to flicker while tracking.
-        if (previousScore >= bestScore - 0.2) {
-          chosen = previous
-        }
+      const previous = state.stickyCamera ? focus.clone().add(state.stickyCamera) : null
+      let chosen = best ?? blind
+      // Keep the previous spot unless the new one is clearly better. Without
+      // this the candidate search flips between symmetric aisle positions and
+      // the camera appears to flicker while tracking.
+      if (
+        previous
+        && previous.y <= maxY + 0.01
+        && cameraFree(previous, 0.1)
+        && hasSight(focus, previous)
+        && (!best || nearestStructure(previous) >= bestScore - 0.2)
+      ) {
+        chosen = previous
       }
       if (chosen) {
-        stateRef.current.stickyCamera = chosen.clone().sub(focus)
+        state.stickyCamera = chosen.clone().sub(focus)
         return chosen
       }
-      // Guaranteed escape: directly above the robot, above the avoidance band.
-      const escape = new THREE.Vector3(focus.x + 0.18, focus.y + 2.35, focus.z + 0.18)
-      stateRef.current.stickyCamera = escape.clone().sub(focus)
+      // Nothing is free: stand over the robot, as high as the room allows.
+      const escape = new THREE.Vector3(focus.x + 0.18, Math.min(maxY, focus.y + 2.35), focus.z + 0.18)
+      state.stickyCamera = escape.clone().sub(focus)
       return escape
     }
     if (stateRef.current) {
@@ -1192,6 +1245,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         .add(new THREE.Vector3(0, lookHeight + 0.8, 0))
       const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, lookHeight, 0))
       const state = stateRef.current
+      // Drift back behind a driving robot, so it walks away from the camera
+      // instead of toward it. A view the user orbited to stays, and manual walking
+      // is relative to the camera, so turning the camera there would curve it.
+      if (state?.followOffset && state.motion.active && !state.manualControl && !state.followOffsetFromUser) {
+        const eased = easeFollowOffset(state.followOffset, rawDesired.clone().sub(desiredTarget), dt)
+        state.followOffset.set(eased.x, eased.y, eased.z)
+      }
       const followPosition = state?.followOffset
         ? desiredTarget.clone().add(state.followOffset)
         : safeCameraPosition(rawDesired, desiredTarget)
@@ -1224,28 +1284,40 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       // jump. The longer the camera stays inside structure, the faster it is
       // allowed to pull out, still continuously.
       const factor = smoothFactor(transitioning ? 3.2 : blockedFor > 800 ? 20 : blockedFor > 250 ? 12 : 6, Math.max(dt, 0.001))
-      const before = camera.position.clone()
-      camera.position.lerp(smoothed, factor)
-      const step = before.distanceTo(camera.position)
-      if (step > 0.12) {
-        camera.position.copy(before).addScaledVector(camera.position.clone().sub(before).normalize(), 0.12)
-      }
+      const lerpGoal = camera.position.clone().lerp(smoothed, factor)
+      const capped = cappedStep(camera.position, lerpGoal, CAMERA_MAX_SPEED_M_S * Math.max(dt, 0.001))
+      camera.position.set(capped.x, capped.y, capped.z)
       controls.target.lerp(desiredTarget, factor)
     }
-    const canWalkTo = (worldPosition: THREE.Vector3): boolean => {
+    const walkCell = (worldPosition: THREE.Vector3): 'free' | 'blocked' | 'outside' => {
       const state = stateRef.current
       const mask = state?.walkMask
       if (!state || !mask) {
-        return true
+        return 'free'
       }
       const point = worldPosition.clone().applyQuaternion(state.world.quaternion.clone().invert())
       const col = Math.floor((point.getComponent(mask.axes[0]) - mask.x0) / mask.cell_m)
       const row = Math.floor((point.getComponent(mask.axes[1]) - mask.z0) / mask.cell_m)
       if (row < 0 || row >= mask.rows || col < 0 || col >= mask.cols) {
-        return false
+        return 'outside'
       }
       const index = row * mask.cols + col
-      return (mask.bits[index >> 3] & (0x80 >> (index & 7))) === 0
+      return (mask.bits[index >> 3] & (0x80 >> (index & 7))) === 0 ? 'free' : 'blocked'
+    }
+    // Where the character is, in the planner's metres along the route: the crouch
+    // spans are in those. A driving robot converts its curve progress; a manual
+    // character can be anywhere, so it goes by where it stands.
+    const crouchSpanPosition = (): number => {
+      const state = stateRef.current
+      const motion = state?.motion
+      if (!state || !motion?.robot || motion.points.length < 2) {
+        return -1
+      }
+      if (state.manualControl) {
+        const nearest = nearestAlongPolyline(motion.robot.position, motion.points, motion.cumulative)
+        return nearest && nearest.off <= CROUCH_ROUTE_REACH_M ? nearest.along - motion.plannedFromM : -1
+      }
+      return remapAlong(motion.travelled, motion.arcAtVertex, motion.cumulative) - motion.plannedFromM
     }
     const moveManualHuman = (dt: number): boolean => {
       const state = stateRef.current
@@ -1272,14 +1344,23 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const distance = direction.length()
       const steps = Math.max(1, Math.ceil(distance / 0.05))
       const step = direction.clone().divideScalar(steps)
+      const probe = person.position.clone()
+      const cellAt = (point: { x: number; z: number }) => walkCell(probe.set(point.x, person.position.y, point.z))
       let moved = 0
       for (let index = 0; index < steps; index += 1) {
-        const next = person.position.clone().add(step)
-        if (!canWalkTo(next)) {
+        const from = { x: person.position.x, z: person.position.z }
+        const next = slideStep(
+          from,
+          { x: step.x, z: step.z },
+          (point) => cellAt(point) === 'free',
+          (point) => cellAt(point) !== 'outside',
+        )
+        if (!next) {
           break
         }
-        person.position.copy(next)
-        moved += step.length()
+        person.position.x = next.x
+        person.position.z = next.z
+        moved += Math.hypot(next.x - from.x, next.z - from.z)
       }
       if (moved === 0) {
         return false
@@ -1289,9 +1370,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       person.rotation.y = heading
       state.motion.heading = heading
       const animate = person.userData.animate as
-        | ((time: number, travelled: number, moving: boolean) => void)
+        | ((time: number, travelled: number, moving: boolean, spanAt?: number) => void)
         | undefined
-      animate?.(performance.now() / 1000, state.manualTravelled, true)
+      animate?.(performance.now() / 1000, state.manualTravelled, true, crouchSpanPosition())
       const scenePosition = person.position
         .clone()
         .applyQuaternion(state.world.quaternion.clone().invert())
@@ -1312,7 +1393,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       person.visible = false
       camera.position
         .copy(person.position)
-        .add(new THREE.Vector3(0, firstPersonEyeHeight[robotProfileRef.current], 0))
+        .add(new THREE.Vector3(
+          0,
+          firstPersonEyeHeight[robotProfileRef.current] - CROUCH_EYE_DROP_M * ((person.userData.crouch as number | undefined) ?? 0),
+          0,
+        ))
       camera.rotation.order = 'YXZ'
       camera.rotation.set(state.manualPitch, state.manualYaw, 0)
       camera.updateMatrixWorld()
@@ -1340,6 +1425,26 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         return
       }
       direction.normalize().multiplyScalar(3 * dt)
+      const mask = state.walkMask
+      if (mask) {
+        const toScene = state.world.quaternion.clone().invert()
+        const sceneAt = camera.position.clone().applyQuaternion(toScene)
+        const sceneStep = direction.clone().applyQuaternion(toScene)
+        const [axisX, axisZ] = mask.axes
+        const allowed = boundedStep(
+          { x: sceneAt.getComponent(axisX), z: sceneAt.getComponent(axisZ) },
+          { x: sceneStep.getComponent(axisX), z: sceneStep.getComponent(axisZ) },
+          {
+            minX: mask.x0 - FREE_CAMERA_MARGIN_M,
+            maxX: mask.x0 + mask.cols * mask.cell_m + FREE_CAMERA_MARGIN_M,
+            minZ: mask.z0 - FREE_CAMERA_MARGIN_M,
+            maxZ: mask.z0 + mask.rows * mask.cell_m + FREE_CAMERA_MARGIN_M,
+          },
+        )
+        sceneStep.setComponent(axisX, allowed.x)
+        sceneStep.setComponent(axisZ, allowed.z)
+        direction.copy(sceneStep.applyQuaternion(state.world.quaternion))
+      }
       camera.position.add(direction)
       controls.target.add(direction)
       if (state.followOffset) {
@@ -1350,13 +1455,33 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       renderRef.current()
     }
+    const faceArrivalAsset = (dt: number) => {
+      const motion = stateRef.current?.motion
+      if (!motion?.robot || motion.faceHeading === null || motion.active) {
+        return
+      }
+      const heading = motion.heading ?? motion.robot.rotation.y
+      const next = turnHeading(heading, motion.faceHeading, smoothFactor(4, Math.max(dt, 0.001)))
+      if (Math.abs(next - heading) < 0.002) {
+        motion.faceHeading = null
+      }
+      motion.heading = next
+      motion.robot.rotation.y = next
+      renderRef.current()
+    }
     const advanceMotion = (dt: number) => {
       const live = stateRef.current
       const motion = live?.motion
       if (live?.manualControl) {
         return
       }
+      faceArrivalAsset(dt)
       if (!motion || !motion.active || !motion.robot || !motion.curve) {
+        return
+      }
+      // A replan is on its way and will start from here, so hold still instead
+      // of being pulled back when the answer arrives.
+      if (motionPausedRef.current) {
         return
       }
       // slow enough to watch the proximity highlights change during the demo
@@ -1371,6 +1496,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         renderRef.current()
         if (!motion.reached) {
           motion.reached = true
+          // Inspect the asset: the route ends along its last tangent, which is
+          // often pointing past it.
+          const centre = arrivalCentreRef.current
+          if (centre && live) {
+            const asset = new THREE.Vector3(...centre).applyQuaternion(live.world.quaternion).sub(motion.robot.position)
+            motion.faceHeading = Math.hypot(asset.x, asset.z) > 0.05 ? Math.atan2(asset.x, asset.z) : null
+          }
           // No arrival cut: the camera keeps its follow framing so the robot is
           // left standing at the target, ready for the next destination.
           tripRef.current({ mode: 'arrived', travelled: motion.total, total: motion.total })
@@ -1407,14 +1539,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
         moveCameraFromKeys(dt)
         const animated = stateRef.current?.motion.robot?.userData.animate as
-          | ((time: number, travelled: number, moving: boolean) => void)
+          | ((time: number, travelled: number, moving: boolean, spanAt?: number) => void)
           | undefined
         if (animated) {
           const live = stateRef.current
           animated(
             now / 1000,
             live?.manualControl ? live.manualTravelled : live?.motion.travelled ?? 0,
-            live?.manualControl ? manualMoving : live?.motion.active ?? false,
+            live?.manualControl ? manualMoving : (live?.motion.active ?? false) && !motionPausedRef.current,
+            crouchSpanPosition(),
           )
           if (stateRef.current?.motion.active) {
             renderRef.current()
@@ -1422,6 +1555,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
         const liveState = stateRef.current
         const liveObjects = objectsRef.current
+        // With the frames off there is nothing to measure, and a list left as it
+        // was would keep naming what the robot passed before they went off.
+        if (liveObjects.length === 0 && lastNearbyKey !== '') {
+          lastNearbyKey = ''
+          nearbyRef.current([])
+        }
         if (liveState?.motion.robot && liveObjects.length > 0 && now - lastNearby > 500) {
           lastNearby = now
           const robot = liveState.motion.robot
@@ -1492,6 +1631,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
         if (!stateRef.current?.firstPerson) {
           controls.update()
+          const cameraFloorY = stateRef.current?.cameraFloorY ?? null
+          if (cameraFloorY !== null && camera.position.y < cameraFloorY + CAMERA_FLOOR_CLEARANCE_M) {
+            camera.position.y = cameraFloorY + CAMERA_FLOOR_CLEARANCE_M
+            camera.lookAt(controls.target)
+          }
         }
         const label = labelRef.current
         if (label) {
@@ -1628,9 +1772,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         arrowSpacing: 0.55,
         robot: null,
         reached: false,
+        faceHeading: null,
+        arcAtVertex: [],
+        plannedFromM: 0,
       },
       follow: followRef.current,
       followOffset: null,
+      followOffsetFromUser: false,
       orbitInputUntil: 0,
       orbitPointerActive: false,
       cameraMove: cameraMoveRef.current,
@@ -1644,6 +1792,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       lastPointerX: 0,
       lastPointerY: 0,
       walkMask: null,
+      cameraFloorY: null,
       centre: new THREE.Vector3(0, 1, 0),
       radius: 5,
     }
@@ -2678,6 +2827,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.cumulative = []
     motion.robot = null
     motion.reached = false
+    motion.faceHeading = null
     state.manualControl = manualControl
     state.movementKeys.clear()
 
@@ -2727,6 +2877,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     state.stickyCamera = null
     state.smoothedCamera = null
+    // A new route is a new view: the offset was chosen for the old one.
+    if (!manualControl) {
+      state.followOffset = null
+      state.followOffsetFromUser = false
+    }
 
     if (!route || !route.reachable || route.path.length === 0) {
       if (previousRobot) {
@@ -2770,7 +2925,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     // planner returns a reachable route containing only that point. Keep the
     // robot visible by representing it as a stationary two-point path.
     const routePath = route.path.length === 1 ? [route.path[0], route.path[0]] : route.path
-    const points = routePath.map(toWorld)
+    const planned = routePath.map(toWorld)
+    state.cameraFloorY = planned[0].y - ROBOT_FLOOR_OFFSET_M
+    const liveRobot = !manualControl && previousRobot
+      ? previousRobot.position.clone().setY(planned[0].y)
+      : null
+    const { points, offsetM } = joinRouteToRobot(planned, liveRobot)
     const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5)
     curve.arcLengthDivisions = 400
     const totalLength = Math.max(0.01, curve.getLength())
@@ -2778,6 +2938,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     for (let index = 1; index < points.length; index += 1) {
       cumulative.push(cumulative[index - 1] + points[index - 1].distanceTo(points[index]))
     }
+    // The curve passes through each vertex at an even step of its parameter.
+    const stepsPerVertex = 8
+    const arcLengths = curve.getLengths((points.length - 1) * stepsPerVertex)
+    const arcAtVertex = points.map((_, index) => arcLengths[index * stepsPerVertex])
+    curve.getLengths(curve.arcLengthDivisions)
 
     // A moving arrow trail instead of a thin line: flat chevrons spaced along
     // the smoothed path, scrolling in the direction of travel.
@@ -2825,6 +2990,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     motion.points = points
     motion.cumulative = cumulative
+    motion.arcAtVertex = arcAtVertex
+    motion.plannedFromM = offsetM
     motion.curve = curve
     motion.total = totalLength
     motion.heading = null
@@ -2867,6 +3034,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.motion.active = false
     state.motion.travelled = 0
     state.motion.reached = false
+    state.motion.faceHeading = null
     state.motion.arrowOffset = 0
     state.manualTravelled = 0
     state.movementKeys.clear()
@@ -2886,6 +3054,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       scenePosition.getComponent(axes[1]),
     ]
     state.followOffset = null
+    state.followOffsetFromUser = false
     state.smoothedCamera = null
     state.stickyCamera = null
     state.updateArrows?.()
@@ -2905,7 +3074,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.active = true
     motion.travelled = 0
     motion.reached = false
-    motion.heading = null
+    // Turn from the heading the robot has rather than snapping onto the route.
+    // The curve starts under a robot that was on it, so this copy does not move
+    // one; only a robot too far away to be on the route is placed on its start.
+    motion.heading = motion.robot.rotation.y
+    motion.faceHeading = null
     motion.arrowOffset = 0
     if (motion.curve) {
       motion.robot.position.copy(motion.curve.getPointAt(0))
@@ -2922,6 +3095,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         stateRef.current.followTransitionStart = performance.now()
         stateRef.current.smoothedCamera = null
         stateRef.current.followOffset = null
+        stateRef.current.followOffsetFromUser = false
         stateRef.current.orbitPointerActive = false
       }
     }
@@ -2960,6 +3134,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       state.manualYaw = state.motion.robot.rotation.y + Math.PI
       state.manualPitch = 0
       state.followOffset = null
+      state.followOffsetFromUser = false
     } else if (manualControl && state.follow && state.motion.robot) {
       const person = state.motion.robot
       const forward = new THREE.Vector3(0, 0, 1)
@@ -2974,6 +3149,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       state.controls.target.copy(target)
       state.camera.lookAt(target)
       state.followOffset = eye.sub(target)
+      state.followOffsetFromUser = false
       state.smoothedCamera = state.camera.position.clone()
       state.followTransitionStart = performance.now()
     }

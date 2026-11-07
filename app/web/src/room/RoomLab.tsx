@@ -35,6 +35,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
+import { nextDestination, prefersCrouched, routeFailureText, shouldTryCrouched, supersedePlan, type PlanIntent } from './routeMotion'
 
 type MissionTarget = {
   tag: string
@@ -99,19 +100,7 @@ const ROBOTS: RobotOption[] = [
   { id: 'cargo', label: 'Cargo AMR', radius: 0.45, height: 0.9 },
 ]
 
-const routeMessage = (route: RoomRoute | null): string => {
-  const reason = route?.reason ?? ''
-  if (reason.includes('inspection point is blocked')) {
-    return 'This robot cannot reach the pump: the inspection point is too tight.'
-  }
-  if (reason.includes('does not fit at its current position')) {
-    return 'This robot does not fit at its current position.'
-  }
-  if (reason.includes('no walkable route')) {
-    return 'No safe path with the current obstacle.'
-  }
-  return 'No safe route for this robot.'
-}
+const routeMessage = (route: RoomRoute | null): string => routeFailureText(route?.reason ?? '')
 
 const severityText = (mapping: MappedAsset | null): string => {
   if (!mapping) {
@@ -169,7 +158,12 @@ export default function RoomLab() {
   const [resetToken, setResetToken] = useState(0)
   const [characterResetToken, setCharacterResetToken] = useState(0)
   const [arrivalDismissed, setArrivalDismissed] = useState(false)
+  const [robotDeployed, setRobotDeployed] = useState(false)
   const robotPositionRef = useRef<[number, number] | null>(null)
+  const motionPausedRef = useRef(false)
+  const planRequestRef = useRef(0)
+  const resumeAfterPlanRef = useRef(false)
+  const pendingPlanRef = useRef<PlanIntent | null>(null)
   const initialStartRef = useRef<[number, number] | null>(null)
   const destinationXZRef = useRef<[number, number] | null>(null)
 
@@ -241,6 +235,14 @@ export default function RoomLab() {
       alive = false
     }
   }, [trip.mode, diagnosis, destinationTag, mapped])
+
+  // A replan reports an idle trip, and that must not take away a robot that has
+  // already driven: it is standing in the room until someone resets it.
+  useEffect(() => {
+    if (trip.mode === 'moving') {
+      setRobotDeployed(true)
+    }
+  }, [trip.mode])
 
   // A camera pose in the URL pins the view, for comparing two builds from the
   // same viewpoint. Coordinates are in the capture's own frame, like the object
@@ -457,6 +459,16 @@ export default function RoomLab() {
     return equipmentRows.find((row) => row.record.id === selectedId) ?? null
   }, [selectedId, equipmentRows])
 
+  // What the robot turns to face when it arrives: the destination object, or the
+  // mapped target on the shipped route, which no click has chosen.
+  const arrivalCentre = useMemo(() => {
+    const id = destinationObjectId ?? targetAnchor?.id ?? mapped?.target_object_id ?? null
+    if (!id) {
+      return null
+    }
+    return anchorById.get(id)?.centre ?? data?.objects.find((object) => object.id === id)?.centre ?? null
+  }, [destinationObjectId, targetAnchor, mapped, anchorById, data])
+
   const selectedObject = useMemo(() => {
     if (!selectedId) {
       return null
@@ -561,31 +573,56 @@ export default function RoomLab() {
   ) => {
     const start = robotPositionRef.current ?? initialStartRef.current
     const target = options.target ?? destinationXZRef.current
+    // A replan sent while this one is out aims at the same place, because the
+    // destination it reads is already this one. Its request replaces this one, so
+    // it takes over what this one was for.
+    const intent = supersedePlan(pendingPlanRef.current, { ...options, target })
+    pendingPlanRef.current = intent
+    const previousDestination = destinationXZRef.current
+    destinationXZRef.current = target
+    // The robot holds still while a replan is out, across both requests of a
+    // crouch fallback, so the route it gets starts where it actually stands.
+    // Only the latest request counts: an older answer is from an older position.
+    const request = planRequestRef.current + 1
+    planRequestRef.current = request
+    if (driving) {
+      motionPausedRef.current = true
+      resumeAfterPlanRef.current = true
+    }
     const planWithHeight = (height: number, standingHeightM: number | null = null) =>
       fetchReroute(blockers, start, radius, height, {
         target: target ?? null,
         standingHeightM,
       })
     const finish = (result: RoomRoute, crouched: boolean) => {
+      if (request !== planRequestRef.current) {
+        return
+      }
+      const resume = resumeAfterPlanRef.current
+      resumeAfterPlanRef.current = false
+      motionPausedRef.current = false
+      pendingPlanRef.current = null
       setRoute(result)
       const waypoint = result.target_waypoint
+      let waypointXZ: [number, number] | null = null
       if (waypoint) {
         const axes = result.grid?.horizontal_axes ?? [0, 2]
         setDestinationScene([waypoint[0], waypoint[1], waypoint[2]])
-        destinationXZRef.current = [waypoint[axes[0]], waypoint[axes[1]]]
+        waypointXZ = [waypoint[axes[0]], waypoint[axes[1]]]
       }
+      destinationXZRef.current = nextDestination(target, waypointXZ)
       setCrouchSpans(crouched ? result.crouch_spans_m ?? [] : [])
-      if (options.label) {
-        setDestinationLabel(options.label)
+      if (intent.label) {
+        setDestinationLabel(intent.label)
       }
-      if (options.tag !== undefined) {
-        setDestinationTag(options.tag)
+      if (intent.tag !== undefined) {
+        setDestinationTag(intent.tag)
       }
-      if (options.condition !== undefined) {
-        setDestinationCondition(options.condition)
+      if (intent.condition !== undefined) {
+        setDestinationCondition(intent.condition)
       }
-      if (options.objectId !== undefined) {
-        setDestinationObjectId(options.objectId)
+      if (intent.objectId !== undefined) {
+        setDestinationObjectId(intent.objectId)
       }
       if (!result.reachable) {
         setRerouteNote(note ?? `No safe route for this robot at ${radius.toFixed(2)} m clearance`)
@@ -595,34 +632,45 @@ export default function RoomLab() {
         note ??
           (crouched ? 'Crouches under low pipework on this route' : `Route replanned for ${radius.toFixed(2)} m clearance`),
       )
-      if (options.startAfter) {
+      if (intent.startAfter) {
         setSelectedId(null)
         setFollow(true)
         setArrivalDismissed(false)
         setTripToken((value) => value + 1)
-      } else if (driving) {
+      } else if (resume) {
         setTripToken((value) => value + 1)
       }
     }
     planWithHeight(profile.height)
       .then((result) => {
-        if (result.reachable || !profile.crouchHeight) {
+        if (request !== planRequestRef.current) {
+          return
+        }
+        if (!profile.crouchHeight || !shouldTryCrouched(result)) {
           finish(result, false)
           return
         }
-        // A humanoid can duck. Plan the crouched route and let the planner tell
-        // us which stretches actually need it, so the model walks upright
-        // everywhere else.
+        // A humanoid can duck, so a refused route or a stop short of the machine
+        // gets a crouched plan too. The planner says which stretches actually
+        // need crouching, so the model walks upright everywhere else.
         planWithHeight(profile.crouchHeight, profile.height)
-          .then((crouched) =>
-            finish(
-              crouched.reachable ? crouched : result,
-              crouched.reachable && (crouched.crouch_spans_m?.length ?? 0) > 0,
-            ),
-          )
+          .then((crouched) => {
+            const useCrouched = prefersCrouched(result, crouched)
+            finish(useCrouched ? crouched : result, useCrouched && (crouched.crouch_spans_m?.length ?? 0) > 0)
+          })
           .catch(() => finish(result, false))
       })
-      .catch(() => setRerouteNote('Route replan failed'))
+      .catch(() => {
+        if (request !== planRequestRef.current) {
+          return
+        }
+        // The old route is still valid, so a paused robot carries on along it.
+        resumeAfterPlanRef.current = false
+        motionPausedRef.current = false
+        pendingPlanRef.current = null
+        destinationXZRef.current = previousDestination
+        setRerouteNote('Route replan failed')
+      })
   }
 
   const obstacleBlockers = () =>
@@ -700,7 +748,7 @@ export default function RoomLab() {
     setCameraMove(false)
     // Always plan from where the robot stands now, so it can walk from one
     // destination to the next without teleporting back to the dock.
-    planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
+    planRoute(obstacleBlockers(), clearanceRadius, robot, undefined, {
       target: destinationXZRef.current,
       startAfter: true,
       label: destinationLabel ?? undefined,
@@ -724,7 +772,7 @@ export default function RoomLab() {
     ]
     const displayName =
       humanize(selectedMapping?.class) || selectedObject.label || humanize(selectedObject.class)
-    planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
+    planRoute(obstacleBlockers(), clearanceRadius, robot, undefined, {
       target,
       startAfter: true,
       label: displayName,
@@ -814,10 +862,12 @@ export default function RoomLab() {
             obstacleMode={obstacleMode}
             obstacles={obstacles}
             robotPositionRef={robotPositionRef}
+            motionPausedRef={motionPausedRef}
+            arrivalCentre={arrivalCentre}
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}
-            showRobot={manualControl || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
+            showRobot={manualControl || robotDeployed || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
             crouchSpans={crouchSpans}
             focusTarget={focusTarget}
             focusToken={focusToken}
@@ -1622,6 +1672,7 @@ export default function RoomLab() {
             onClick={() => {
               setResetToken((value) => value + 1)
               setCharacterResetToken((value) => value + 1)
+              setRobotDeployed(false)
               setTrip({ mode: 'idle', travelled: 0, total: 0 })
               setFollow(false)
               setCameraMove(false)
