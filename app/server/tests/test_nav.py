@@ -140,10 +140,8 @@ def test_equipment_capture_uses_the_reviewed_dock(tmp_path):
         scene_path=scene_path, output_path=None, agent_radius_m=0.20, manual_floor_y=0.0
     )
 
-    # The dock sits on observed floor where the widest robot fits: the older
-    # door spot had no floor gaussian under it and refused the Cargo AMR.
-    assert route["start"][0] == pytest.approx(-0.135, abs=0.1)
-    assert route["start"][2] == pytest.approx(-3.394, abs=0.1)
+    assert route["start"][0] == pytest.approx(-0.585, abs=0.1)
+    assert route["start"][2] == pytest.approx(-4.144, abs=0.1)
     assert route["grid_stats"]["floor_domain"] is True
     assert nav._configured_start_position("another-capture.ply") is None
 
@@ -753,3 +751,37 @@ def test_a_reroute_reuses_the_layers_and_sees_a_rebuilt_artifact(tmp_path, monke
     )
     nav.build_route(scene_path=scene, manual_floor_y=0.0, agent_radius_m=0.1)
     assert len(built) == 2
+
+
+def test_a_snap_takes_the_nearest_free_cell_not_the_first_ring_with_one():
+    blocked = np.ones((21, 21), dtype=np.uint8)
+    blocked[10, 18] = 0  # 0.8 m along an axis, on square ring 8
+    blocked[3, 3] = 0  # 0.99 m on the diagonal, on square ring 7
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 2.1, "z1": 2.1},
+        blocked_mask=blocked,
+        agent_radius_m=0.0,
+        safety_margin_m=0.0,
+    )
+    # A kernel of radius zero still inflates by itself only, so both cells stay free.
+    assert nav._nearest_free(grid, (1.05, 1.05), radius_cells=9) == grid.to_world(10, 18)
+
+
+def test_a_start_may_snap_to_the_limit_and_is_refused_beyond_it(tmp_path):
+    scene = _pocket_scene(tmp_path)
+    plan = dict(
+        scene_path=scene,
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(1.5, 2.0),
+        goal_override=(2.8, 3.8),
+    )
+    # A square blocker round the start: free ground begins 0.85 m away, the door
+    # dock's snap for the Cargo AMR, and past the limit when it is 0.2 m larger.
+    fits = nav.build_route(**plan, blockers=[[0.8, 1.3, 2.2, 2.7]])
+    assert fits["reachable"] is True
+    assert math.dist((fits["start"][0], fits["start"][2]), (1.5, 2.0)) <= nav.START_SNAP_LIMIT_M
+
+    too_far = nav.build_route(**plan, blockers=[[0.6, 1.1, 2.4, 2.9]])
+    assert too_far["reachable"] is False
+    assert "does not fit" in too_far["reason"]

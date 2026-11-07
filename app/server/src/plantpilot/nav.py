@@ -154,6 +154,9 @@ MIN_WAYPOINT_DISTANCE_M = 0.60
 # inspection then stops on the nearest ground the robot can actually reach,
 # within this radius of the asset, instead of a route ending in mid air.
 SERVICE_FALLBACK_RADIUS_M = 2.50
+# How far a live start may snap before it is refused as a robot that does not fit.
+# The Cargo AMR at the door dock snaps 0.85 m, and its body is 0.9 m wide.
+START_SNAP_LIMIT_M = 0.90
 # How far a destination may snap, in cells of the outward search: 2.5 m along an
 # axis, so a machine's inflated footprint never swallows its own inspection stop.
 GOAL_SNAP_CELLS = 25
@@ -1256,22 +1259,19 @@ def _nearest_free(
     got the point back would read that as a zero metre snap onto free ground.
     """
     row, col = grid.to_cell(point)
-    for radius in range(radius_cells + 1):
-        best: tuple[int, int] | None = None
-        best_distance = float("inf")
-        for dr in range(-radius, radius + 1):
-            for dc in range(-radius, radius + 1):
-                if max(abs(dr), abs(dc)) != radius:
-                    continue
-                rr, cc = row + dr, col + dc
-                if 0 <= rr < grid.rows and 0 <= cc < grid.cols and grid.blocked[rr, cc] == 0:
-                    distance = dr * dr + dc * dc
-                    if distance < best_distance:
-                        best_distance = distance
-                        best = (rr, cc)
-        if best is not None:
-            return grid.to_world(*best)
-    return None
+    r0, r1 = max(0, row - radius_cells), min(grid.rows, row + radius_cells + 1)
+    c0, c1 = max(0, col - radius_cells), min(grid.cols, col + radius_cells + 1)
+    if r0 >= r1 or c0 >= c1:
+        return None
+    # Nearest by distance, not by square ring: an inflated corner is free on an
+    # earlier ring than the side beside it, though the side is the shorter move.
+    free_rows, free_cols = np.nonzero(grid.blocked[r0:r1, c0:c1] == 0)
+    if free_rows.size == 0:
+        return None
+    centres_x = grid.x0 + (free_cols + c0 + 0.5) * CELL_M
+    centres_z = grid.z0 + (free_rows + r0 + 0.5) * CELL_M
+    best = int(np.argmin(np.hypot(centres_x - float(point[0]), centres_z - float(point[1]))))
+    return grid.to_world(int(free_rows[best]) + r0, int(free_cols[best]) + c0)
 
 
 def _file_stamp(path: Path | None) -> tuple[str, int] | None:
@@ -1499,10 +1499,12 @@ def build_route(
     start_problem = None
     if start_override is not None:
         requested_start = (float(start_override[0]), float(start_override[1]))
-        snapped_start = _nearest_free(grid, requested_start)
+        snapped_start = _nearest_free(
+            grid, requested_start, radius_cells=int(math.ceil(START_SNAP_LIMIT_M / CELL_M))
+        )
         start_2d = snapped_start if snapped_start is not None else requested_start
         snap_m = math.dist(start_2d, requested_start)
-        if snapped_start is None or snap_m > 0.8:
+        if snapped_start is None or snap_m > START_SNAP_LIMIT_M:
             start_problem = (
                 f"the robot does not fit at its current position with "
                 f"{agent_radius_m:g} m clearance"
