@@ -7,7 +7,7 @@ import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
-import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, sightClear, slideStep, turnHeading } from './routeMotion'
+import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -29,6 +29,10 @@ type Motion = {
   robot: THREE.Group | null
   reached: boolean
   faceHeading: number | null
+  // Arc length along the curve at each vertex, next to `cumulative` (polyline
+  // metres), and where the planner's own metres start on that polyline.
+  arcAtVertex: number[]
+  plannedFromM: number
 }
 
 type WalkMask = {
@@ -197,6 +201,11 @@ const CAMERA_ATTEMPTS: [number, number, number][] = [
   [Math.PI, 0.6, 0.9], [0.3, 0.5, 0.75], [-0.3, 0.5, 0.75],
 ]
 
+// How much lower a fully crouched humanoid's eyes are, matching its folded body.
+const CROUCH_EYE_DROP_M = 0.31
+// Off the route by more than this, its crouch spans say nothing about the place.
+const CROUCH_ROUTE_REACH_M = 0.6
+
 const followDistances: Record<RobotProfile, number> = {
   humanoid: 2.55,
   amr: 2.05,
@@ -356,12 +365,14 @@ function buildRobot(profile: RobotProfile): THREE.Group {
     group.scale.setScalar(0.79)
     let crouch = 0
 
-    group.userData.animate = (_time: number, travelled: number, moving: boolean) => {
+    group.userData.crouch = 0
+    group.userData.animate = (_time: number, travelled: number, moving: boolean, spanAt = -1) => {
       const withinSpan = robotCrouchSpans.some(
-        ([from, to]) => travelled >= from - 0.12 && travelled <= to + 0.12,
+        ([from, to]) => spanAt >= from - 0.12 && spanAt <= to + 0.12,
       )
       const wantCrouch = withinSpan ? 1 : 0
       crouch += (wantCrouch - crouch) * 0.22
+      group.userData.crouch = crouch
       const phase = travelled * 3.9
       const swing = moving ? 0.55 : 0
       legPivots[0].rotation.x = Math.sin(phase) * swing + crouch * 0.35
@@ -1285,6 +1296,21 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const index = row * mask.cols + col
       return (mask.bits[index >> 3] & (0x80 >> (index & 7))) === 0 ? 'free' : 'blocked'
     }
+    // Where the character is, in the planner's metres along the route: the crouch
+    // spans are in those. A driving robot converts its curve progress; a manual
+    // character can be anywhere, so it goes by where it stands.
+    const crouchSpanPosition = (): number => {
+      const state = stateRef.current
+      const motion = state?.motion
+      if (!state || !motion?.robot || motion.points.length < 2) {
+        return -1
+      }
+      if (state.manualControl) {
+        const nearest = nearestAlongPolyline(motion.robot.position, motion.points, motion.cumulative)
+        return nearest && nearest.off <= CROUCH_ROUTE_REACH_M ? nearest.along - motion.plannedFromM : -1
+      }
+      return remapAlong(motion.travelled, motion.arcAtVertex, motion.cumulative) - motion.plannedFromM
+    }
     const moveManualHuman = (dt: number): boolean => {
       const state = stateRef.current
       const person = state?.motion.robot
@@ -1336,9 +1362,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       person.rotation.y = heading
       state.motion.heading = heading
       const animate = person.userData.animate as
-        | ((time: number, travelled: number, moving: boolean) => void)
+        | ((time: number, travelled: number, moving: boolean, spanAt?: number) => void)
         | undefined
-      animate?.(performance.now() / 1000, state.manualTravelled, true)
+      animate?.(performance.now() / 1000, state.manualTravelled, true, crouchSpanPosition())
       const scenePosition = person.position
         .clone()
         .applyQuaternion(state.world.quaternion.clone().invert())
@@ -1359,7 +1385,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       person.visible = false
       camera.position
         .copy(person.position)
-        .add(new THREE.Vector3(0, firstPersonEyeHeight[robotProfileRef.current], 0))
+        .add(new THREE.Vector3(
+          0,
+          firstPersonEyeHeight[robotProfileRef.current] - CROUCH_EYE_DROP_M * ((person.userData.crouch as number | undefined) ?? 0),
+          0,
+        ))
       camera.rotation.order = 'YXZ'
       camera.rotation.set(state.manualPitch, state.manualYaw, 0)
       camera.updateMatrixWorld()
@@ -1481,7 +1511,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
         moveCameraFromKeys(dt)
         const animated = stateRef.current?.motion.robot?.userData.animate as
-          | ((time: number, travelled: number, moving: boolean) => void)
+          | ((time: number, travelled: number, moving: boolean, spanAt?: number) => void)
           | undefined
         if (animated) {
           const live = stateRef.current
@@ -1489,6 +1519,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
             now / 1000,
             live?.manualControl ? live.manualTravelled : live?.motion.travelled ?? 0,
             live?.manualControl ? manualMoving : (live?.motion.active ?? false) && !motionPausedRef.current,
+            crouchSpanPosition(),
           )
           if (stateRef.current?.motion.active) {
             renderRef.current()
@@ -1703,6 +1734,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         robot: null,
         reached: false,
         faceHeading: null,
+        arcAtVertex: [],
+        plannedFromM: 0,
       },
       follow: followRef.current,
       followOffset: null,
@@ -2856,7 +2889,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const liveRobot = !manualControl && previousRobot
       ? previousRobot.position.clone().setY(planned[0].y)
       : null
-    const { points } = joinRouteToRobot(planned, liveRobot)
+    const { points, offsetM } = joinRouteToRobot(planned, liveRobot)
     const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5)
     curve.arcLengthDivisions = 400
     const totalLength = Math.max(0.01, curve.getLength())
@@ -2864,6 +2897,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     for (let index = 1; index < points.length; index += 1) {
       cumulative.push(cumulative[index - 1] + points[index - 1].distanceTo(points[index]))
     }
+    // The curve passes through each vertex at an even step of its parameter.
+    const stepsPerVertex = 8
+    const arcLengths = curve.getLengths((points.length - 1) * stepsPerVertex)
+    const arcAtVertex = points.map((_, index) => arcLengths[index * stepsPerVertex])
+    curve.getLengths(curve.arcLengthDivisions)
 
     // A moving arrow trail instead of a thin line: flat chevrons spaced along
     // the smoothed path, scrolling in the direction of travel.
@@ -2911,6 +2949,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     motion.points = points
     motion.cumulative = cumulative
+    motion.arcAtVertex = arcAtVertex
+    motion.plannedFromM = offsetM
     motion.curve = curve
     motion.total = totalLength
     motion.heading = null

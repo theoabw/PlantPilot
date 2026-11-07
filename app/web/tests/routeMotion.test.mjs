@@ -102,3 +102,20 @@ test('a heading turns the short way across the wrap', () => {
   assert.ok(next > 3)
   assert.ok(Math.abs(motion.turnHeading(0, 1, 1) - 1) < 1e-9)
 })
+
+test('arc length converts to polyline metres through the vertices', () => {
+  const arc = [0, 1.2, 2.5]
+  const line = [0, 1, 2]
+  assert.ok(Math.abs(motion.remapAlong(0.6, arc, line) - 0.5) < 1e-9)
+  assert.ok(Math.abs(motion.remapAlong(1.85, arc, line) - 1.5) < 1e-9)
+  assert.equal(motion.remapAlong(9, arc, line), 2)
+  assert.equal(motion.remapAlong(-1, arc, line), 0)
+})
+
+test('a position maps to the nearest place along the polyline', () => {
+  const polyline = [{ x: 0, z: 0 }, { x: 2, z: 0 }, { x: 2, z: 2 }]
+  const hit = motion.nearestAlongPolyline({ x: 2.1, z: 1 }, polyline, [0, 2, 4])
+  assert.ok(Math.abs(hit.along - 3) < 1e-9)
+  assert.ok(Math.abs(hit.off - 0.1) < 1e-9)
+  assert.equal(motion.nearestAlongPolyline({ x: 0, z: 0 }, [], []), null)
+})

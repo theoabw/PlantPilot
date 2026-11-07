@@ -177,3 +177,52 @@ export function turnHeading(current: number, target: number, blend: number): num
   while (delta < -Math.PI) delta += Math.PI * 2
   return current + delta * blend
 }
+
+/**
+ * Map a distance along one cumulative table to the matching distance in another.
+ *
+ * The robot's progress is arc length along the spline, and the planner's crouch
+ * spans are metres along its polyline. The two agree at the route's vertices and
+ * drift between them, so the conversion goes through the vertices.
+ */
+export function remapAlong(value: number, from: number[], to: number[]): number {
+  if (from.length === 0 || from.length !== to.length) {
+    return value
+  }
+  if (value <= from[0]) {
+    return to[0]
+  }
+  for (let index = 1; index < from.length; index += 1) {
+    if (value <= from[index]) {
+      const span = from[index] - from[index - 1]
+      const ratio = span > 1e-9 ? (value - from[index - 1]) / span : 1
+      return to[index - 1] + (to[index] - to[index - 1]) * ratio
+    }
+  }
+  return to[to.length - 1]
+}
+
+/** The distance along a polyline nearest to a point, and how far off it is. */
+export function nearestAlongPolyline(
+  point: Point2,
+  polyline: Point2[],
+  cumulative: number[],
+): { along: number; off: number } | null {
+  if (polyline.length === 0 || polyline.length !== cumulative.length) {
+    return null
+  }
+  let best = { along: cumulative[0], off: Math.hypot(point.x - polyline[0].x, point.z - polyline[0].z) }
+  for (let index = 1; index < polyline.length; index += 1) {
+    const a = polyline[index - 1]
+    const b = polyline[index]
+    const dx = b.x - a.x
+    const dz = b.z - a.z
+    const lengthSq = dx * dx + dz * dz
+    const t = lengthSq > 1e-12 ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.z - a.z) * dz) / lengthSq)) : 0
+    const off = Math.hypot(point.x - (a.x + dx * t), point.z - (a.z + dz * t))
+    if (off < best.off) {
+      best = { along: cumulative[index - 1] + (cumulative[index] - cumulative[index - 1]) * t, off }
+    }
+  }
+  return best
+}
