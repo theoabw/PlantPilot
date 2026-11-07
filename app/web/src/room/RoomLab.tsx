@@ -33,10 +33,6 @@ import type {
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
 
-type Props = {
-  onLeave: () => void
-}
-
 type MissionTarget = {
   tag: string
   label: string
@@ -99,7 +95,7 @@ const severityText = (mapping: MappedAsset | null): string => {
   return `${state} · ${humanize(mapping.issue_code)}`
 }
 
-export default function RoomLab({ onLeave }: Props) {
+export default function RoomLab() {
   const [data, setData] = useState<RoomObjects | null>(null)
   const [anchors, setAnchors] = useState<RoomAnchors | null>(null)
   const [mapped, setMapped] = useState<RoomMapped | null>(null)
@@ -918,16 +914,6 @@ export default function RoomLab({ onLeave }: Props) {
                     className="accent-cyan-400"
                   />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettingsOpen(false)
-                    onLeave()
-                  }}
-                  className="w-full rounded-md px-2 py-1.5 text-left text-xs font-semibold text-slate-400 hover:bg-slate-800"
-                >
-                  Back to scene lab
-                </button>
               </div>
             ) : null}
           </div>
