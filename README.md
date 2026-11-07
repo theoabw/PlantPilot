@@ -101,6 +101,12 @@ During a mission, use **Follow** to track the selected character while orbiting 
 
 In **Layers**, use **Only splats in equipment boxes** to hide splats whose centres are outside all reviewed equipment boxes. Toggle it again to restore the capture. This is a visual box filter, not object segmentation: background inside a box can remain, and splats that overlap a box but have centres outside it are hidden. The control is unavailable when there are no reviewed boxes.
 
+**Top down** hides splats whose centres are above an adjustable height from the
+detected floor, initially 1.5 scene units. Tall equipment and overhead services
+are cut too, and splats below the cutoff can still overlap it. Sending the robot
+keeps this view while it moves; **Follow** switches back to the robot camera and
+**Overview** restores the original view.
+
 ## Numbers
 
 Every number comes from a run on the two supplied captures in `data/supplied/`; ingest and segmentation read the PLY, mapping and route read the generated artifacts. Times are single runs, not a benchmark.

@@ -5,6 +5,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
+import { heightSplatFilter } from './heightSplatFilter'
+import { topDownPose } from './topDownPose'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 
@@ -48,6 +50,8 @@ type Props = {
   upAxis: string | undefined
   floorHeight: number | null
   resetToken: number
+  topDownToken: number
+  heightCutoff: number | null
   characterResetToken: number
   selectedId: string | null
   mappedIds: string[]
@@ -508,7 +512,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -616,6 +620,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   nearbyRef.current = onNearby
   // The framed camera is kept so the toolbar's overview and reset can restore it.
   const frameRef = useRef<{ eye: THREE.Vector3; target: THREE.Vector3 } | null>(null)
+  const heightCutoffRef = useRef(heightCutoff)
+  heightCutoffRef.current = heightCutoff
   // Switching between validated assets and raw detections rebuilds the boxes;
   // it must not move the camera, so the last framed capture is remembered.
   const framedKeyRef = useRef<string>('')
@@ -1833,6 +1839,20 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
   }, [boxedSplatsOnly, filterBoxes, filterUrl, splatUrl])
 
+  useEffect(() => {
+    const mesh = stateRef.current?.splat
+    if (!mesh || heightCutoff === null || floorHeight === null || !upAxis) {
+      return
+    }
+    const edit = heightSplatFilter(upVector(upAxis), floorHeight, heightCutoff)
+    mesh.add(edit)
+    renderRef.current()
+    return () => {
+      mesh.remove(edit)
+      renderRef.current()
+    }
+  }, [heightCutoff, floorHeight, upAxis, filterUrl, splatUrl])
+
   // Selection highlight: add light to the splats inside the selected box, so
   // the viewer shows the surface the box is masking instead of only the box.
   useEffect(() => {
@@ -1853,7 +1873,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       mesh.remove(edit)
       renderRef.current()
     }
-  }, [selectedId, frameObjects, objects, splatUrl])
+  }, [selectedId, frameObjects, objects, splatUrl, filterUrl])
 
   useEffect(() => {
     const state = stateRef.current
@@ -2406,7 +2426,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     framedKeyRef.current = frameKey
     // The extraction ships the view its previews use, a hero camera standing
     // inside the room. Prefer it, so the browser and the rendered stills agree.
-    if (cameraPose && sameFrame) {
+    if (sameFrame && (cameraPose || heightCutoffRef.current !== null)) {
       renderRef.current()
       return
     }
@@ -2550,6 +2570,20 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.controls.update()
     renderRef.current()
   }, [resetToken])
+
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state || topDownToken === 0 || frameObjects.length === 0) {
+      return
+    }
+    const pose = topDownPose(frameObjects, state.world.quaternion, state.camera.fov, state.camera.aspect)
+    state.focusTween = null
+    state.controls.maxDistance = Math.max(state.controls.maxDistance, pose.eye.distanceTo(pose.target) * 2)
+    state.camera.position.copy(pose.eye)
+    state.controls.target.copy(pose.target)
+    state.controls.update()
+    renderRef.current()
+  }, [topDownToken])
 
   useEffect(() => {
     if (labelRef.current) {
