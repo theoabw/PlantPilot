@@ -6,6 +6,7 @@ import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { stableHalfDepthShader } from './depthSplatShader'
+import { CLICK_MAX_DRAG_PX, isPickable, nestedPick } from './pickObject'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 
@@ -892,7 +893,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
-      const hit = raycaster.intersectObjects(pickGroup.children, false)[0]
+      const hit = nestedPick(raycaster.intersectObjects(pickGroup.children, false))
       const id = hit?.object.userData.objectId
       const box = typeof id === 'string' ? liveState.boxes.find((entry) => entry.id === id) : undefined
       if (box && hoveredBox?.material !== box.material) {
@@ -915,6 +916,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
     renderer.domElement.addEventListener('pointerup', stopPointerLook)
     renderer.domElement.addEventListener('pointercancel', stopPointerLook)
+    // Selection waits for the release: a press can start an orbit, and selecting
+    // on it would rebuild the highlight for every drag that begins over an object.
+    let pressed: { x: number; y: number; pointerId: number } | null = null
     const onPointerDown = (event: PointerEvent) => {
       const current = stateRef.current
       if (current?.manualControl && current.firstPerson) {
@@ -923,6 +927,21 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         current.lastPointerY = event.clientY
         renderer.domElement.setPointerCapture(event.pointerId)
         event.preventDefault()
+        return
+      }
+      pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }
+    }
+    const onPointerCancel = () => {
+      pressed = null
+    }
+    const onPointerUp = (event: PointerEvent) => {
+      const press = pressed
+      pressed = null
+      if (
+        !press
+        || press.pointerId !== event.pointerId
+        || Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_MAX_DRAG_PX
+      ) {
         return
       }
       const rect = renderer.domElement.getBoundingClientRect()
@@ -950,13 +969,19 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           return
         }
       }
-      const hit = raycaster.intersectObjects(pickGroup.children, false)[0]
+      // A hidden frame is not on screen to point at.
+      if (!liveState?.boxGroup.visible) {
+        return
+      }
+      const hit = nestedPick(raycaster.intersectObjects(pickGroup.children, false))
       const id = hit?.object.userData.objectId
       if (typeof id === 'string') {
         selectRef.current(id)
       }
     }
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    renderer.domElement.addEventListener('pointerup', onPointerUp)
+    renderer.domElement.addEventListener('pointercancel', onPointerCancel)
     const noteOrbitStart = () => {
       const state = stateRef.current
       if (state?.follow) {
@@ -1698,6 +1723,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       cancelAnimationFrame(frame)
       observer.disconnect()
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      renderer.domElement.removeEventListener('pointerup', onPointerUp)
+      renderer.domElement.removeEventListener('pointercancel', onPointerCancel)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('pointerup', stopPointerLook)
@@ -2421,15 +2448,17 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       group.add(lines)
       state.boxes.push({ id: object.id, lines, material })
 
-      const pick = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
-      )
-      pick.position.set(...object.centre)
-      pick.quaternion.copy(quaternion)
-      pick.scale.set(...object.extents)
-      pick.userData.objectId = object.id
-      state.pickGroup.add(pick)
+      if (isPickable(object, mappedIds.includes(object.id))) {
+        const pick = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 1, 1),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+        )
+        pick.position.set(...object.centre)
+        pick.quaternion.copy(quaternion)
+        pick.scale.set(...object.extents)
+        pick.userData.objectId = object.id
+        state.pickGroup.add(pick)
+      }
 
       // The box is oriented, so its axis aligned extent is the sum of the axis
       // projections of its half extents, not a sphere around the centre.
