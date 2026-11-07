@@ -12,8 +12,8 @@ import { nextRenderScale } from './renderScale'
 import { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, visiblePick } from './pickObject'
 import { heightSplatFilter } from './heightSplatFilter'
 import { topDownPose } from './topDownPose'
-import { selectionSplatEdit } from './selectionSplatEdit'
-import { highlightObjects } from './highlightObjects'
+import { selectionSplatEdit, syntheticTintSplatEdit } from './selectionSplatEdit'
+import { highlightObjects, syntheticFrameOpacity } from './highlightObjects'
 import { ROBOT_PALETTE, robotLogo } from './robotBrand'
 import { routeCurve } from './routeCurve'
 import { canEscapeCell, escapeDistances } from './walkGrid'
@@ -60,6 +60,8 @@ type WalkMask = {
 type Props = {
   objects: RoomObject[]
   frameObjects: RoomObject[]
+  nearbyCandidates: RoomObject[]
+  syntheticObjects: RoomObject[]
   selectedLabel: string
   frameKey: string
   subtle: boolean
@@ -618,7 +620,7 @@ function buildRobotBody(profile: RobotProfile, logoTexture: THREE.Texture): THRE
 const SHARPEN_AFTER_MS = 400
 const SCALE_WINDOW_MS = 400
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, nearbyHighlightIds, showNearbyHighlights, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syntheticObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, nearbyHighlightIds, showNearbyHighlights, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -701,6 +703,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   selectedRef.current = selectedId
   const objectsRef = useRef(objects)
   objectsRef.current = objects
+  const nearbyCandidatesRef = useRef(nearbyCandidates)
+  nearbyCandidatesRef.current = nearbyCandidates
   const mappedRef = useRef(mappedIds)
   mappedRef.current = mappedIds
   const targetRef = useRef(targetId)
@@ -1711,18 +1715,18 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
         const liveState = stateRef.current
         const liveObjects = objectsRef.current
-        // With the frames off there is nothing to measure, and a list left as it
-        // was would keep naming what the robot passed before they went off.
-        if (liveObjects.length === 0 && lastNearbyKey !== '') {
+        const candidates = nearbyCandidatesRef.current
+        // Clear stale proximity when both equipment and synthetic frames are off.
+        if (candidates.length === 0 && lastNearbyKey !== '') {
           lastNearbyKey = ''
           nearbyRef.current([])
         }
-        if (liveState?.motion.robot && liveObjects.length > 0 && now - lastNearby > 500) {
+        if (liveState?.motion.robot && candidates.length > 0 && now - lastNearby > 500) {
           lastNearby = now
           const robot = liveState.motion.robot
           const sceneRobot = robot.position.clone().applyQuaternion(liveState.world.quaternion.clone().invert())
           const nearby: string[] = []
-          for (const object of liveObjects) {
+          for (const object of candidates) {
             if (distanceToBox(sceneRobot, object) <= NEARBY_RADIUS_M) {
               nearby.push(object.id)
             }
@@ -2189,13 +2193,27 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
   }, [heightCutoff, floorHeight, upAxis, filterUrl, splatUrl])
 
+  useEffect(() => {
+    const mesh = stateRef.current?.splat
+    if (!mesh || !objectOverlayUrl || syntheticObjects.length === 0) {
+      return
+    }
+    const edit = syntheticTintSplatEdit(syntheticObjects)
+    mesh.add(edit)
+    renderRef.current()
+    return () => {
+      mesh.remove(edit)
+      renderRef.current()
+    }
+  }, [objectOverlayUrl, syntheticObjects, splatUrl, filterUrl])
+
   // Use one union edit so selected and nearby boxes cannot add light twice.
   useEffect(() => {
     const mesh = stateRef.current?.splat
     if (!mesh) {
       return
     }
-    const highlighted = highlightObjects(objects, frameObjects, selectedId, nearbyHighlightIds, showNearbyHighlights)
+    const highlighted = highlightObjects(objects, frameObjects, selectedId, nearbyHighlightIds, showNearbyHighlights, syntheticObjects)
     if (highlighted.length === 0) {
       return
     }
@@ -2206,7 +2224,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       mesh.remove(edit)
       renderRef.current()
     }
-  }, [selectedId, nearbyHighlightIds, showNearbyHighlights, frameObjects, objects, splatUrl, filterUrl])
+  }, [selectedId, nearbyHighlightIds, showNearbyHighlights, frameObjects, objects, syntheticObjects, splatUrl, filterUrl])
 
   useEffect(() => {
     const state = stateRef.current
@@ -2429,6 +2447,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         depthWrite: false,
       })
       const lines = new THREE.LineSegments(geometry, material)
+      lines.userData.objectId = frame.id
       lines.scale.set(frame.extents[0], frame.extents[1], frame.extents[2])
       lines.position.copy(new THREE.Vector3(...frame.centre).applyQuaternion(world))
       lines.quaternion.copy(boxQuaternion(frame.axes)).premultiply(world)
@@ -2438,6 +2457,20 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     renderRef.current()
     state.renderer.render(state.scene, state.camera)
   }, [mappedFrames, showMappedFrames, frameKey])
+
+  useEffect(() => {
+    const group = stateRef.current?.mappedGroup
+    if (!group) {
+      return
+    }
+    const nearby = new Set(nearbyHighlightIds)
+    for (const child of group.children) {
+      if (child instanceof THREE.LineSegments && child.material instanceof THREE.LineBasicMaterial) {
+        child.material.opacity = syntheticFrameOpacity(child.userData.objectId, nearby, showNearbyHighlights)
+      }
+    }
+    renderRef.current()
+  }, [mappedFrames, showMappedFrames, frameKey, nearbyHighlightIds, showNearbyHighlights])
 
   // Obstacle markers: a translucent barrier on the floor where the user placed one.
   useEffect(() => {

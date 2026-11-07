@@ -14,7 +14,7 @@ const js = ts.transpile(source, { module: ts.ModuleKind.ESNext, target: ts.Scrip
   .replace("'@sparkjsdev/spark'", JSON.stringify(import.meta.resolve('@sparkjsdev/spark')))
   .replace("'three'", JSON.stringify(import.meta.resolve('three')))
   .replace("'./boxGeometry'", JSON.stringify(boxUrl))
-const { selectionSplatEdit } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`)
+const { selectionSplatEdit, syntheticTintSplatEdit } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`)
 
 test('highlight adds light inside the selected oriented box', () => {
   const object = {
@@ -83,6 +83,24 @@ test('one edit highlights every nearby box as a union without changing alpha', (
   assert.equal(edit.children.length, 2)
   assert.deepEqual(edit.children.map((box) => box.position.toArray()), objects.map((object) => object.centre))
   assert.ok(edit.children.every((box) => box.opacity === 0))
+  const packed = new SplatEdits({ maxEdits: 1, maxSdfs: 2 })
+  packed.update([{ edit, sdfs: edit.children }])
+  assert.equal(packed.numEdits, 1)
+  assert.equal(packed.numSdfs, 2)
+})
+
+test('synthetic tint covers mapped boxes in amber without changing opacity', () => {
+  const objects = [
+    { centre: [1, 2, 3], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], extents: [1, 2, 3] },
+    { centre: [4, 5, 6], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], extents: [3, 2, 1] },
+  ]
+  const edit = syntheticTintSplatEdit(objects)
+  assert.equal(edit.rgbaBlendMode, SplatEditRgbaBlendMode.ADD_RGBA)
+  assert.equal(edit.children.length, 2)
+  assert.deepEqual(edit.children.map((box) => box.position.toArray()), objects.map((object) => object.centre))
+  assert.ok(edit.children.every((box) => box.opacity === 0))
+  assert.deepEqual(edit.children[0].color.toArray(), [0.32, 0.14, 0.03])
+  assert.notDeepEqual(edit.children[0].color.toArray(), selectionSplatEdit(objects).children[0].color.toArray())
   const packed = new SplatEdits({ maxEdits: 1, maxSdfs: 2 })
   packed.update([{ edit, sdfs: edit.children }])
   assert.equal(packed.numEdits, 1)

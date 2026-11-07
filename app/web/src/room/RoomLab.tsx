@@ -32,6 +32,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
+import { nearbyHighlightIds as resolveNearbyHighlightIds, proximityCandidates, syntheticMappedObjects } from './highlightObjects'
 import { destinationTarget, prefersCrouched, routeStatusText, shouldTryCrouched, toggleManualCrouch, transitionDestinationPlan, type DestinationPlanState } from './routeMotion'
 import CharacterSelector, { type CharacterOption } from '../components/CharacterSelector'
 
@@ -415,6 +416,18 @@ export default function RoomLab() {
     }
     return showOutlines ? reviewed : []
   }, [view, devMode, showRawDetections, data, showOutlines, reviewed])
+  const syntheticObjects = useMemo(
+    () => syntheticMappedObjects(data?.objects ?? [], mapped?.mappings ?? []),
+    [data, mapped],
+  )
+  const enabledSyntheticObjects = useMemo(
+    () => showMappedFrames ? syntheticObjects : [],
+    [showMappedFrames, syntheticObjects],
+  )
+  const nearbyCandidates = useMemo(
+    () => proximityCandidates(displayObjects, enabledSyntheticObjects, showMappedFrames),
+    [displayObjects, enabledSyntheticObjects, showMappedFrames],
+  )
 
   const equipmentRows = useMemo(() => {
     const rows = reviewed.map((record) => ({
@@ -540,7 +553,11 @@ export default function RoomLab() {
   const nearbyEquipment = useMemo(() => {
     const rows: { id: string; key: string; name: string; state: string }[] = []
     const seen = new Set<string>()
+    const displayedIds = new Set(displayObjects.map((object) => object.id))
     for (const id of nearby) {
+      if (!displayedIds.has(id)) {
+        continue
+      }
       const record = anchorById.get(id)
       const mapping = mappedByAnchor.get(id)
       const key = mapping?.tag ?? id
@@ -556,8 +573,11 @@ export default function RoomLab() {
       })
     }
     return rows.slice(0, 5)
-  }, [nearby, anchorById, mappedByAnchor])
-  const nearbyHighlightIds = useMemo(() => nearbyEquipment.map((entry) => entry.id), [nearbyEquipment])
+  }, [nearby, anchorById, mappedByAnchor, displayObjects])
+  const nearbyHighlightIds = useMemo(
+    () => resolveNearbyHighlightIds(nearbyEquipment.map((entry) => entry.id), nearby, enabledSyntheticObjects),
+    [nearbyEquipment, nearby, enabledSyntheticObjects],
+  )
 
   const robot = ROBOTS.find((option) => option.id === robotId) ?? ROBOTS[1]
   const clearanceRadius = customRadius ?? robot.radius
@@ -845,6 +865,8 @@ export default function RoomLab() {
           <SplatRoom
             objects={displayObjects}
             frameObjects={data.objects}
+            nearbyCandidates={nearbyCandidates}
+            syntheticObjects={enabledSyntheticObjects}
             selectedLabel={
               selectedObject
                 ? `${selectedObject.label ?? selectedObject.class}${selectedMapping?.tag ? ` · ${selectedMapping.tag}` : ''}`

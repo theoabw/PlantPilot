@@ -11,20 +11,20 @@ const HIGHLIGHT_MARGIN_M = 0.03
  * The edit lives in the splat mesh's local space, which is the capture's scene
  * frame, so the box is placed with the same centre, axis basis and extents the
  * frames are drawn with. The colour is added, so the object keeps its own
- * shading and gains a cyan glow instead of turning into a flat silhouette.
+ * shading instead of turning into a flat silhouette.
  *
  * ADD_RGBA adds the edit's opacity to each splat's alpha as well, and a summed
  * alpha over 1 grows the splat and makes it opaque. The opacity stays 0 so that
  * faint fog keeps its alpha and does not turn into solid blobs that also start
  * writing to the depth pass.
  */
-export function selectionSplatEdit(objects: RoomObject[]): SplatEdit {
+function tintSplatEdit(objects: RoomObject[], color: THREE.Color): SplatEdit {
   const edit = new SplatEdit({ rgbaBlendMode: SplatEditRgbaBlendMode.ADD_RGBA })
   for (const object of objects) {
     const box = new SplatEditSdf({
       type: SplatEditSdfType.BOX,
       opacity: 0,
-      color: new THREE.Color(0.10, 0.55, 0.80),
+      color,
     })
     box.position.set(...object.centre)
     box.quaternion.copy(boxQuaternion(object.axes))
@@ -32,4 +32,12 @@ export function selectionSplatEdit(objects: RoomObject[]): SplatEdit {
     edit.add(box)
   }
   return edit
+}
+
+export function selectionSplatEdit(objects: RoomObject[]): SplatEdit {
+  return tintSplatEdit(objects, new THREE.Color(0.10, 0.55, 0.80))
+}
+
+export function syntheticTintSplatEdit(objects: RoomObject[]): SplatEdit {
+  return tintSplatEdit(objects, new THREE.Color(0.32, 0.14, 0.03))
 }
