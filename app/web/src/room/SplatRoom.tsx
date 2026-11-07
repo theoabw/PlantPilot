@@ -7,7 +7,7 @@ import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
-import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, joinRouteToRobot } from './routeMotion'
+import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, joinRouteToRobot, slideStep } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -1231,20 +1231,20 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       camera.position.set(capped.x, capped.y, capped.z)
       controls.target.lerp(desiredTarget, factor)
     }
-    const canWalkTo = (worldPosition: THREE.Vector3): boolean => {
+    const walkCell = (worldPosition: THREE.Vector3): 'free' | 'blocked' | 'outside' => {
       const state = stateRef.current
       const mask = state?.walkMask
       if (!state || !mask) {
-        return true
+        return 'free'
       }
       const point = worldPosition.clone().applyQuaternion(state.world.quaternion.clone().invert())
       const col = Math.floor((point.getComponent(mask.axes[0]) - mask.x0) / mask.cell_m)
       const row = Math.floor((point.getComponent(mask.axes[1]) - mask.z0) / mask.cell_m)
       if (row < 0 || row >= mask.rows || col < 0 || col >= mask.cols) {
-        return false
+        return 'outside'
       }
       const index = row * mask.cols + col
-      return (mask.bits[index >> 3] & (0x80 >> (index & 7))) === 0
+      return (mask.bits[index >> 3] & (0x80 >> (index & 7))) === 0 ? 'free' : 'blocked'
     }
     const moveManualHuman = (dt: number): boolean => {
       const state = stateRef.current
@@ -1271,14 +1271,23 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const distance = direction.length()
       const steps = Math.max(1, Math.ceil(distance / 0.05))
       const step = direction.clone().divideScalar(steps)
+      const probe = person.position.clone()
+      const cellAt = (point: { x: number; z: number }) => walkCell(probe.set(point.x, person.position.y, point.z))
       let moved = 0
       for (let index = 0; index < steps; index += 1) {
-        const next = person.position.clone().add(step)
-        if (!canWalkTo(next)) {
+        const from = { x: person.position.x, z: person.position.z }
+        const next = slideStep(
+          from,
+          { x: step.x, z: step.z },
+          (point) => cellAt(point) === 'free',
+          (point) => cellAt(point) !== 'outside',
+        )
+        if (!next) {
           break
         }
-        person.position.copy(next)
-        moved += step.length()
+        person.position.x = next.x
+        person.position.z = next.z
+        moved += Math.hypot(next.x - from.x, next.z - from.z)
       }
       if (moved === 0) {
         return false

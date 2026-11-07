@@ -58,3 +58,21 @@ test('a path with no direction keeps the current heading', () => {
   assert.equal(motion.headingFromTangent(0, 0, 1.25), 1.25)
   assert.ok(Math.abs(motion.headingFromTangent(1, 0, 0) - Math.PI / 2) < 1e-9)
 })
+
+test('a blocked diagonal step slides along the wall', () => {
+  const free = (point) => point.x < 1
+  const onGrid = () => true
+  const next = motion.slideStep({ x: 0.95, z: 0 }, { x: 0.1, z: 0.1 }, free, onGrid)
+  assert.deepEqual(next, { x: 0.95, z: 0.1 })
+})
+
+test('head-on into a wall does not move', () => {
+  const free = (point) => point.x < 1
+  assert.equal(motion.slideStep({ x: 0.95, z: 0 }, { x: 0.1, z: 0 }, free, () => true), null)
+})
+
+test('a character on a blocked cell can walk out, but not off the grid', () => {
+  const free = () => false
+  assert.deepEqual(motion.slideStep({ x: 0, z: 0 }, { x: 0.1, z: 0 }, free, () => true), { x: 0.1, z: 0 })
+  assert.equal(motion.slideStep({ x: 0, z: 0 }, { x: 0.1, z: 0 }, free, () => false), null)
+})
