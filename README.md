@@ -17,7 +17,7 @@ Industrial field-service teams and inspection robots work in plants where the ph
 
 1. The room view opens on the capture, with the extracted 3D frames.
 2. The builder panel lists the supplied pack's assets, with the faulty target P-005 marked.
-3. Open Mission and press Send robot. The robot follows the planned route; assets within 2.5 m brighten and their tags and states are listed.
+3. Open Mission and press Send robot. The robot follows the planned route; nearby assets within 2.5 m brighten while the trip panel shows progress.
 4. On arrival the diagnosis card opens with the finding, its evidence counts, the next safe check and the document it is grounded in.
 5. `?perf=1` on the URL adds a draw and render-time overlay for performance checks.
 
@@ -63,7 +63,7 @@ The six requirements in the brief:
 - **Real.** It extracts and 3D-frames industrial objects: 122 in the boiler room, 150 in the complete room.
 - **Real supplied data, proposed mapping.** It proposes builder-pack records onto distinct objects, marks each `proposed` or `unresolved`, and fixes P-005 as the target: 28 of 30 proposed on the boiler room, all 30 on the complete capture.
 - **Real plan, viewer robot.** It plans a collision-free route to a stand-off point beside P-005; the robot follows the planned polyline.
-- **Real.** It highlights the 3D frames and mapped metadata of assets near the robot.
+- **Real.** During a trip, it highlights nearby assets in the scene. The highlights follow object boxes, not precise masks.
 - **Real, grounded in the pack.** Arrival opens P-005's diagnosis: health 44, `FOULING` at high urgency, two findings with evidence ids, and a cited next safe check.
 - **Real.** It serves the room view from FastAPI on 127.0.0.1:8000 with no network calls.
 

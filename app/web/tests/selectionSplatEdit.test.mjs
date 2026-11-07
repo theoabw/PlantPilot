@@ -22,7 +22,7 @@ test('highlight adds light inside the selected oriented box', () => {
     axes: [[0, 1, 0], [-1, 0, 0], [0, 0, 1]],
     extents: [2, 4, 6],
   }
-  const edit = selectionSplatEdit(object)
+  const edit = selectionSplatEdit([object])
   assert.equal(edit.rgbaBlendMode, SplatEditRgbaBlendMode.ADD_RGBA)
   assert.equal(edit.children.length, 1)
 
@@ -52,7 +52,7 @@ test('left-handed reviewed axes still cover the intended oriented box', () => {
     axes: [[0, 1, 0], [1, 0, 0], [0, 0, 1]],
     extents: [2, 4, 6],
   }
-  const box = selectionSplatEdit(object).children[0]
+  const box = selectionSplatEdit([object]).children[0]
   for (let i = 0; i < 3; i += 1) {
     const actual = new THREE.Vector3(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0)
       .applyQuaternion(box.quaternion)
@@ -64,7 +64,7 @@ test('left-handed reviewed axes still cover the intended oriented box', () => {
 test('all reviewed Equipment Room anchors keep their measured box axes', async () => {
   const fixture = JSON.parse(await readFile(new URL('../../../fixtures/scene/anchors_equipment.json', import.meta.url), 'utf8'))
   for (const object of fixture.anchors) {
-    const box = selectionSplatEdit(object).children[0]
+    const box = selectionSplatEdit([object]).children[0]
     for (let i = 0; i < 3; i += 1) {
       const actual = new THREE.Vector3(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0)
         .applyQuaternion(box.quaternion)
@@ -72,4 +72,19 @@ test('all reviewed Equipment Room anchors keep their measured box axes', async (
       assert.ok(Math.abs(actual.dot(expected)) > 0.9999, `${object.label}, axis ${i}`)
     }
   }
+})
+
+test('one edit highlights every nearby box as a union without changing alpha', () => {
+  const objects = [
+    { centre: [1, 2, 3], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], extents: [1, 2, 3] },
+    { centre: [4, 5, 6], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], extents: [3, 2, 1] },
+  ]
+  const edit = selectionSplatEdit(objects)
+  assert.equal(edit.children.length, 2)
+  assert.deepEqual(edit.children.map((box) => box.position.toArray()), objects.map((object) => object.centre))
+  assert.ok(edit.children.every((box) => box.opacity === 0))
+  const packed = new SplatEdits({ maxEdits: 1, maxSdfs: 2 })
+  packed.update([{ edit, sdfs: edit.children }])
+  assert.equal(packed.numEdits, 1)
+  assert.equal(packed.numSdfs, 2)
 })

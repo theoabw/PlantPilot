@@ -545,7 +545,7 @@ export default function RoomLab() {
   }, [equipmentRows, browserQuery, browserFilter])
 
   const nearbyEquipment = useMemo(() => {
-    const rows: { key: string; name: string; state: string }[] = []
+    const rows: { id: string; key: string; name: string; state: string }[] = []
     const seen = new Set<string>()
     for (const id of nearby) {
       const record = anchorById.get(id)
@@ -556,6 +556,7 @@ export default function RoomLab() {
       }
       seen.add(key)
       rows.push({
+        id,
         key,
         name: mapping?.tag ?? record?.label ?? id,
         state: mapping?.state ?? 'healthy',
@@ -563,6 +564,7 @@ export default function RoomLab() {
     }
     return rows.slice(0, 5)
   }, [nearby, anchorById, mappedByAnchor])
+  const nearbyHighlightIds = useMemo(() => nearbyEquipment.map((entry) => entry.id), [nearbyEquipment])
 
   const robot = ROBOTS.find((option) => option.id === robotId) ?? ROBOTS[1]
   const clearanceRadius = customRadius ?? robot.radius
@@ -876,6 +878,8 @@ export default function RoomLab() {
             characterResetToken={characterResetToken}
             characterStart={initialPositionRef.current}
             selectedId={selectedId}
+            nearbyHighlightIds={nearbyHighlightIds}
+            showNearbyHighlights={driving}
             mappedIds={mappedIds}
             targetId={displayTargetId}
             targetPoint={destinationScene ?? targetPoint}
@@ -1454,20 +1458,6 @@ export default function RoomLab() {
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
             <div className="h-full rounded-full bg-brand-mint transition-[width] duration-300" style={{ width: `${Math.max(3, progress * 100)}%` }} />
           </div>
-          {nearbyEquipment.length > 0 ? (
-            <p className="mt-2 text-[9px] font-black uppercase tracking-wide text-amber-300/70">
-              Synthetic pack status
-            </p>
-          ) : null}
-          {nearbyEquipment.length > 0 ? (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {nearbyEquipment.map((entry) => (
-                <span key={entry.key} className="rounded border px-1.5 py-0.5 text-[10px] font-bold" style={{ borderColor: STATE_COLOURS[entry.state], color: STATE_COLOURS[entry.state] }}>
-                  {entry.name}
-                </span>
-              ))}
-            </div>
-          ) : null}
         </section>
       ) : null}
 

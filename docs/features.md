@@ -16,7 +16,7 @@ The score we build against: 30 percent extraction density, 25 percent navigation
 | 6 | A* route to the service position, with length and clearance | the 25 percent beat | B | G1 |
 | 7 | Viewer: room, boxes, selection, red highlight on the faulty device | the product surface, and the display of every other beat | C | G1 |
 | 8 | Avatar travelling the route, at minimum a simple avatar body sliding along the path, with floor arrows | proves the route means something | C | G1 |
-| 9 | Proximity display: nearby objects highlighted with tag, class and state | the second half of the 25 percent criterion | C, D | G2 |
+| 9 | Proximity display: nearby objects highlighted as the avatar moves | the second half of the 25 percent criterion | C, D | G2 |
 | 10 | Grounded diagnosis panel: evidence IDs, documents, a confidence that drops when a data quality case touches the asset, next safe check | the 20 percent beat | D | G2 |
 | 11 | Offline run and a provenance line: which scene, which mapping method | a plant demo that needs Wi-Fi is a liability | all | G2 |
 | 12 | Reproducible artifacts from a clean clone once the two supplied files are in `data/supplied/` | the 15 percent backend score | D | G2 |

@@ -6,8 +6,7 @@ import { boxQuaternion } from './boxGeometry'
 const HIGHLIGHT_MARGIN_M = 0.03
 
 /**
- * Tint the splats inside one reviewed box so a selection shows the surface the
- * box is masking rather than only the box.
+ * Tint the splats inside the union of the supplied boxes.
  *
  * The edit lives in the splat mesh's local space, which is the capture's scene
  * frame, so the box is placed with the same centre, axis basis and extents the
@@ -19,16 +18,18 @@ const HIGHLIGHT_MARGIN_M = 0.03
  * faint fog keeps its alpha and does not turn into solid blobs that also start
  * writing to the depth pass.
  */
-export function selectionSplatEdit(object: RoomObject): SplatEdit {
+export function selectionSplatEdit(objects: RoomObject[]): SplatEdit {
   const edit = new SplatEdit({ rgbaBlendMode: SplatEditRgbaBlendMode.ADD_RGBA })
-  const box = new SplatEditSdf({
-    type: SplatEditSdfType.BOX,
-    opacity: 0,
-    color: new THREE.Color(0.10, 0.55, 0.80),
-  })
-  box.position.set(...object.centre)
-  box.quaternion.copy(boxQuaternion(object.axes))
-  box.scale.set(...object.extents).multiplyScalar(0.5).addScalar(HIGHLIGHT_MARGIN_M)
-  edit.add(box)
+  for (const object of objects) {
+    const box = new SplatEditSdf({
+      type: SplatEditSdfType.BOX,
+      opacity: 0,
+      color: new THREE.Color(0.10, 0.55, 0.80),
+    })
+    box.position.set(...object.centre)
+    box.quaternion.copy(boxQuaternion(object.axes))
+    box.scale.set(...object.extents).multiplyScalar(0.5).addScalar(HIGHLIGHT_MARGIN_M)
+    edit.add(box)
+  }
   return edit
 }
