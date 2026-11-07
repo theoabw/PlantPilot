@@ -159,7 +159,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
 type RobotProfile = 'humanoid' | 'amr' | 'cargo'
 
 const firstPersonEyeHeight: Record<RobotProfile, number> = {
-  humanoid: 1.55,
+  humanoid: 1.2,
   amr: 0.42,
   cargo: 0.68,
 }
