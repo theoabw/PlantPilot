@@ -16,7 +16,9 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
 | `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
 | `data/scene/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
-| `data/objects/meshes/<capture>/` | `make object-meshes` (`scripts/make_object_meshes.py`, optional Open3D) | API, viewer (object atlas and explode) |
+| `data/objects/splats/<capture>/` | `make object-splats` (`scripts/make_object_splats.py`) | API, viewer (recognizable objects for the atlas and explode) |
+| `data/objects/meshes/<capture>/` | `make object-meshes` (`scripts/make_object_meshes.py`, optional Open3D) | API, viewer (silhouette and solid atlas fallback) |
+| `data/viewer/filters/<capture>/` | `make filter-assets` (`scripts/make_filter_assets.py`) | API, viewer (derived channels) |
 | `data/viewer/room.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
@@ -377,6 +379,30 @@ trim and the box crop open the surface, and there is no hole filling. They are
 meant for the object atlas and explode view, not for a claim of surveyed
 geometry. Open3D is optional; the stage fails with an install hint when it is
 missing, and every other stage runs without it.
+
+## Information channels
+
+`make filter-assets` bakes four channels over the same gaussian geometry. Height
+is inferno over the 2nd to 98th percentile with photo luminance mixed back in and
+a neutral band under 0.15 m. Normals are the thin-axis normal after two voxel
+averaging passes and encode as 0.5 + 0.5 n with a headlight term. The edges
+channel is the photo at 30 percent luminance plus a contour overlay of 1.2 px
+points from depth discontinuity and instance boundaries, each point coloured by
+the object that owns it. Semantics is the same dim base plus a pastel overlay of
+the anchor gaussians (opacity 0.55) and the contour overlay, so object regions
+are tinted while the room still reads as a photograph. The viewer draws the
+contours as screen-space points and hides the wireframe boxes in these channels.
+
+## Object splats
+
+`make object-splats` writes one core-property 3DGS PLY per reviewed anchor with
+the anchor's own gaussians, the same layout the full-room asset uses. The object
+channel renders each of these as an independent splat mesh, so an object keeps
+the captured appearance when it is lifted out of the room and shown in the
+explode atlas. This is the recognizability that matters for a movable object; a
+Poisson surface from the same gaussians is lumpy and is not watertight.
+
+## Object meshes
 
 ## Numbers from the supplied capture
 

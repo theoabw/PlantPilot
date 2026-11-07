@@ -46,7 +46,7 @@ type Props = {
   objectMode: boolean
   hideSplat: boolean
   explode: number
-  meshes: { id: string; label: string; url: string }[]
+  objectAssets: { id: string; label: string; url: string; kind: 'splat' | 'mesh' }[]
   route: RoomRoute | null
   tripToken: number
   follow: boolean
@@ -102,7 +102,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, meshes, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -763,7 +763,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       })
     }
     state.meshGroups.clear()
-    if (!objectMode || meshes.length === 0) {
+    if (!objectMode || objectAssets.length === 0) {
       renderRef.current()
       return
     }
@@ -787,11 +787,33 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       group.position.copy(direction).multiplyScalar(explodeRef.current * (1.1 + 0.25 * index))
     }
     const loader = new PLYLoader()
-    meshes.forEach((entry, index) => {
+    objectAssets.forEach((entry, index) => {
       const group = new THREE.Group()
       group.userData.objectId = entry.id
       state.meshGroups.set(entry.id, { group, index })
       state.objectGroup.add(group)
+      if (entry.kind === 'splat') {
+        const mesh = new SplatMesh({ url: entry.url, fileType: SplatFileType.PLY })
+        mesh.rotation.set(0, 0, 0)
+        group.add(mesh)
+        // an invisible box keeps the object clickable without a mesh surface
+        const anchor = objectsRef.current.find((object) => object.id === entry.id)
+        if (anchor) {
+          const pick = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 1, 1),
+            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+          )
+          pick.position.set(...anchor.centre)
+          pick.quaternion.copy(boxQuaternion(anchor.axes))
+          pick.scale.set(...anchor.extents)
+          pick.userData.objectId = entry.id
+          group.add(pick)
+          group.userData.centre = new THREE.Vector3(...anchor.centre)
+          layout(group, index)
+        }
+        renderRef.current()
+        return
+      }
       loader.load(entry.url, (geometry) => {
         geometry.computeBoundingBox()
         geometry.computeVertexNormals()
@@ -817,7 +839,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       })
     })
     renderRef.current()
-  }, [meshes, objectMode])
+  }, [objectAssets, objectMode])
 
   useEffect(() => {
     const state = stateRef.current

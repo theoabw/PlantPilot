@@ -123,6 +123,30 @@ def test_the_room_endpoints_serve_the_artifacts(monkeypatch, tmp_path):
     assert response.content.startswith(b"ply\n")
 
 
+def test_the_object_splats_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "OBJECT_SPLAT_DIR", tmp_path / "splats")
+    assert client.get("/api/scene/object-splats").status_code == 404
+    assert "make object-splats" in client.get("/api/scene/object-splats").json()["detail"]
+    assert client.get("/api/object-splat/AN-5dbcb330").status_code == 404
+
+
+def test_the_object_splats_endpoint_serves_a_manifest_and_a_ply(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    directory = tmp_path / "splats"
+    directory.mkdir()
+    (directory / "manifest.json").write_text(json.dumps({"artifact": "object_splats", "objects": []}))
+    (directory / "AN-5dbcb330.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    monkeypatch.setattr(main, "OBJECT_SPLAT_DIR", directory)
+    assert client.get("/api/scene/object-splats").json()["artifact"] == "object_splats"
+    response = client.get("/api/object-splat/AN-5dbcb330")
+    assert response.status_code == 200
+    assert response.content.startswith(b"ply")
+    assert client.get("/api/object-splat/zzz").status_code == 404
+
+
 def test_the_meshes_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 

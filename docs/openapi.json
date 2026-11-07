@@ -1811,6 +1811,50 @@
         "summary": "Object Mesh"
       }
     },
+    "/api/object-splat/{anchor_id}": {
+      "get": {
+        "description": "One reviewed object's own gaussians as a core-property PLY.",
+        "operationId": "object_splat_api_object_splat__anchor_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "anchor_id",
+            "required": true,
+            "schema": {
+              "title": "Anchor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Object Splat"
+      }
+    },
     "/api/plant": {
       "get": {
         "operationId": "plant_api_plant_get",
@@ -2229,6 +2273,68 @@
           }
         },
         "summary": "Scene Meshes"
+      }
+    },
+    "/api/scene/object-splats": {
+      "get": {
+        "description": "The per-object splat assets of the reviewed anchors.",
+        "operationId": "scene_object_splats_api_scene_object_splats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Object Splats Api Scene Object Splats Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scene Object Splats"
       }
     },
     "/api/scene/objects": {
