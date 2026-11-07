@@ -84,4 +84,4 @@ Scores criterion 4, 15 percent.
 - 1920 by 1080, 100 percent, one tab, bookmarks and notifications off. Record 60 fps, export 30.
 - Terminal: `export PS1='plantpilot $ '` so no local path shows.
 - Dry run once; confirm the Route card reads 6.1 m and 0.32 m clear. Run `make test`; if it fails, fix it or cut the shot.
-- Do not open: the Scene lab, Plant mission or Plate scan views. Do not show: the editor, chat, server logs, other tabs, or any number the app is not printing. No captions over numbers.
+- Do not open: developer tools unless a shot calls for them. Do not show: the editor, chat, server logs, other tabs, or any number the app is not printing. No captions over numbers.

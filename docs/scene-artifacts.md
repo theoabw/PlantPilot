@@ -130,8 +130,8 @@ a sign: the renderer and the viewer both take the axis from the artifact.
 The app renders the same capture with [Spark](https://github.com/sparkjsdev/spark)
 (MIT), a WebGL gaussian splat renderer that lives inside the three.js scene, so
 the room and the extracted boxes share one camera and one depth order. The room
-view is the default view; the scene lab with its provisional room stays behind
-the `scene lab` button.
+view is the only view; the old provisional scene lab, plate scan and plant
+mission demo screens have been removed from the frontend.
 
 - `make splat-asset` writes `data/viewer/room.ply`: the sane prefix with the 14
   core properties only, 28 MB for the supplied capture instead of 355 MB, so the

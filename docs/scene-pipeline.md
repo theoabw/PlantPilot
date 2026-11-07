@@ -495,7 +495,7 @@ Property tests or golden tests:
    - `app/server/src/plantpilot/splat.py` for PLY parsing;
    - `app/server/src/plantpilot/segment.py` for plane removal and clustering;
    - `app/server/src/plantpilot/nav.py` for grid and A* ideas;
-   - `app/web/src/scene-lab/pathfinding.ts` for the client A*.
+   - the old client-side pathfinding experiment, replaced by the server route.
 2. Copy logic into `pipeline/`, not import it. The old server will be deleted.
 3. Replace the client's mock fixtures with published artifacts.
 4. Replace the API fetch layer with static loads.
