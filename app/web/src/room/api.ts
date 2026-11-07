@@ -139,7 +139,7 @@ export type RoomRoute = {
   target_waypoint: number[]
   start: number[]
   path: number[][]
-  path_samples?: { point: number[] }[]
+  path_samples?: { position: number[]; distance_along_path_m: number }[]
   distance_m: number
   clearance_m: number
   floor_height_m: number
