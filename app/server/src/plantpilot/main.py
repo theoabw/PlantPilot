@@ -160,24 +160,27 @@ def scene_reroute(payload: RerouteRequest) -> dict:
     start = None
     if payload.start and len(payload.start) >= 2:
         start = (float(payload.start[0]), float(payload.start[1]))
-    return nav.build_route(
-        scene_path=SCENE_DIR / "scene.npz",
-        objects_path=OBJECTS_FILE,
-        mapped_path=MAPPED_FILE,
-        output_path=None,
-        blockers=blockers,
-        start_override=start,
-        agent_radius_m=float(payload.agent_radius_m),
-        agent_height_m=float(payload.agent_height_m),
-        standing_height_m=(
-            float(payload.standing_height_m) if payload.standing_height_m is not None else None
-        ),
-        goal_override=(
-            (float(payload.target[0]), float(payload.target[1]))
-            if payload.target and len(payload.target) >= 2
-            else None
-        ),
-    )
+    try:
+        return nav.build_route(
+            scene_path=SCENE_DIR / "scene.npz",
+            objects_path=OBJECTS_FILE,
+            mapped_path=MAPPED_FILE,
+            output_path=None,
+            blockers=blockers,
+            start_override=start,
+            agent_radius_m=float(payload.agent_radius_m),
+            agent_height_m=float(payload.agent_height_m),
+            standing_height_m=(
+                float(payload.standing_height_m) if payload.standing_height_m is not None else None
+            ),
+            goal_override=(
+                (float(payload.target[0]), float(payload.target[1]))
+                if payload.target and len(payload.target) >= 2
+                else None
+            ),
+        )
+    except nav.RouteInputError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/scene/meshes", responses=_ARTIFACT_RESPONSES)
