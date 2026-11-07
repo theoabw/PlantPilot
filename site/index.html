@@ -52,7 +52,6 @@ a { color: inherit; }
 :focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; border-radius: 4px; }
 code, .mono { font-family: var(--mono); font-size: .86em; }
 .wrap { max-width: 1320px; margin: 0 auto; padding-inline: var(--gutter); }
-.kicker { margin: 0 0 22px; font: 500 12.5px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mint); }
 h1, h2, h3 { margin: 0; }
 h2 { font-weight: 300; font-size: clamp(38px, 5.6vw, 76px); line-height: 1.04; letter-spacing: -.03em; text-wrap: balance; }
 .lede { color: var(--soft); max-width: 36em; margin: 26px 0 0; font-size: clamp(17px, 1.5vw, 20px); line-height: 1.55; font-weight: 400; }
@@ -194,8 +193,7 @@ section.block { position: relative; z-index: 3; background: var(--ink); padding-
   box-shadow: 0 40px 90px rgba(0, 0, 0, .4);
 }
 .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.card-top small { display: block; font: 500 12px/1.4 var(--mono); color: var(--muted); }
-.card-top strong { display: block; font-weight: 400; font-size: 34px; letter-spacing: -.02em; line-height: 1.2; margin-top: 4px; }
+.card-top strong { display: block; font-weight: 400; font-size: 34px; letter-spacing: -.02em; line-height: 1.2; }
 .gauge { position: relative; width: 84px; height: 84px; flex: none; }
 .gauge svg { display: block; transform: rotate(-90deg); }
 .gauge b { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 300; font-size: 25px; }
@@ -296,7 +294,6 @@ pre .c { color: #6f8693; }
     </div>
     <div class="panel" id="frame">
       <div>
-        <p class="kicker">Frame</p>
         <h2>Find what is actually in the room.</h2>
         <p class="body">Planes come out first, then what is left is clustered and boxed. Each object keeps a class proposal and the reason behind it, and a label the geometry cannot support stays a plain <code>object</code>.</p>
         <div class="chips"><span>150 objects</span><span>272 clusters</span><span>22.0 s</span></div>
@@ -304,7 +301,6 @@ pre .c { color: #6f8693; }
     </div>
     <div class="panel" id="route">
       <div>
-        <p class="kicker">Route</p>
         <h2>Walk only on floor it has seen.</h2>
         <p class="body">A 10 cm occupancy grid gives A* the observed floor and nothing else. The robot drives to a stand-off point beside P-005, and assets within 2.5 m light up as it passes.</p>
         <div class="chips"><span>4 obstacle layers</span><span>1.91 m route</span><span>0.32 m clearance</span></div>
@@ -312,7 +308,6 @@ pre .c { color: #6f8693; }
     </div>
     <div class="panel" id="diagnose">
       <div>
-        <p class="kicker">Diagnose</p>
         <h2>Arrive with the answer and its sources.</h2>
         <p class="body">On arrival the card opens with the finding, the evidence behind it and the next safe check.</p>
         <div class="chips"><span class="bad">FOULING</span><span class="bad">health 44</span><span>inspect hydraulic path</span><span class="syn">synthetic pack data</span></div>
@@ -335,7 +330,6 @@ pre .c { color: #6f8693; }
 <section class="block" id="chain">
   <div class="wrap chain-grid">
     <div class="chain-head rise">
-      <p class="kicker">The chain</p>
       <h2>Every stage leaves a file you can check.</h2>
       <p class="lede">Plain geometry and joins, so any result can be traced to the file and the rule that produced it.</p>
     </div>
@@ -377,7 +371,6 @@ pre .c { color: #6f8693; }
 <section class="block diag" id="why">
   <div class="wrap diag-grid">
     <div class="rise">
-      <p class="kicker">Grounded, not generated</p>
       <h2>It says why, and what it ruled out.</h2>
       <p class="lede">The reasoning comes from computed changes in the telemetry and fixed thresholds, not a model. The same pack gives the same answer every time.</p>
       <div class="feeds" aria-label="Evidence feeding the diagnosis">
@@ -390,7 +383,6 @@ pre .c { color: #6f8693; }
     <article class="card rise" aria-label="The P-005 diagnosis, summarised">
       <div class="card-top">
         <div>
-          <small>Diagnosis summary</small>
           <strong>P-005</strong>
         </div>
         <div class="gauge" role="img" aria-label="Health score 44 of 100">
@@ -416,7 +408,6 @@ pre .c { color: #6f8693; }
 <section class="block" id="honest">
   <div class="wrap">
     <div class="rise">
-      <p class="kicker">The honest part</p>
       <h2>What is real, what is proposed and what is synthetic.</h2>
       <p class="lede">The viewer keeps these apart on screen too, so a pack condition never reads as a measurement of the machine it was assigned to.</p>
     </div>
@@ -449,7 +440,6 @@ pre .c { color: #6f8693; }
 <section class="block" id="run" style="padding-top:0">
   <div class="wrap run-grid">
     <div class="rise">
-      <p class="kicker">Run it</p>
       <h2>One command, on one machine.</h2>
       <p class="lede">The captures and workbook are supplied separately, so put them in <code>data/supplied/</code> first. The room view needs a browser with WebGL2.</p>
       <p class="small">Python 3.12+ with uv, Node 20+ with pnpm. Built with three.js, Spark, React and FastAPI.</p>
