@@ -311,6 +311,17 @@ export function routeFailureText(reason: string): string {
   return 'No safe route for this robot.'
 }
 
+/**
+ * What to say when a route has nothing to drive. A reachable route with a single
+ * point means the robot already stands at the stop, which is not a failure.
+ */
+export function routeStatusText(route: { reachable?: boolean; reason?: string | null } | null): string {
+  if (route?.reachable) {
+    return 'The robot is already at this stop.'
+  }
+  return routeFailureText(route?.reason ?? '')
+}
+
 /** What a plan request is for, beyond the route itself. */
 export type PlanIntent = {
   target: [number, number] | null

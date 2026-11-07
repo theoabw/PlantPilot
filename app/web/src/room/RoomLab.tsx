@@ -35,7 +35,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
-import { nextDestination, prefersCrouched, routeFailureText, shouldTryCrouched, supersedePlan, type PlanIntent } from './routeMotion'
+import { nextDestination, prefersCrouched, routeStatusText, shouldTryCrouched, supersedePlan, type PlanIntent } from './routeMotion'
 
 type MissionTarget = {
   tag: string
@@ -100,7 +100,7 @@ const ROBOTS: RobotOption[] = [
   { id: 'cargo', label: 'Cargo AMR', radius: 0.45, height: 0.9 },
 ]
 
-const routeMessage = (route: RoomRoute | null): string => routeFailureText(route?.reason ?? '')
+const routeMessage = (route: RoomRoute | null): string => routeStatusText(route)
 
 const severityText = (mapping: MappedAsset | null): string => {
   if (!mapping) {

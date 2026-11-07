@@ -168,3 +168,12 @@ test('the pending labels win over ones filled in from the previous trip', () => 
   assert.equal(merged.tag, null)
   assert.equal(merged.startAfter, true)
 })
+
+test('a reachable route with nowhere to go says the robot is there, not that it failed', () => {
+  assert.equal(motion.routeStatusText({ reachable: true, reason: null }), 'The robot is already at this stop.')
+  assert.equal(
+    motion.routeStatusText({ reachable: false, reason: 'no walkable route from this position' }),
+    'No safe path from this position.',
+  )
+  assert.equal(motion.routeStatusText(null), 'No safe route for this robot.')
+})
