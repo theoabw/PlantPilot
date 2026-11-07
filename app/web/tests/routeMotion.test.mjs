@@ -149,3 +149,22 @@ test('a refusal only blames an obstacle when the planner names one', () => {
   assert.equal(motion.routeFailureText('no walkable route from this position'), 'No safe path from this position.')
   assert.equal(motion.routeFailureText(''), 'No safe route for this robot.')
 })
+
+test('a newer request to the same destination keeps the pending start and labels', () => {
+  const pending = { target: [1, 2], startAfter: true, label: 'Pump', tag: 'P-005', condition: 'Fault', objectId: 'A' }
+  const merged = motion.supersedePlan(pending, { target: [1, 2] })
+  assert.deepEqual(merged, { ...pending, target: [1, 2] })
+})
+
+test('a newer request to another destination replaces the pending one', () => {
+  const next = { target: [5, 5], label: 'Motor' }
+  assert.equal(motion.supersedePlan({ target: [1, 2], startAfter: true, label: 'Pump' }, next), next)
+  assert.equal(motion.supersedePlan(null, next), next)
+})
+
+test('the pending labels win over ones filled in from the previous trip', () => {
+  const merged = motion.supersedePlan({ target: [1, 2], label: 'Pump', tag: null }, { target: [1, 2], label: 'Old', tag: 'OLD', startAfter: true })
+  assert.equal(merged.label, 'Pump')
+  assert.equal(merged.tag, null)
+  assert.equal(merged.startAfter, true)
+})

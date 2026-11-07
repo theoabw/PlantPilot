@@ -308,3 +308,45 @@ export function routeFailureText(reason: string): string {
   }
   return 'No safe route for this robot.'
 }
+
+/** What a plan request is for, beyond the route itself. */
+export type PlanIntent = {
+  target: [number, number] | null
+  startAfter?: boolean
+  label?: string
+  tag?: string | null
+  condition?: string | null
+  objectId?: string | null
+}
+
+const SAME_DESTINATION_M = 0.001
+
+/**
+ * The intent of a request that replaces one still waiting for its answer.
+ *
+ * Only the latest answer is used, so a Start followed by an obstacle replan to
+ * the same destination must carry the Start along, or the robot never leaves.
+ * What was pending describes that destination and wins over what the newer
+ * request filled in from the state of the previous trip. A different destination
+ * is a new decision and owes the old request nothing.
+ */
+export function supersedePlan(pending: PlanIntent | null, next: PlanIntent): PlanIntent {
+  if (!pending) {
+    return next
+  }
+  const same =
+    pending.target && next.target
+      ? Math.hypot(pending.target[0] - next.target[0], pending.target[1] - next.target[1]) < SAME_DESTINATION_M
+      : pending.target === next.target
+  if (!same) {
+    return next
+  }
+  return {
+    target: next.target,
+    startAfter: Boolean(pending.startAfter || next.startAfter),
+    label: pending.label ?? next.label,
+    tag: pending.tag !== undefined ? pending.tag : next.tag,
+    condition: pending.condition !== undefined ? pending.condition : next.condition,
+    objectId: pending.objectId !== undefined ? pending.objectId : next.objectId,
+  }
+}

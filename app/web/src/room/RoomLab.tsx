@@ -35,7 +35,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
-import { nextDestination, prefersCrouched, routeFailureText, shouldTryCrouched } from './routeMotion'
+import { nextDestination, prefersCrouched, routeFailureText, shouldTryCrouched, supersedePlan, type PlanIntent } from './routeMotion'
 
 type MissionTarget = {
   tag: string
@@ -163,6 +163,7 @@ export default function RoomLab() {
   const motionPausedRef = useRef(false)
   const planRequestRef = useRef(0)
   const resumeAfterPlanRef = useRef(false)
+  const pendingPlanRef = useRef<PlanIntent | null>(null)
   const initialStartRef = useRef<[number, number] | null>(null)
   const destinationXZRef = useRef<[number, number] | null>(null)
 
@@ -572,6 +573,13 @@ export default function RoomLab() {
   ) => {
     const start = robotPositionRef.current ?? initialStartRef.current
     const target = options.target ?? destinationXZRef.current
+    // A replan sent while this one is out aims at the same place, because the
+    // destination it reads is already this one. Its request replaces this one, so
+    // it takes over what this one was for.
+    const intent = supersedePlan(pendingPlanRef.current, { ...options, target })
+    pendingPlanRef.current = intent
+    const previousDestination = destinationXZRef.current
+    destinationXZRef.current = target
     // The robot holds still while a replan is out, across both requests of a
     // crouch fallback, so the route it gets starts where it actually stands.
     // Only the latest request counts: an older answer is from an older position.
@@ -593,6 +601,7 @@ export default function RoomLab() {
       const resume = resumeAfterPlanRef.current
       resumeAfterPlanRef.current = false
       motionPausedRef.current = false
+      pendingPlanRef.current = null
       setRoute(result)
       const waypoint = result.target_waypoint
       let waypointXZ: [number, number] | null = null
@@ -603,17 +612,17 @@ export default function RoomLab() {
       }
       destinationXZRef.current = nextDestination(target, waypointXZ)
       setCrouchSpans(crouched ? result.crouch_spans_m ?? [] : [])
-      if (options.label) {
-        setDestinationLabel(options.label)
+      if (intent.label) {
+        setDestinationLabel(intent.label)
       }
-      if (options.tag !== undefined) {
-        setDestinationTag(options.tag)
+      if (intent.tag !== undefined) {
+        setDestinationTag(intent.tag)
       }
-      if (options.condition !== undefined) {
-        setDestinationCondition(options.condition)
+      if (intent.condition !== undefined) {
+        setDestinationCondition(intent.condition)
       }
-      if (options.objectId !== undefined) {
-        setDestinationObjectId(options.objectId)
+      if (intent.objectId !== undefined) {
+        setDestinationObjectId(intent.objectId)
       }
       if (!result.reachable) {
         setRerouteNote(note ?? `No safe route for this robot at ${radius.toFixed(2)} m clearance`)
@@ -623,7 +632,7 @@ export default function RoomLab() {
         note ??
           (crouched ? 'Crouches under low pipework on this route' : `Route replanned for ${radius.toFixed(2)} m clearance`),
       )
-      if (options.startAfter) {
+      if (intent.startAfter) {
         setSelectedId(null)
         setFollow(true)
         setArrivalDismissed(false)
@@ -658,6 +667,8 @@ export default function RoomLab() {
         // The old route is still valid, so a paused robot carries on along it.
         resumeAfterPlanRef.current = false
         motionPausedRef.current = false
+        pendingPlanRef.current = null
+        destinationXZRef.current = previousDestination
         setRerouteNote('Route replan failed')
       })
   }
