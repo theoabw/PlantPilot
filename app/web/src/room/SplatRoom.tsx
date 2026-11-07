@@ -2359,6 +2359,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const material = new THREE.LineBasicMaterial({
         color: boxColour(object, new Set(mappedIds), targetId),
         transparent: true,
+        // A frame is a guide, not a surface: writing depth would cut 1 px gaps
+        // in the robot wherever even a barely visible quiet frame crosses it.
+        depthWrite: false,
         opacity: QUIET_CLASSES.has(object.class) && !mappedIds.includes(object.id)
           ? 0.08
           : subtle
