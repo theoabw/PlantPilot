@@ -512,7 +512,7 @@ export default function RoomLab({ onLeave }: Props) {
             mappedIds={mappedIds}
             targetId={displayTargetId}
             targetPoint={targetPoint}
-            cameraPose={data.camera ?? null}
+            cameraPose={null}
             maxSplats={data.source.points + 20_000}
             splatUrl={splatAssetUrl(data.source.points)}
             filterUrl={view === 'photo' || view === 'objects' ? null : filterAssetUrl(view)}
