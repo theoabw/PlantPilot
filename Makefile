@@ -1,5 +1,10 @@
 PY := uv run
 
+# The port the demo serves on. Override it when 8000 is already taken, so a
+# second build does not fail after it has built everything:
+#   make demo PORT=8001
+PORT ?= 8000
+
 # Which supplied capture the demo uses. `equipment` is the complete capture the
 # organiser re-uploaded after the first delivery was found truncated, and it is
 # the default; `boiler` is the capture named in the brief as delivered. The
@@ -26,7 +31,7 @@ SCENE ?= $(CAPTURE_DIR)/scene.npz
 OBJECTS ?= $(CAPTURE_DIR)/objects.json
 ASSETS ?= $(CAPTURE_DIR)/assets.json
 ANCHORS ?= $(CAPTURE_DIR)/anchors.json
-FILTERS ?= data/viewer/filters/$(CAPTURE)
+FILTERS ?= data/viewer/filters/$(notdir $(CAPTURE_DIR))
 ANCHORS_FIXTURE ?= fixtures/scene/anchors_$(CAPTURE).json
 MAPPED ?= $(CAPTURE_DIR)/mapped.json
 ROUTE ?= $(CAPTURE_DIR)/route.json
@@ -119,7 +124,7 @@ generality: plant
 ## demo: build CAPTURE's artifacts and the web page, then serve both
 demo: pipeline filter-assets web-build register
 	PLANTPILOT_SCENE=$(CAPTURE_DIR) PLANTPILOT_SPLAT=$(VIEWER_PLY) \
-	  $(PY) uvicorn plantpilot.main:app --host 127.0.0.1 --port 8000 --app-dir app/server/src
+	  $(PY) uvicorn plantpilot.main:app --host 127.0.0.1 --port $(PORT) --app-dir app/server/src
 
 ## web: vite dev server on 5173, proxying /api to 8000
 web:
