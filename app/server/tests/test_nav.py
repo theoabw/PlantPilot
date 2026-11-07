@@ -727,3 +727,28 @@ def test_a_tall_robot_is_not_cut_short_by_a_plane_below_its_height(tmp_path):
         agent_height_m=1.9,
     )
     assert tall["grid_stats"]["overhead_blocked_cells"] > 0
+
+
+def test_a_reroute_reuses_the_layers_and_sees_a_rebuilt_artifact(tmp_path, monkeypatch):
+    scene = _pocket_scene(tmp_path)
+    built = []
+    original = nav.Grid.from_cloud
+    monkeypatch.setattr(
+        nav.Grid, "from_cloud", lambda *a, **k: built.append(k) or original(*a, **k)
+    )
+    first = nav.build_route(scene_path=scene, manual_floor_y=0.0, agent_radius_m=0.1)
+    wider = nav.build_route(
+        scene_path=scene, manual_floor_y=0.0, agent_radius_m=0.3, start_override=(1.0, 2.0)
+    )
+    assert len(built) == 1
+    assert wider["agent_radius_m"] == 0.3
+    assert wider["grid_stats"]["blocked_cells"] > first["grid_stats"]["blocked_cells"]
+
+    points = np.load(scene)["xyz"]
+    np.savez(
+        scene,
+        xyz=points[::2],
+        meta=np.array(json.dumps({"frame": {"up_axis_index": 1, "up_axis_sign": 1}})),
+    )
+    nav.build_route(scene_path=scene, manual_floor_y=0.0, agent_radius_m=0.1)
+    assert len(built) == 2

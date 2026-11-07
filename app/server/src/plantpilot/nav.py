@@ -46,6 +46,7 @@ import json
 import math
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -701,6 +702,18 @@ class Grid:
         self.free = (self.blocked == 0).astype(np.uint8)
         self.clearance_m = cv2.distanceTransform(self.free, cv2.DIST_L2, 5) * CELL_M
 
+    def with_inflation(self, agent_radius_m: float, safety_margin_m: float) -> "Grid":
+        """Return a copy for another robot: same layers, inflated for its body."""
+        clone = Grid.__new__(Grid)
+        clone.__dict__.update(self.__dict__)
+        clone.agent_radius_m = float(agent_radius_m)
+        clone.safety_margin_m = float(safety_margin_m)
+        clone.blocked = self.base_blocked.copy()
+        clone._inflate()
+        clone.blocked_fraction = round(float(np.mean(clone.blocked == 1)), 4)
+        clone.saturated = bool(clone.blocked_fraction > MAX_BLOCKED_FRACTION)
+        return clone
+
     def with_blockers(self, blockers: list[list[float]]) -> "Grid":
         """Return a copy with extra blocked rectangles, inflated identically."""
         clone = Grid.__new__(Grid)
@@ -1260,6 +1273,60 @@ def _nearest_free(
     return None
 
 
+def _file_stamp(path: Path | None) -> tuple[str, int] | None:
+    """A cache key that changes when the file does, so a rebuilt artifact is read."""
+    if path is None or not path.exists():
+        return None
+    return str(path), path.stat().st_mtime_ns
+
+
+@lru_cache(maxsize=2)
+def _scene_arrays(stamp: tuple[str, int]) -> tuple[np.ndarray, np.ndarray | None]:
+    """The capture's points and per-gaussian normals, read once per artifact."""
+    data = np.load(stamp[0])
+    points = data["xyz"] if "xyz" in data else data["points"]
+    # The floor and wall rules read the gaussians' own shape, so the normals
+    # come from the same artifact. A capture without them still builds a grid:
+    # the span and patch tests then apply to every point.
+    normals = None
+    if "rot" in data.files and "size" in data.files:
+        normals = surface_normals(data["rot"], data["size"])
+    return points, normals
+
+
+@lru_cache(maxsize=16)
+def _layered_grid(
+    scene: tuple[str, int],
+    objects_stamp: tuple[str, int] | None,
+    floor_y: float,
+    up_axis: int,
+    up_axis_sign: int,
+    body_height_m: float,
+) -> Grid:
+    """The occupancy layers for one body height, which is the slow part of a route.
+
+    A reroute changes the robot's position, its radius or a blocker, and none of
+    those touch the layers, so the raster is built once per height and each route
+    takes an inflated copy.
+    """
+    points, normals = _scene_arrays(scene)
+    objects: list[dict] = []
+    if objects_stamp is not None:
+        loaded = json.loads(Path(objects_stamp[0]).read_text())
+        objects = loaded if isinstance(loaded, list) else loaded.get("objects", [])
+    return Grid.from_cloud(
+        points=points,
+        floor_y=floor_y,
+        up_axis=up_axis,
+        up_axis_sign=up_axis_sign,
+        agent_radius_m=0.0,
+        objects=objects,
+        walkable_height_max_m=body_height_m,
+        safety_margin_m=0.0,
+        normals=normals,
+    )
+
+
 def build_route(
     scene_path: Path | None = None,
     objects_path: Path | None = None,
@@ -1352,34 +1419,26 @@ def build_route(
 
     # Build grid from scene point cloud or fallback
     if scene_path and scene_path.exists():
-        data = np.load(scene_path)
-        points = data["xyz"] if "xyz" in data else data["points"]
-        # The floor and wall rules read the gaussians' own shape, so the normals
-        # come from the same artifact. A capture without them still builds a
-        # grid: the span and patch tests then apply to every point.
-        normals = None
-        if "rot" in data.files and "size" in data.files:
-            normals = surface_normals(data["rot"], data["size"])
+        scene_stamp = _file_stamp(scene_path)
+        points, _ = _scene_arrays(scene_stamp)
         floor_y, _, _ = detect_floor(
             points,
             up_axis=up_axis,
             up_axis_sign=up_axis_sign,
             manual_override=manual_floor_y,
         )
-        grid = Grid.from_cloud(
-            points=points,
-            floor_y=floor_y,
-            up_axis=up_axis,
-            up_axis_sign=up_axis_sign,
-            agent_radius_m=agent_radius_m,
-            objects=objects,
-            walkable_height_max_m=max(
-                OBSTACLE_MIN_HEIGHT_M,
-                min(float(agent_height_m), WALKABLE_HEIGHT_MAX_M),
-            ),
-            safety_margin_m=ROUTE_SAFETY_MARGIN_M,
-            normals=normals,
-        )
+
+        def layers_for(height_m: float) -> Grid:
+            return _layered_grid(
+                scene_stamp,
+                _file_stamp(objects_path),
+                float(floor_y),
+                up_axis,
+                up_axis_sign,
+                max(OBSTACLE_MIN_HEIGHT_M, min(float(height_m), WALKABLE_HEIGHT_MAX_M)),
+            )
+
+        grid = layers_for(agent_height_m).with_inflation(agent_radius_m, ROUTE_SAFETY_MARGIN_M)
     else:
         # No scene artifact: plan on an empty floor so the route document is
         # still structurally valid for the API tests.
@@ -1525,20 +1584,7 @@ def build_route(
         # sideways to slip past structure, which is how a person would pass
         # pipework beside the path. Testing the full navigation inflation made
         # the model duck for obstacles it could simply walk past.
-        standing_grid = Grid.from_cloud(
-            points=points,
-            floor_y=floor_y,
-            up_axis=up_axis,
-            up_axis_sign=up_axis_sign,
-            agent_radius_m=0.12,
-            objects=objects,
-            walkable_height_max_m=max(
-                OBSTACLE_MIN_HEIGHT_M,
-                min(float(standing_height_m), WALKABLE_HEIGHT_MAX_M),
-            ),
-            safety_margin_m=0.0,
-            normals=normals,
-        )
+        standing_grid = layers_for(float(standing_height_m)).with_inflation(0.12, 0.0)
         if blockers:
             standing_grid = standing_grid.with_blockers(blockers)
         distances = [0.0]
