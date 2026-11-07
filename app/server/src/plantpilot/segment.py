@@ -378,7 +378,7 @@ def _tighten_pair(points: np.ndarray, axes: np.ndarray, first: int, second: int)
 
 
 def _extents(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """PCA frame plus robust extents (2nd to 98th percentile) of a point set.
+    """Fit a stable oriented box with robust extents to a point set.
 
     A box with a square cross section has two equal eigenvalues, so its PCA
     frame is degenerate: the two equal axes are free to spin and the box comes
@@ -406,8 +406,8 @@ def _extents(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if np.linalg.det(axes) < 0:
         axes[2] = -axes[2]
     local = centred @ axes.T
-    lo = local.min(axis=0)
-    hi = local.max(axis=0)
+    lo = np.percentile(local, 2.0, axis=0)
+    hi = np.percentile(local, 98.0, axis=0)
     centre = centroid + axes.T @ ((lo + hi) / 2.0)
     extents = hi - lo
     return centre, axes, np.maximum(extents, 1e-4)

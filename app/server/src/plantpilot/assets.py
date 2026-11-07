@@ -227,58 +227,8 @@ def seed_masks(rgb: np.ndarray) -> dict[str, np.ndarray]:
 
 
 def fit_box(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Fit a right-handed oriented box that encloses a point set.
-
-    The axes are signed so each row points along the dominant positive direction
-    of its own axis. Near-degenerate PCA pairs are tightened in their plane so
-    cylindrical and square objects do not receive an arbitrary sideways frame.
-    """
-    points = np.asarray(points, dtype=np.float64)
-    centroid = points.mean(axis=0)
-    centred = points - centroid
-    covariance = centred.T @ centred / max(1, points.shape[0] - 1)
-    values, vectors = np.linalg.eigh(covariance)
-    axes = vectors[:, np.argsort(values)[::-1]].T
-    if values[0] > 0 and (values[0] - values[1]) / values[0] < 0.1:
-        axes = _tighten_pair(points - centroid, axes, 0, 1)
-    if values[1] > 0 and (values[1] - values[2]) / values[1] < 0.1:
-        axes = _tighten_pair(points - centroid, axes, 1, 2)
-    for row in range(3):
-        dominant = int(np.argmax(np.abs(axes[row])))
-        if axes[row, dominant] < 0:
-            axes[row] = -axes[row]
-    if np.linalg.det(axes) < 0:
-        axes[2] = -axes[2]
-    local = centred @ axes.T
-    lo = local.min(axis=0)
-    hi = local.max(axis=0)
-    centre = centroid + axes.T @ ((lo + hi) / 2.0)
-    return centre, axes, np.maximum(hi - lo, 1e-4)
-
-
-def _tighten_pair(points: np.ndarray, axes: np.ndarray, first: int, second: int) -> np.ndarray:
-    """Rotate a near-degenerate pair to its tightest enclosing rectangle."""
-    local = points @ axes.T
-    best: tuple[float, float] | None = None
-    for theta in np.linspace(0.0, np.pi / 2.0, 181, endpoint=False):
-        cosine, sine = np.cos(theta), np.sin(theta)
-        first_coord = local[:, first] * cosine + local[:, second] * sine
-        second_coord = -local[:, first] * sine + local[:, second] * cosine
-        area = float(
-            (first_coord.max() - first_coord.min())
-            * (second_coord.max() - second_coord.min())
-        )
-        if best is None or area < best[0] - 1e-12:
-            best = (area, theta)
-    if best is None:
-        return axes
-    cosine, sine = np.cos(best[1]), np.sin(best[1])
-    tightened = axes.copy()
-    first_axis = axes[first].copy()
-    second_axis = axes[second].copy()
-    tightened[first] = cosine * first_axis + sine * second_axis
-    tightened[second] = -sine * first_axis + cosine * second_axis
-    return tightened
+    """Fit the same stable oriented box used by scene extraction."""
+    return segment._extents(np.asarray(points, dtype=np.float64))
 
 
 def _colour_label(colour: str, compact: bool) -> tuple[str, str]:
