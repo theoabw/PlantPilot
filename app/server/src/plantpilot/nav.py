@@ -529,6 +529,24 @@ def derive_start_position(
     return (grid.x0 + 1.0, grid.z0 + 1.0)
 
 
+def _configured_start_position(capture_name: str | None) -> tuple[float, float] | None:
+    """Return a reviewed start position for a capture when one is configured."""
+    if capture_name is None:
+        return None
+    root = Path(__file__).resolve().parents[4]
+    starts_path = root / "fixtures" / "scene" / "route_starts.json"
+    starts = json.loads(starts_path.read_text(encoding="utf-8"))
+    captures = starts.get("captures")
+    if not isinstance(captures, dict):
+        raise ValueError(f"Invalid route-start fixture: expected captures in {starts_path}")
+    position = captures.get(capture_name)
+    if position is None:
+        return None
+    if not isinstance(position, list) or len(position) != 2:
+        raise ValueError(f"Invalid route start for {capture_name!r} in {starts_path}")
+    return float(position[0]), float(position[1])
+
+
 def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> dict[str, Any]:
     """8-connected A*. Returns path in metres, length, clearance, and computation time."""
     t0 = time.perf_counter()
@@ -840,6 +858,7 @@ def build_route(
     # sign -1). Default to 1 if the artifact is absent.
     up_axis = 1
     scene_meta: dict | None = None
+    capture_name: str | None = None
     if scene_path and scene_path.exists():
         try:
             import json as _json
@@ -855,6 +874,10 @@ def build_route(
                 frame = scene_meta.get("frame", {})
                 up_axis = int(frame.get("up_axis_index", 1))
                 up_axis_sign = int(frame.get("up_axis_sign", 1))
+                source = scene_meta.get("source", {})
+                if isinstance(source, dict):
+                    source_file = source.get("file")
+                    capture_name = source_file if isinstance(source_file, str) else None
         except Exception:
             up_axis = 1
             up_axis_sign = 1
@@ -962,6 +985,14 @@ def build_route(
 
     # Derive start position and target waypoint
     start_2d = derive_start_position(grid, objects=objects, up_axis=up_axis)
+    if start_override is None:
+        configured_start = _configured_start_position(capture_name)
+        if configured_start is not None:
+            cell = grid.nearest_walkable(*grid.to_cell(configured_start), max_m=1.0)
+            if cell is None:
+                raise ValueError(f"Configured start for {capture_name!r} is not on the walkable floor")
+            start_2d = grid.to_world(*cell)
+
     if target_box:
         goal_2d = compute_service_waypoint(target_box, grid, up_axis=up_axis)
         if not goal_2d:
