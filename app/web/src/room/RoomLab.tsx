@@ -63,6 +63,32 @@ const CONDITION_TEXT: Record<string, string> = {
   attention_required: 'Needs attention',
 }
 
+type RobotOption = {
+  id: 'humanoid' | 'amr' | 'cargo'
+  label: string
+  radius: number
+}
+
+const ROBOTS: RobotOption[] = [
+  { id: 'humanoid', label: 'Humanoid', radius: 0.18 },
+  { id: 'amr', label: 'Compact AMR', radius: 0.2 },
+  { id: 'cargo', label: 'Cargo AMR', radius: 0.45 },
+]
+
+const routeMessage = (route: RoomRoute | null): string => {
+  const reason = route?.reason ?? ''
+  if (reason.includes('inspection point is blocked')) {
+    return 'This robot cannot reach the pump: the inspection point is too tight.'
+  }
+  if (reason.includes('does not fit at its current position')) {
+    return 'This robot does not fit at its current position.'
+  }
+  if (reason.includes('no walkable route')) {
+    return 'No safe path with the current obstacle.'
+  }
+  return 'No safe route for this robot.'
+}
+
 const severityText = (mapping: MappedAsset | null): string => {
   if (!mapping) {
     return 'Condition unknown'
@@ -76,7 +102,6 @@ export default function RoomLab({ onLeave }: Props) {
   const [anchors, setAnchors] = useState<RoomAnchors | null>(null)
   const [mapped, setMapped] = useState<RoomMapped | null>(null)
   const [route, setRoute] = useState<RoomRoute | null>(null)
-  const [originalRoute, setOriginalRoute] = useState<RoomRoute | null>(null)
   const [assets, setAssets] = useState<RoomAssets | null>(null)
   const [filters, setFilters] = useState<RoomFilters | null>(null)
   const [objectSplats, setObjectSplats] = useState<RoomObjectSplats | null>(null)
@@ -101,12 +126,15 @@ export default function RoomLab({ onLeave }: Props) {
   const [obstacles, setObstacles] = useState<[number, number][]>([])
   const [rerouteNote, setRerouteNote] = useState<string | null>(null)
   const [explode, setExplode] = useState(0)
+  const [robotId, setRobotId] = useState<RobotOption['id']>('amr')
+  const [customRadius, setCustomRadius] = useState<number | null>(null)
   const [focusToken, setFocusToken] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [resetToken, setResetToken] = useState(0)
   const [arrivalDismissed, setArrivalDismissed] = useState(false)
   const robotPositionRef = useRef<[number, number] | null>(null)
+  const initialStartRef = useRef<[number, number] | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -128,7 +156,10 @@ export default function RoomLab({ onLeave }: Props) {
       .then((value) => {
         if (alive) {
           setRoute(value)
-          setOriginalRoute(value)
+          if (value?.path?.length) {
+            const axes = value.grid?.horizontal_axes ?? [0, 2]
+            initialStartRef.current = [value.path[0][axes[0]], value.path[0][axes[1]]]
+          }
         }
       })
       .catch(() => undefined)
@@ -393,6 +424,39 @@ export default function RoomLab({ onLeave }: Props) {
     return rows.slice(0, 5)
   }, [nearby, anchorById, mappedByAnchor])
 
+  const robot = ROBOTS.find((option) => option.id === robotId) ?? ROBOTS[1]
+  const clearanceRadius = customRadius ?? robot.radius
+
+  const replanForRobot = (radius: number, note?: string) => {
+    const blockers = obstacles.map((item) => [
+      item[0] - 0.18,
+      item[1] - 0.18,
+      item[0] + 0.18,
+      item[1] + 0.18,
+    ])
+    const start = robotPositionRef.current ?? initialStartRef.current
+    fetchReroute(blockers, start, radius)
+      .then((result) => {
+        setRoute(result)
+        if (!result.reachable) {
+          setRerouteNote(note ?? `No safe route for this robot at ${radius.toFixed(2)} m clearance`)
+          return
+        }
+        setRerouteNote(note ?? `Route replanned for ${radius.toFixed(2)} m clearance`)
+        if (driving) {
+          setTripToken((value) => value + 1)
+        }
+      })
+      .catch(() => setRerouteNote('Route replan failed'))
+  }
+
+  const changeRobot = (id: RobotOption['id'], radius?: number) => {
+    setRobotId(id)
+    setCustomRadius(radius ?? null)
+    const option = ROBOTS.find((candidate) => candidate.id === id) ?? ROBOTS[1]
+    replanForRobot(radius ?? option.radius, `${(radius ?? option.radius).toFixed(2)} m clearance for the ${option.label.toLowerCase()}`)
+  }
+
   const routeReady = Boolean(route?.reachable && (route.path?.length ?? 0) > 1)
   const driving = trip.mode === 'moving'
   const arrived = trip.mode === 'arrived'
@@ -454,7 +518,8 @@ export default function RoomLab({ onLeave }: Props) {
       item[1] + 0.18,
     ])
     blockers.push(blocker)
-    fetchReroute(blockers, robotPositionRef.current)
+    const start = robotPositionRef.current ?? initialStartRef.current
+    fetchReroute(blockers, start, clearanceRadius)
       .then((result) => {
         setRoute(result)
         if (!result.reachable) {
@@ -472,11 +537,7 @@ export default function RoomLab({ onLeave }: Props) {
   const clearObstacles = () => {
     setObstacles([])
     setObstacleMode(false)
-    setRerouteNote(null)
-    const restore = originalRoute ?? route
-    if (restore) {
-      setRoute(restore)
-    }
+    replanForRobot(clearanceRadius, 'Obstacles cleared, route restored')
   }
 
   const sceneName = useMemo(() => {
@@ -487,7 +548,7 @@ export default function RoomLab({ onLeave }: Props) {
     return 'Industrial scene'
   }, [data])
 
-  const showMission = trip.mode === 'idle'
+  const showMission = trip.mode === 'idle' || (trip.mode === 'arrived' && arrivalDismissed)
   const showArrival = arrived && !arrivalDismissed
 
   return (
@@ -532,6 +593,7 @@ export default function RoomLab({ onLeave }: Props) {
             showRoute={driving}
             focusTarget={focusTarget}
             focusToken={focusToken}
+            robotProfile={robot.id}
             route={route}
             tripToken={tripToken}
             follow={follow}
@@ -849,8 +911,29 @@ export default function RoomLab({ onLeave }: Props) {
           <p className="mt-2 text-[11px] font-semibold text-slate-400">
             {routeReady
               ? `${(route?.distance_m ?? 0).toFixed(1)} m route · ${(route?.clearance_m ?? 0).toFixed(2)} m clearance`
-              : route?.reason ?? 'Route not available'}
+              : routeMessage(route)}
           </p>
+          <div className="mt-3">
+            <div className="flex rounded-lg border border-slate-700 bg-slate-900/60 p-0.5">
+              {ROBOTS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => changeRobot(option.id)}
+                  className={`flex-1 rounded-md px-1.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                    robotId === option.id && customRadius === null
+                      ? 'bg-cyan-500/20 text-cyan-200'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Clearance radius {clearanceRadius.toFixed(2)} m
+            </p>
+          </div>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
@@ -1005,6 +1088,26 @@ export default function RoomLab({ onLeave }: Props) {
                   : '—'}
               </dd>
             </dl>
+            <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Robot clearance</p>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                type="range"
+                min={0.15}
+                max={0.7}
+                step={0.01}
+                value={customRadius ?? robot.radius}
+                onChange={(event) => setCustomRadius(Number(event.target.value))}
+                className="flex-1 accent-amber-400"
+              />
+              <span className="w-12 text-right text-[10px] font-black text-slate-200">{(customRadius ?? robot.radius).toFixed(2)} m</span>
+              <button
+                type="button"
+                onClick={() => changeRobot(robotId, customRadius ?? robot.radius)}
+                className="rounded border border-amber-500/60 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-200"
+              >
+                Apply
+              </button>
+            </div>
             <label className="mt-2 flex items-center justify-between text-[11px] font-semibold text-slate-300">
               Raw detections (150 boxes)
               <input type="checkbox" checked={showRawDetections} onChange={(event) => setShowRawDetections(event.target.checked)} className="accent-amber-400" />
