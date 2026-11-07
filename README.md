@@ -109,7 +109,8 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 
 - The capture is a real supplied scan. Both PLY files are supplied captures; the boiler file's readable prefix is 502,483 rows.
 - The builder pack is supplied synthetic data: its assets, telemetry, alarms, data-quality cases and documents are synthetic Valmet data, not measured plant data.
-- The mapping is proposed, not confirmed. Every record has `status: proposed` or `status: unresolved`; the score is a match score, not a calibrated probability.
+- The mapping is proposed, not confirmed, and it has no physical coordinates from the pack: the workbook ships synthetic records, not measured positions. Every record has `status: proposed` or `status: unresolved`; the score is a match score, not a calibrated probability.
+- The viewer keeps that distinction visible. Pack frames are off by default and labelled synthetic; the equipment card calls out a procedural pack record separately from the observed object; the mission card and arrival diagnosis are marked as a synthetic scenario. A pack condition is never presented as a measurement of the physical machine it was assigned to.
 - Class labels are geometric proposals, not identifications. The brief allows geometric heuristics, and no open-vocabulary model is in the demo path.
 - Units are scene units treated as metres. No door-height scale check has been performed, and the 1.95 m clear height means the units are not exact metres.
 - The robot is a viewer marker, not a physical simulation: it follows the planned curve at 0.5 m/s.
@@ -120,7 +121,7 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 - **Pipeline**: Python 3.12 or newer with uv; numpy, OpenCV for geometry and clustering, FastAPI and uvicorn for the local service, pydantic for the API models. The workbook reader uses the standard library.
 - **Viewer**: React 18, Vite 5, TypeScript 5, Tailwind CSS, three.js 0.180 and `@sparkjsdev/spark` 2.4 for the splat renderer. Pre-existing open source, not written for this submission.
 - **Data**: two supplied Gaussian splat captures and the supplied synthetic Valmet builder pack (assets, telemetry, alarms, work orders, documents). No public dataset and no network call at demo time.
-- **AI and models**: none at runtime. Extraction and classification are geometric heuristics with a class-and-size prior, which the brief allows. Open-vocabulary vision models (Grounding DINO, SAM 2.1) were tested on rendered views during the event and did not reach label quality, so they are not on the demo path.
+- **AI and models**: none at runtime. Extraction and classification are geometric heuristics with a class-and-size prior, which the brief allows. Open-vocabulary vision models (Grounding DINO, SAM 2.1, SAM 3) were tested on rendered views during the event. SAM 3 box prompts produce clean masks inside a supplied box, but text prompts on the splat renders do not identify pumps or valves reliably enough to place synthetic assets at correct coordinates, so none of it is on the demo path.
 - **Verification**: pytest with httpx for the API, TypeScript type checking and a Vite production build for the viewer.
 - **Build**: `uv sync`, `pnpm install`, and the `make` targets in this repository.
 

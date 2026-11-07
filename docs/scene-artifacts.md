@@ -173,8 +173,10 @@ The room view is a contextual product shell: a minimal header, a mission card
   raw detections, confidence, occupancy and builder diagnostics. Only the
   reviewed anchors are outlined, labels appear on selection or in developer
   mode, and navigation markers exist only while a mission is running.
-- The room view draws the reviewed anchors as brighter outlines and all mapped
-  pack records as faint proposal frames. The Equipment browser lists every
+- The room view draws the reviewed anchors as brighter outlines. The synthetic
+  pack mapping is a separate layer, off by default and labelled synthetic: the
+  workbook has no physical coordinates, so its records are placed procedurally
+  and must not be read as the identity or condition of the object they land on. The Equipment browser lists every
   pack record by tag and state under `Pack records`, so the full 30 of 30
   mapping is visible without presenting every proposal as reviewed equipment.
   Labels and provenance appear on selection. If a capture has no reviewed
