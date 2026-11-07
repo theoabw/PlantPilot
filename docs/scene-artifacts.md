@@ -157,6 +157,9 @@ the `scene lab` button.
   and up in scene coordinates. That view stands at 1.45 m above the detected
   floor and looks down the longest open sightline, so the browser and the
   rendered stills show the same room.
+- The route is drawn as a moving arrow trail on a centripetal Catmull-Rom curve
+  through the planned polyline, and the robot follows the same curve with a
+  damped heading and a damped follow camera, so corners do not snap.
 - `GET /api/scene/route` serves the route `make route` writes. The room view
   draws it on the detected floor (the artifact's path carries heights in the up
   axis, the viewer places the line and the robot on the floor plane), sends the
