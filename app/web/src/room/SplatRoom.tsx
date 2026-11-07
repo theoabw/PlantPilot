@@ -1262,10 +1262,17 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const maxY = robot
         ? robot.position.y - ROBOT_FLOOR_OFFSET_M + CAMERA_MAX_HEIGHT_M
         : Number.POSITIVE_INFINITY
-      // A height the user orbited to is theirs to keep; the sight line still holds.
+      // A user-set view may be above the automatic camera height.
       const heightFine = state.followOffsetFromUser || desired.y <= maxY
-      if (heightFine && cameraFree(desired, 0.12) && nearestStructure(desired) > 0.25 && hasSight(focus, desired)) {
-        const previous = state.stickyCamera ? focus.clone().add(state.stickyCamera) : null
+      if (
+        heightFine
+        && cameraFree(desired, 0.12)
+        && nearestStructure(desired) > 0.25
+        && (state.followOffsetFromUser || hasSight(focus, desired))
+      ) {
+        const previous = state.followOffsetFromUser || !state.stickyCamera
+          ? null
+          : focus.clone().add(state.stickyCamera)
         if (
           previous
           && previous.distanceTo(desired) > 0.3
@@ -1373,7 +1380,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         : safeCameraPosition(rawDesired, desiredTarget)
       const safeDesired = safeCameraPosition(followPosition, desiredTarget)
       if (state) {
-        if (!state.followOffset || safeDesired.distanceTo(followPosition) > 0.05) {
+        if (!state.followOffsetFromUser && (!state.followOffset || safeDesired.distanceTo(followPosition) > 0.05)) {
           state.followOffset = safeDesired.clone().sub(desiredTarget)
         }
         if (!state.smoothedCamera) {
