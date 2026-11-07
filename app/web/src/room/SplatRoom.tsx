@@ -99,6 +99,8 @@ type Props = {
   focusToken: number
   robotProfile: 'humanoid' | 'amr' | 'cargo'
   manualControl: boolean
+  manualCrouch: boolean
+  onToggleManualCrouch: () => void
   firstPerson: boolean
   crouchSpans: [number, number][]
   showRobot: boolean
@@ -189,6 +191,7 @@ function addGhost(mesh: THREE.Mesh, color: number): void {
 // The procedural humanoid reads this while animating; a single viewer instance
 // owns it, so a module-level value avoids rebuilding the model on crouch changes.
 let robotCrouchSpans: [number, number][] = []
+let robotManualCrouch: boolean | null = null
 
 function boxColour(object: RoomObject, mapped: Set<string>, targetId: string | null): number {
   if (targetId === object.id) {
@@ -442,7 +445,9 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
       const withinSpan = robotCrouchSpans.some(
         ([from, to]) => spanAt >= from - 0.12 && spanAt <= to + 0.12,
       )
-      const wantCrouch = withinSpan ? 1 : 0
+      const wantCrouch = robotManualCrouch === null
+        ? withinSpan ? 1 : 0
+        : robotManualCrouch ? 1 : 0
       crouch += (wantCrouch - crouch) * 0.22
       group.userData.crouch = crouch
       const phase = travelled * 3.9
@@ -614,10 +619,11 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
 const SHARPEN_AFTER_MS = 400
 const SCALE_WINDOW_MS = 400
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
+  robotManualCrouch = manualControl && robotProfile === 'humanoid' ? manualCrouch : null
   const [progress, setProgress] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [perf, setPerf] = useState<{ draws: number; ms: number; calls: number; splats: number } | null>(null)
@@ -711,6 +717,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   cameraMoveRef.current = cameraMove
   const manualControlRef = useRef(manualControl)
   manualControlRef.current = manualControl
+  const toggleManualCrouchRef = useRef(onToggleManualCrouch)
+  toggleManualCrouchRef.current = onToggleManualCrouch
   const arrivalCentreRef = useRef(arrivalCentre)
   arrivalCentreRef.current = arrivalCentre
   const robotProfileRef = useRef(robotProfile)
@@ -1119,6 +1127,14 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         return
       }
       const key = movementKey(event.key)
+      if (key === 'shift' && manualControlRef.current && robotProfileRef.current === 'humanoid') {
+        event.preventDefault()
+        if (!event.repeat) {
+          toggleManualCrouchRef.current()
+          requestRender()
+        }
+        return
+      }
       // Allow w/a/s/d for horizontal movement, space/control for vertical in camera mode
       const allowedKeys = cameraMoveRef.current
         ? ['w', 'a', 's', 'd', ' ', 'control']
