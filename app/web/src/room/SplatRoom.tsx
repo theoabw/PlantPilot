@@ -14,6 +14,7 @@ import { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, visib
 import { heightSplatFilter } from './heightSplatFilter'
 import { topDownPose } from './topDownPose'
 import { selectionSplatEdit } from './selectionSplatEdit'
+import { highlightObjects } from './highlightObjects'
 import { ROBOT_PALETTE, robotLogo } from './robotBrand'
 import { routeCurve } from './routeCurve'
 import { canEscapeCell, escapeDistances } from './walkGrid'
@@ -71,6 +72,8 @@ type Props = {
   characterResetToken: number
   characterStart: [number, number, number] | null
   selectedId: string | null
+  nearbyHighlightIds: string[]
+  showNearbyHighlights: boolean
   mappedIds: string[]
   targetId: string | null
   targetPoint: [number, number, number] | null
@@ -616,7 +619,7 @@ function buildRobotBody(profile: RobotProfile, logoTexture: THREE.Texture): THRE
 const SHARPEN_AFTER_MS = 400
 const SCALE_WINDOW_MS = 400
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, nearbyHighlightIds, showNearbyHighlights, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -1664,7 +1667,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     let lastTime = performance.now()
     let lastReport = 0
     let lastNearby = 0
-    let lastNearbyKey = ''
+    let lastNearbyKey: string | null = null
     let lastRenderMs = 0
     let lastDrawAt = 0
     let scaleFrames = 0
@@ -1725,10 +1728,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
               nearby.push(object.id)
             }
           }
-          nearbyRef.current(nearby)
           const nearbyKey = nearby.join(',')
           if (nearbyKey !== lastNearbyKey) {
             lastNearbyKey = nearbyKey
+            nearbyRef.current(nearby)
             const nearbySet = new Set(nearby)
             const mapped = new Set(mappedRef.current)
             for (const box of liveState.boxes) {
@@ -2187,27 +2190,24 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
   }, [heightCutoff, floorHeight, upAxis, filterUrl, splatUrl])
 
-  // Selection highlight: add light to the splats inside the selected box, so
-  // the viewer shows the surface the box is masking instead of only the box.
+  // Use one union edit so selected and nearby boxes cannot add light twice.
   useEffect(() => {
     const mesh = stateRef.current?.splat
-    if (!mesh || !selectedId) {
+    if (!mesh) {
       return
     }
-    const object =
-      frameObjects.find((candidate) => candidate.id === selectedId) ??
-      objects.find((candidate) => candidate.id === selectedId)
-    if (!object) {
+    const highlighted = highlightObjects(objects, frameObjects, selectedId, nearbyHighlightIds, showNearbyHighlights)
+    if (highlighted.length === 0) {
       return
     }
-    const edit = selectionSplatEdit(object)
+    const edit = selectionSplatEdit(highlighted)
     mesh.add(edit)
     renderRef.current()
     return () => {
       mesh.remove(edit)
       renderRef.current()
     }
-  }, [selectedId, frameObjects, objects, splatUrl, filterUrl])
+  }, [selectedId, nearbyHighlightIds, showNearbyHighlights, frameObjects, objects, splatUrl, filterUrl])
 
   useEffect(() => {
     const state = stateRef.current

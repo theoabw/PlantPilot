@@ -545,7 +545,7 @@ export default function RoomLab() {
   }, [equipmentRows, browserQuery, browserFilter])
 
   const nearbyEquipment = useMemo(() => {
-    const rows: { key: string; name: string; state: string }[] = []
+    const rows: { id: string; key: string; name: string; state: string }[] = []
     const seen = new Set<string>()
     for (const id of nearby) {
       const record = anchorById.get(id)
@@ -556,6 +556,7 @@ export default function RoomLab() {
       }
       seen.add(key)
       rows.push({
+        id,
         key,
         name: mapping?.tag ?? record?.label ?? id,
         state: mapping?.state ?? 'healthy',
@@ -563,6 +564,7 @@ export default function RoomLab() {
     }
     return rows.slice(0, 5)
   }, [nearby, anchorById, mappedByAnchor])
+  const nearbyHighlightIds = useMemo(() => nearbyEquipment.map((entry) => entry.id), [nearbyEquipment])
 
   const robot = ROBOTS.find((option) => option.id === robotId) ?? ROBOTS[1]
   const clearanceRadius = customRadius ?? robot.radius
@@ -876,6 +878,8 @@ export default function RoomLab() {
             characterResetToken={characterResetToken}
             characterStart={initialPositionRef.current}
             selectedId={selectedId}
+            nearbyHighlightIds={nearbyHighlightIds}
+            showNearbyHighlights={driving}
             mappedIds={mappedIds}
             targetId={displayTargetId}
             targetPoint={destinationScene ?? targetPoint}
