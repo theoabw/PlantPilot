@@ -1,13 +1,13 @@
 """Ingest a 3D Gaussian splatting PLY into the scene artifact.
 
-This module is the only place that knows the delivered file format. It
+This module is the only place that knows the splat PLY format. It
 validates the header loudly, keeps only plausible gaussians, decimates to a
 render budget and writes one npz that every later stage reads.
 
 Nothing here is specific to the supplied boiler room. Bounds, the up axis,
 counts and sizes are measured and reported in the artifact metadata, and every
 threshold is a parameter with a stated default, so the same command runs on
-another capture. The one assumption is written down in the metadata: the file
+another compatible scene. The one assumption is written down in the metadata: the file
 units are treated as metres until the scale check in `segment` says otherwise.
 """
 

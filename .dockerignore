@@ -1,4 +1,4 @@
-# The image holds code only. Supplied captures, pipeline artifacts and the
+# The image holds code only. The supplied capture, pipeline artifacts and the
 # viewer PLY are mounted at runtime, so they must never enter a layer.
 
 data/

@@ -4,7 +4,7 @@
  "capture": "Equipment Room.ply",
  "method": "multi_view_sam3_instance_fusion",
  "source": "seventeen posed views of data/supplied/Equipment Room.ply, SAM 3 masks lifted through the splat's own depth and fused across views",
- "note": "Objects the fusion measured and a reviewer looked at. Each box is fitted upright from the instance's own gaussians. This file is evidence for a label: it does not change a box in objects.json, it lets the class stage name an object that shape alone cannot name.",
+ "note": "Objects the fusion measured and a reviewer looked at, on the boiler room capture. Each box is fitted upright from the instance's own gaussians. This file is evidence for a label: it does not change a box in objects.json, it lets the class stage name an object that shape alone cannot name.",
  "instances": [
   {
    "id": "SB-0000",

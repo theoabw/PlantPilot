@@ -5,24 +5,12 @@ PY := uv run
 #   make demo PORT=8001
 PORT ?= 8000
 
-# Which supplied capture the demo uses. `equipment` is the complete capture the
-# organiser re-uploaded after the first delivery was found truncated, and it is
-# the default; `boiler` is the capture named in the brief as delivered. The
-# choice sets every artifact path, so
-#   make demo CAPTURE=boiler
-# runs the named capture with no other overrides.
-CAPTURE ?= equipment
-ifeq ($(CAPTURE),equipment)
+# The supplied boiler room capture is the only capture input. Its artifacts and
+# the viewer asset keep the `equipment` path names, so the committed fixtures
+# and the existing generated data line up with this Makefile.
 CAPTURE_DIR ?= data/equipment
 CAPTURE_PLY ?= data/supplied/Equipment Room.ply
 VIEWER_PLY ?= data/viewer/equipment.ply
-else ifeq ($(CAPTURE),boiler)
-CAPTURE_DIR ?= data/scene
-CAPTURE_PLY ?= data/supplied/Industrial Boiler Room (1).ply
-VIEWER_PLY ?= data/viewer/boiler.ply
-else
-$(error CAPTURE must be boiler or equipment, got '$(CAPTURE)')
-endif
 
 PLY ?= $(CAPTURE_PLY)
 PACK_XLSX ?= data/supplied/builder_pack.xlsx
@@ -32,22 +20,22 @@ OBJECTS ?= $(CAPTURE_DIR)/objects.json
 ASSETS ?= $(CAPTURE_DIR)/assets.json
 ANCHORS ?= $(CAPTURE_DIR)/anchors.json
 FILTERS ?= data/viewer/filters/$(notdir $(CAPTURE_DIR))
-ANCHORS_FIXTURE ?= fixtures/scene/anchors_$(CAPTURE).json
-INSTANCES_FIXTURE ?= fixtures/scene/instances_$(CAPTURE).json
+ANCHORS_FIXTURE ?= fixtures/scene/anchors_equipment.json
+INSTANCES_FIXTURE ?= fixtures/scene/instances_equipment.json
 MAPPED ?= $(CAPTURE_DIR)/mapped.json
 ROUTE ?= $(CAPTURE_DIR)/route.json
 DIAGNOSIS ?= $(CAPTURE_DIR)/diagnosis.json
 
 # The browser viewer's copy of the capture: sane prefix only, core properties
-# only. VIEWER_PLY is set by CAPTURE above.
+# only. VIEWER_PLY is set above.
 
 .PHONY: demo web web-build scene objects audit anchors object-meshes object-splats filter-assets splat-asset pack map diagnose pipeline route test check clean assets
 
-## scene: ingest the splat into data/scene/scene.npz
+## scene: ingest the supplied capture into data/equipment/scene.npz
 scene:
 	$(PY) python -m plantpilot.splat --ply "$(PLY)" --out $(SCENE)
 
-## objects: extract framed objects from the scene into data/scene/objects.json
+## objects: extract framed objects from the scene into data/equipment/objects.json
 objects:
 	$(PY) python -m plantpilot.segment --scene $(SCENE) --out $(OBJECTS)
 	$(PY) python -m plantpilot.classes --objects $(OBJECTS) --out $(OBJECTS) --instances $(INSTANCES_FIXTURE)
@@ -70,7 +58,7 @@ anchors: scene
 	@if [ -f "$(ANCHORS_FIXTURE)" ]; then \
 	  $(PY) python scripts/make_anchors.py --scene $(SCENE) --fixture $(ANCHORS_FIXTURE) --out $(ANCHORS); \
 	else \
-	  echo "no reviewed anchors for $(CAPTURE), the viewer falls back to the proposal layer"; \
+	  echo "no reviewed anchors fixture, the viewer falls back to the proposal layer"; \
 	fi
 
 ## filter-assets: bake the height, normals, edges and semantics PLYs for the viewer
@@ -97,14 +85,17 @@ map: pack objects
 diagnose: pack
 	$(PY) python -m plantpilot.diagnose --pack $(PACK) --out $(DIAGNOSIS)
 
-## pipeline: build every artifact the room view needs for CAPTURE
+## pipeline: build every artifact the room view needs
 pipeline: scene objects anchors assets map diagnose route splat-asset
 
-## demo: build CAPTURE's artifacts and the web page, then serve both
+## demo: build the capture's artifacts and the web page, then serve both
 demo: pipeline filter-assets web-build
 	PLANTPILOT_SCENE=$(CAPTURE_DIR) PLANTPILOT_SPLAT=$(VIEWER_PLY) \
 	  $(PY) uvicorn plantpilot.main:app --host 127.0.0.1 --port $(PORT) --app-dir app/server/src
 
+demo-fast:
+	PLANTPILOT_SCENE=$(CAPTURE_DIR) PLANTPILOT_SPLAT=$(VIEWER_PLY) \
+	  $(PY) uvicorn plantpilot.main:app --host 127.0.0.1 --port $(PORT) --app-dir app/server/src
 ## web: vite dev server on 5173, proxying /api to 8000
 web:
 	cd app/web && pnpm run dev

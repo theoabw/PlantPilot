@@ -45,8 +45,8 @@ ENV PATH="/app/.venv/bin:${PATH}"
 COPY --from=web /src/app/web/dist ./app/web/dist
 COPY fixtures ./fixtures
 
-# The demo default: the complete capture the organisers re-uploaded. Override
-# both to serve the capture named in the brief.
+# The demo serves the supplied boiler room capture. Both variables name the
+# artifact layout `make demo` writes.
 ENV PLANTPILOT_SCENE=data/equipment \
     PLANTPILOT_SPLAT=data/viewer/equipment.ply
 

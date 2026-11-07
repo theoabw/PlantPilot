@@ -9,17 +9,17 @@ Generated artifacts are written into `data/` and never committed:
 
 | File | Written by | Read by |
 | --- | --- | --- |
-| `data/scene/pack.json` | `make pack` (`plantpilot.pack`) | mapping, diagnosis, API |
-| `data/scene/mapped.json` | `make map` (`plantpilot.mapping`) | route, API, viewer |
-| `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
-| `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer |
-| `data/scene/objects.json` | `make objects` (`plantpilot.segment`, then `plantpilot.classes`) | mapping, route proximity, API, viewer |
-| `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
-| `data/scene/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
-| `data/objects/splats/<capture>/` | `make object-splats` (`scripts/make_object_splats.py`) | API, viewer (recognizable objects for the atlas and explode) |
-| `data/objects/meshes/<capture>/` | `make object-meshes` (`scripts/make_object_meshes.py`, optional Open3D) | API, viewer (silhouette and solid atlas fallback) |
-| `data/viewer/filters/<capture>/` | `make filter-assets` (`scripts/make_filter_assets.py`) | API, viewer (derived channels) |
-| `data/viewer/equipment.ply`, `data/viewer/boiler.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
+| `data/equipment/pack.json` | `make pack` (`plantpilot.pack`) | mapping, diagnosis, API |
+| `data/equipment/mapped.json` | `make map` (`plantpilot.mapping`) | route, API, viewer |
+| `data/equipment/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
+| `data/equipment/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer |
+| `data/equipment/objects.json` | `make objects` (`plantpilot.segment`, then `plantpilot.classes`) | mapping, route proximity, API, viewer |
+| `data/equipment/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
+| `data/equipment/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
+| `data/objects/splats/equipment/` | `make object-splats` (`scripts/make_object_splats.py`) | API, viewer (recognizable objects for the atlas and explode) |
+| `data/objects/meshes/equipment/` | `make object-meshes` (`scripts/make_object_meshes.py`, optional Open3D) | API, viewer (silhouette and solid atlas fallback) |
+| `data/viewer/filters/equipment/` | `make filter-assets` (`scripts/make_filter_assets.py`) | API, viewer (derived channels) |
+| `data/viewer/equipment.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
 boundaries. This page fixes the exact shape, because the stages are written in
@@ -30,27 +30,22 @@ parallel and a silent change to a key breaks another seat's work.
 ```
 make pipeline                       # build every artifact the room view needs
 make demo                           # build, then serve the API and the web page
-make demo CAPTURE=boiler            # the same stages on the named capture
-make scene                          # ingest the capture as delivered
+make scene                          # ingest the supplied boiler room capture
 make objects                        # extract the framed objects, then refine their classes
 make splat-asset                    # the sanitised capture as a viewer PLY
 ```
 
-`CAPTURE` selects the capture and every artifact path that follows it:
-`equipment` is the default and the complete capture the organiser re-uploaded
-after the delivered file was found truncated, `boiler` is the capture the brief
-names as delivered. The server reads the matching
-directory through `PLANTPILOT_SCENE` and the viewer asset through
-`PLANTPILOT_SPLAT`, so one `make demo CAPTURE=...` runs either scene with no
-other overrides. The table above names the named capture's `data/scene/` paths;
-the default run writes the same files under `data/equipment/`.
+The supplied boiler room capture is the only capture input. Its artifacts are
+written under `data/equipment/` and its viewer asset is
+`data/viewer/equipment.ply`; the server reads them through `PLANTPILOT_SCENE`
+and `PLANTPILOT_SPLAT`. The table above uses those paths directly.
 
 `make pack` reads `data/supplied/builder_pack.xlsx` and writes
-`<capture>/pack.json`. It preserves the tables needed by mapping and
+`data/equipment/pack.json`. It preserves the tables needed by mapping and
 diagnosis, merges the asset master, scene anchors and current state into
 `assets`, and records P-005 (`ASSET-017`) as the fixed demo target.
 
-`make map` reads the pack and object artifacts and writes `<capture>/mapped.json`. Each
+`make map` reads the pack and object artifacts and writes `data/equipment/mapped.json`. Each
 assignment records its object id, class proposal, mapping method, confidence,
 and current state. The target mapping is exposed as `target_object_id`; no
 scene-anchor coordinates are used as physical positions.
@@ -78,11 +73,11 @@ flow sensor drift less likely because the load rises. A verdict drops to
 claims, the cited ones and the unsupported ones, so the artifact states its own
 coverage.
 
-`make scene` reads the file it is given and filters it itself, so the counts it
-prints are the counts in the delivered file. The supplied capture declares
-1,506,136 vertices and fills the first 502,483: the tail is uninitialised
-memory, and the loader keeps only the contiguous sane prefix. It prints the
-declared, sane and rendered counts, the detected up axis and the timing.
+`make scene` reads the supplied PLY and filters it itself, so the counts it
+prints are the counts in the file. The boiler room capture declares and fills
+1,676,481 vertices, every row sane. The loader still keeps only the contiguous
+sane prefix and prints the declared, sane and rendered counts, the detected up
+axis and the timing.
 
 `make objects` prints the planes removed, the floor, the measured point spacing,
 the voxel size, the component and object counts, the largest object share, the
@@ -129,8 +124,8 @@ product viewer, which draws the same artifact on the GPU:
   cover whole image regions and wash the render out;
 - colour is blended in display space, with no gamma conversion.
 
-Both supplied captures are `-y` up: their frames are the usual 3DGS axes with y
-pointing down. The floor is the bright concrete slab at positive y and the
+The supplied boiler room capture is `-y` up: its frame is the usual 3DGS axes with
+y pointing down. The floor is the bright concrete slab at positive y and the
 ceiling is the dark slab that carries the pipes and trays at negative y, which
 is what the walkthrough footage shows. Nothing may hardcode a sign: the
 renderer and the viewer both take the axis from the artifact.
@@ -143,11 +138,9 @@ the room and the extracted boxes share one camera and one depth order. The room
 view is the only view; the old provisional scene lab, plate scan and plant
 mission demo screens have been removed from the frontend.
 
-- `make splat-asset` writes `data/viewer/equipment.ply` for the default capture
-  and `data/viewer/boiler.ply` for the named one: the sane prefix with the 14
-  core properties only and the fog gaussians dropped, 77,636,108 bytes for the
-  complete capture instead of 395,651,019, and 24,023,947 bytes for the supplied
-  one instead of 355,449,599, so the browser loads it in seconds.
+- `make splat-asset` writes `data/viewer/equipment.ply`: the sane prefix with the
+  14 core properties only and the fog gaussians dropped, 77,636,108 bytes for the
+  boiler room capture instead of 395,651,019, so the browser loads it in seconds.
 - `GET /api/splat` serves that file, `GET /api/scene/anchors` serves the
   reviewed demo layer, `GET /api/scene/meshes` serves the object mesh manifest
   and `GET /api/mesh/<anchor-id>` serves one mesh, `GET /api/scene/assets` serves the automatic proposal
@@ -177,12 +170,10 @@ The room view is a contextual product shell: a minimal header, an on-demand
   Labels and provenance appear on selection. If a capture has no reviewed
   fixture it falls back to the automatic proposal layer, and the raw extraction
   stays one toggle away in the Objects panel.
-- `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` point the room view at another
-  capture, for example `PLANTPILOT_SCENE=data/equipment
-  PLANTPILOT_SPLAT=data/viewer/equipment.ply`. The supplied boiler-room delivery
-  only holds 502,483 real rows of the 1,506,136 it declares, and those rows
-  cover a diagonal band of the room, so the improved `Equipment Room.ply`
-  capture (1,676,481 rows, 377 MiB) is the one that shows a whole room.
+- `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` point the room view at a generated
+  artifact layout, for example `PLANTPILOT_SCENE=data/equipment
+  PLANTPILOT_SPLAT=data/viewer/equipment.ply`. The supplied boiler room capture
+  is 1,676,481 sane rows and shows a whole room.
 - The viewer takes the camera up axis from `source.up_axis` in `objects.json`
   and opens at the hero view the extraction records in `camera`: eye, target
   and up in scene coordinates. That view stands at 1.45 m above the detected
@@ -203,8 +194,8 @@ The room view is a contextual product shell: a minimal header, an on-demand
   they exist.
 - The splat URL carries the capture's point count (`/api/splat?v=<points>`) and
   the response is `no-cache`: without that, the browser keeps the previous
-  capture under the same URL and draws, say, the boiler room while the artifact
-  describes the equipment room. The renderer's splat budget is raised to the
+  capture under the same URL and draws a stale room while the artifact describes
+  the current one. The renderer's splat budget is raised to the
   artifact's count too, because Spark accumulates 2^19 splats by default and
   silently truncates a larger capture.
 - Spark needs `three >= 0.180`; the web package is on that version.
@@ -214,11 +205,11 @@ The room view is a contextual product shell: a minimal header, an on-demand
 The splat surface is a slab about 2 cm thick, not a mathematical plane. A
 removal band narrower than the slab cuts through it and leaves a shell of the
 same wall or floor behind, and that shell is what connects unrelated parts of
-the room. Measured on the delivered capture with this stage, same voxel:
+the room. Measured on the boiler room capture with this stage, same voxel:
 
 | band | planes | removed as planes | objects | pipes | ducts | points in objects | largest object |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 4.0 cm (default) | 16 | 63.3 percent | 122 | 4 | 10 | 29.0 percent | 1.5 percent |
+| 4.0 cm (default) | 16 | 42.8 percent | 150 | 4 | 28 | 48.8 percent | 4.2 percent |
 
 The wider band removes the slab whole, and the gate is what keeps the removal
 from slicing a machine that sits across it. Reproduce the default run with
@@ -391,7 +382,7 @@ content. The anchors are the boxes that survived that audit, with labels
 corrected to what the box actually contains, plus the office chair that
 instance fusion recovered.
 
-The input is a small committed fixture, `fixtures/scene/anchors_<capture>.json`,
+The input is a small committed fixture, `fixtures/scene/anchors_equipment.json`,
 which also records the audit verdict and a note per anchor. `make anchors` fits
 nothing; it validates each fixture box against the capture, adds the number of
 gaussians inside and the mean colour, and writes `anchors.json`. A capture with
@@ -576,40 +567,10 @@ Poisson surface from the same gaussians is lumpy and is not watertight.
 
 ## Object meshes
 
-## Numbers from the supplied capture
+## Numbers from the boiler room capture
 
-Run on the delivered `Industrial Boiler Room (1).ply`:
-
-| Number | Value | Printed by |
-| --- | --- | --- |
-| Declared vertices | 1,506,136 | `make scene` |
-| Sane prefix | 502,483 | `make scene` |
-| Rendered gaussians | 502,483 | `make scene` |
-| First invalid row | 502,483 | `make scene` |
-| Up axis | `-y`, two slabs, floor slab at +1.069 (the brighter one) | `make scene` |
-| Points removed as planes | 317,938 (63.3 percent) | `make objects` |
-| Planes removed | 16 | `make objects` |
-| Floor height | -1.072 in the up coordinate (scene y +1.072), rms 0.011 | `make objects` |
-| Point spacing on the floor | 0.014 m | `make objects` |
-| Components at 3 cm | 24,358 | `make objects` |
-| Objects framed | 122 from 122 clusters, nothing capped | `make objects` |
-| Points inside objects | 29.0 percent | `make objects` |
-| Largest object share | 1.5 percent of points | `make objects` |
-| Median points per object | 330 | `make objects` |
-| Extraction time | 3.71 s | `make objects` |
-| Clear height | 1.95 m between the floor (scene y +1.072) and the ceiling (scene y -0.878) | `make objects` |
-
-The 1.95 m clear height matters for the scale check: a 2 m door does not fit
-under a 1.95 m ceiling, so the capture units are at least a few percent larger
-than metres, or the ceiling plane is a suspended one. The door check still has
-not been performed and distances stay in scene units.
-
-## The improved capture
-
-Valmet delivered a second, complete export, `Equipment Room.ply`, on Friday
-night. It is the same 3DGS schema and it is not damaged: 1,676,481 declared
-vertices, every row sane, no tail. It is a different, larger room, so it is a
-second scene in its own right, and it is the better demo material.
+The supplied boiler room capture is the only capture input. It is a 3DGS export
+with 1,676,481 declared vertices, every row sane, and no tail.
 
 | Number | Value | Printed by |
 | --- | --- | --- |
@@ -626,17 +587,14 @@ second scene in its own right, and it is the better demo material.
 | Largest object share | 4.2 percent of points | `make objects` |
 | Extraction time | 22.04 s | `make objects` |
 
-Run it with its own capture argument, so the boiler room artifacts stay where
-the other stages expect them:
+Run `make scene` and `make objects` to reproduce the counts:
 
 ```
-make scene CAPTURE=equipment
-make objects CAPTURE=equipment
+make scene
+make objects
 ```
 
-Both captures are in `data/supplied/`, and both are gitignored. The demo runs
-on the equipment room by default and the boiler room keeps its own artifact
-paths, so switching between them is a change of `CAPTURE`, not of code.
+The capture is in `data/supplied/` and is gitignored.
 
 ## Not in these artifacts
 

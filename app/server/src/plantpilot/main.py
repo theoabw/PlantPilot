@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[4]
 DATA = Path(os.environ.get("PLANTPILOT_DATA", ROOT / "data"))
 # The scene artifacts the room view reads. They are written by make scene,
 # make objects, make map and make splat-asset, never committed. PLANTPILOT_SCENE
-# and PLANTPILOT_SPLAT point the room at another capture, for example
+# and PLANTPILOT_SPLAT point the room at a generated artifact layout, for example
 # PLANTPILOT_SCENE=data/equipment PLANTPILOT_SPLAT=data/viewer/equipment.ply.
 SCENE_DIR = Path(os.environ.get("PLANTPILOT_SCENE", DATA / "scene"))
 OBJECTS_FILE = SCENE_DIR / "objects.json"

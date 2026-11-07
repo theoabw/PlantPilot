@@ -32,9 +32,9 @@ without the code changing. The image mounts them at `/app/data` instead.
 
 ## What the mount must hold
 
-Paths below are relative to the mounted `data/`, with the default capture. Every
-row is optional at startup: a missing file turns off what reads it, and the room
-view says what it could not load.
+Paths below are relative to the mounted `data/`, with the supplied boiler room
+capture. Every row is optional at startup: a missing file turns off what reads
+it, and the room view says what it could not load.
 
 | Path | Written by | Needed for |
 | --- | --- | --- |
@@ -56,22 +56,14 @@ still draws and the mission card can be opened from the header, but pressing Sen
 the robot standing still: the viewer replans from the robot's position on every
 drive, and the planner answers 404 when the scene is missing.
 
-## Pointing it at another capture
+## Pointing it at a generated layout
 
-The image defaults to the complete capture the organisers re-uploaded. Set both
-variables to serve the capture named in the brief instead, using the layout the
-Makefile writes for it:
-
-```bash
-docker run --rm -p 8000:8000 -v "$PWD/data:/app/data:ro" \
-  -e PLANTPILOT_SCENE=data/scene \
-  -e PLANTPILOT_SPLAT=data/viewer/boiler.ply \
-  plantpilot
-```
-
-`PLANTPILOT_FILTERS`, `PLANTPILOT_MESHES` and `PLANTPILOT_OBJECT_SPLATS` follow
-the scene directory name by default, so a capture laid out like the Makefile's
-needs only those two variables.
+The image defaults to the artifact layout `make demo` writes, so the command at
+the top of this page needs no extra variables. If you mount those artifacts
+under different names, set `PLANTPILOT_SCENE` and `PLANTPILOT_SPLAT` to the
+mounted paths. `PLANTPILOT_FILTERS`, `PLANTPILOT_MESHES` and
+`PLANTPILOT_OBJECT_SPLATS` follow the scene directory name by default, so a
+layout like the Makefile's needs only those two variables.
 
 ## Serving it on a public name
 

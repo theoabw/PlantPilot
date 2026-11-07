@@ -8,7 +8,7 @@ The score we build against: 30 percent extraction density, 25 percent navigation
 
 | # | Feature | Why it is P0 | Owner | Gate |
 | --- | --- | --- | --- | --- |
-| 1 | Robust splat ingest: filter the defective rows, decimate, render points with size and alpha | there is no demo without the room on screen | A | G0 |
+| 1 | Robust splat ingest: keep the sane prefix, decimate, render points with size and alpha | there is no demo without the room on screen | A | G0 |
 | 2 | Scene-agnostic CLI and pipeline: `make pipeline PLY=... PACK=...`, no room constants | the one-room objection dies here, and it is the 15 percent backend score | A, D | G1 |
 | 3 | Object extraction: plane removal, clustering, split oversized components, oriented boxes with a class proposal | the 30 percent beat, and the demo's first impression | A | G1 |
 | 4 | Metadata mapping: 30 records to 30 objects, method and confidence, P-005 as the faulty target | space plus meaning, the join the challenge asks for | D | G1 |
@@ -19,7 +19,7 @@ The score we build against: 30 percent extraction density, 25 percent navigation
 | 9 | Proximity display: nearby objects highlighted as the avatar moves | the second half of the 25 percent criterion | C, D | G2 |
 | 10 | Grounded diagnosis panel: evidence IDs, documents, a confidence that drops when a data quality case touches the asset, next safe check | the 20 percent beat | D | G2 |
 | 11 | Offline run and a provenance line: which scene, which mapping method | a plant demo that needs Wi-Fi is a liability | all | G2 |
-| 12 | Reproducible artifacts from a clean clone once the two supplied files are in `data/supplied/` | the 15 percent backend score | D | G2 |
+| 12 | Reproducible artifacts from a clean clone once the supplied capture and workbook are in `data/supplied/` | the 15 percent backend score | D | G2 |
 
 ## P1, should have, and the value is large
 

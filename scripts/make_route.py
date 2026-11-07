@@ -63,8 +63,8 @@ def main() -> int:
     print(f"  Saved to:        {args.output}")
 
     # Acceptance Check 4 verification. Length is reported, not barred: where the
-    # mapping puts the target decides the distance, and on the complete capture
-    # it lands near the reviewed doorway.
+    # mapping puts the target decides the distance, and on the boiler room capture
+    # it lands near the reviewed start.
     if len(result["path"]) < 2:
         print("  WARNING: Route has fewer than 2 path points (Acceptance Check 4)")
     # Occupied cells are 0.10 m squares marked whole when a surface touches them,

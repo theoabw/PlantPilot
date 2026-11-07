@@ -12,7 +12,7 @@ One line: **the supplied Gaussian splat becomes a semantic plant, and the pipeli
 
 | We assumed at 16:40 | What arrived | Consequence |
 | --- | --- | --- |
-| A scan or mesh we might get, else the generated reference plant | `Industrial Boiler Room.ply` is a 3D Gaussian Splatting file, 1.5 M gaussians, 59 float properties, no triangles | The splat is the scene. Point rendering with size and alpha, not a mesh, not a 3DGS rasteriser. The synthetic plant, the photogrammetry path and its fixture leave the demo path |
+| A scan or mesh we might get, else the generated reference plant | the supplied boiler room capture is a 3D Gaussian Splatting file, 1.68 M gaussians, 59 float properties, no triangles | The splat is the scene. Point rendering with size and alpha, not a mesh, not a 3DGS rasteriser. The synthetic plant, the photogrammetry path and its fixture leave the demo path |
 | Identity from a printed tag and OCR against our register | The builder pack uses procedural mapping; no tags in the scene; mapping may be random or rule-based | Identity is a mapping decision, recorded with method and confidence. The OCR, ArUco and register modules leave the demo path |
 | Grounding from the two public Valmet PDFs | The pack carries 38 knowledge documents, telemetry, alarms, events, service history and data quality cases | Diagnostics cite the pack's own evidence IDs, not the public manual |
 | A curated five confirmed assets | The challenge scores extraction density: "the more assets extracted, framed and mapped, the better" | Extraction targets tens of framed objects, not five. The count is a measured number |
@@ -21,18 +21,18 @@ One line: **the supplied Gaussian splat becomes a semantic plant, and the pipeli
 
 ## 2. The supplied data, as measured
 
-The two supplied inputs are not committed. Place them in `data/supplied/` (gitignored) before running the pipeline; derived artifacts stay in `data/` (gitignored). A clean clone can run the code, not the demo, until those two files are in place.
+The supplied capture and workbook are not committed. Place them in `data/supplied/` (gitignored) before running the pipeline; derived artifacts stay in `data/` (gitignored). A clean clone can run the code, not the demo, until those two files are in place.
 
 | File | Fact | Consequence for us |
 | --- | --- | --- |
-| `Industrial Boiler Room (1).ply` | 1,506,136 vertices, 59 float properties, row major. 502,483 vertices are sane; the rest of the file is uninitialised memory (NaN and values around 1e26) | The loader filters every vertex. Use the sane prefix. Report the defect to Valmet and ask for a clean export; do not block on it |
-| Same | x in -6.1 to 6.0, y in -4.5 to 3.9 (98 percent between -1.4 and 1.1), z in -7.6 to -0.7; y is up; gaussians about 7 mm; alpha median 0.12; colour in the SH DC coefficient | y is up. The dense core measures about 9 by 4 by 2.5 in file units; a few sparse outliers reach further. There is no scale reference in the file, so treating those units as metres is an assumption from the room proportions; verify it against a known dimension (a standard door is about 2 m) before quoting distances in metres. Render colour from `0.5 + 0.282 * f_dc` |
+| `Equipment Room.ply` | the supplied boiler room capture: 1,676,481 vertices, 59 float properties, row major, every row sane | The loader keeps the sane prefix, prints the declared and kept counts, and writes `scene.npz`. No repair step is needed |
+| Same | x in -4.84 to 4.16, y in -1.29 to 1.26, z in -3.76 to 3.49; y is down (up axis `-y`); gaussians about 1.6 cm apart on the floor; colour in the SH DC coefficient | There is no scale reference in the file, so treating the units as metres is an assumption from the room proportions; verify it against a known dimension (a standard door is about 2 m) before quoting distances in metres. Render colour from `0.5 + 0.282 * f_dc` |
 | `..._Builder_Pack.xlsx` | 30 assets (12 control valves, 6 pumps, 6 motors, 3 pressure transmitters, 3 vibration sensors), 4,320 telemetry rows (the 3-day sample sheet), 1,000 events, 300 work orders, 38 documents, 120 data quality cases | The diagnostic layer is a lookup and a computation over these tables, not an LLM guess |
 | Same, `Scene_Anchors` | 30 anchor rows on a synthetic 30 by 16 m grid, `mapping_status = placeholder_until_valmet_scene_received` | The anchors cannot be used as scene positions. Our extracted boxes are the positions; the mapping is procedural and says so |
 | Same, `Current_State` | Faulty candidates with high urgency: P-002 cavitation risk (health 45), P-005 fouling (44), M-006 overheating (45), CV-003 position deviation (52) | We designate **P-005 (ASSET-017, PROCESS_PUMP, fouling, health 44)** as the pre-determined faulty device and map it to a pump-like object that is reachable |
 | `semantic extraction demo 1.mp4` | refinery scene, objects pulled out of the scene, framed and labelled | The expected output is per-object instances with frames, not a segmentation mask overlay |
 | `semantic extraction demo 2.mp4` | warehouse with racking, IBC tanks, a wall of valves, a forklift | Same idea at room scale. Objects stay in place; frames and labels identify them |
-| `Industrial Boiler Room (1).mp4` | 1080p walkthrough of the real room | Reference footage for the pitch and for sanity-checking the splat. Not part of the demo path |
+| Boiler room walkthrough video | 1080p walkthrough of the real room | Reference footage for the pitch and for sanity-checking the splat. Not part of the demo path |
 
 The challenge brief also states that mapping may be random or procedural, that an easy UI is preferred over a polished mobile app, and that the evaluation is 30 percent extraction density, 25 percent navigation and proximity, 20 percent diagnostics and grounding, 15 percent backend, 10 percent demo clarity.
 
@@ -40,7 +40,7 @@ The challenge brief also states that mapping may be random or procedural, that a
 
 Four verbs, in the order the rubric scores them:
 
-1. **Extract.** Turn 502 k gaussians into objects. Remove the floor and the dominant wall planes, voxelise at 3 cm, cluster with a connected-component pass, then split every oversized component (the measured failure mode: 74 percent of points in one blob) and fit an oriented box per piece. A pipe run, a valve stack, a pump, a door, a pallet, a drum and a fire extinguisher should each become a frame.
+1. **Extract.** Turn 1.68 M gaussians into objects. Remove the floor and the dominant wall planes, voxelise at 3 cm, cluster with a connected-component pass, then split every oversized component (the measured failure mode: 74 percent of points in one blob) and fit an oriented box per piece. A pipe run, a valve stack, a pump, a door, a pallet, a drum and a fire extinguisher should each become a frame.
 2. **Frame and map.** Every object gets a box, a class proposal and a size. The 30 package records are assigned to 30 of those objects by class and size prior, with a recorded method and confidence. Every other object stays framed and unlabelled.
 3. **Navigate.** Fit the floor, build a 10 cm occupancy grid from everything standing above it, inflate by the agent radius, run A* from a derived start position at the edge of the captured area to a service position 0.9 m beside P-005. The avatar walks the smoothed path; the camera follows; floor arrows mark the route.
 4. **Explain.** As the robot moves, highlight nearby objects within 2.5 m. On arrival, diagnose P-005 from the pack: condition, health, issue, telemetry deviation, alarms, cited knowledge documents, a confidence and a safe next check.
@@ -100,10 +100,10 @@ No Android app, no emulator, no AR. No 3D Gaussian rasteriser: screen-space spla
 
 | Risk | Trigger | Response |
 | --- | --- | --- |
-| Splat coverage is thinner than the video suggests | the sane prefix covers only part of the room | Frame what is there, disclose the coverage, ask Valmet for a clean export Saturday morning |
+| Splat coverage is thinner than the video suggests | the capture covers only part of the room | Frame what is there and disclose the coverage |
 | Clustering merges the boiler room into one blob | floor and walls connect everything | Measured Friday evening: after 8 planes removed, connected components at 3 cm still leave 74 percent of points in one component (87 percent at 4 cm). Splitting large components is mandatory: k-means per oversized component, or patch segmentation. The loader is the easy half |
 | Floor is poorly captured | the camera rarely looks down | Estimate the floor from the lowest dense band and disclose it; the occupancy grid only needs obstacles, not floor texture |
 | The faulty target lands on an unreachable object | A* returns no path | Choose the pump-like object with the best clearance as the mapping for P-005, and record the choice |
-| The tail of the .ply crashes the viewer | NaN or 1e26 in the buffer | The filter is mandatory, and the loader asserts finite bounds |
+| A malformed .ply crashes the viewer | NaN or 1e26 in the buffer | The filter is mandatory, and the loader asserts finite bounds |
 | The point render reads as dust, not a room | the splat is rendered with bare points | screen-space splats with a minimum pixel size and a 500 k budget; the boxes, the route and the diagnosis carry the demo if the room looks coarse |
 | Time | nothing end to end by 01:00 | Cut the follow camera, then the walking animation (the avatar still slides), then proximity labels to the nearest two. Never cut the frames, the route, the moving avatar or the diagnosis evidence |

@@ -1,9 +1,8 @@
 """Write the sanitised capture as a compact PLY for the browser splat viewer.
 
-The delivered file is not what a browser should read: it declares more vertices
-than it fills and the tail is uninitialised memory. This stage keeps the sane
-prefix and writes only the properties a gaussian splat renderer needs (position,
-per-axis scale, rotation, DC colour, opacity), which is about four times smaller
+The supplied export carries the full 3DGS property set. A browser needs only the
+core properties, so this stage keeps the sane prefix and writes position,
+per-axis scale, rotation, DC colour and opacity. That is about four times smaller
 than the full 59 property export and loads far faster in the viewer.
 
 Output is a local asset under `data/`, never committed.
@@ -20,8 +19,8 @@ import numpy as np
 from plantpilot.splat import CORE_PROPERTIES, load_sane_prefix
 
 ROOT = Path(__file__).resolve().parents[1]
-DELIVERED = ROOT / "data" / "supplied" / "Industrial Boiler Room (1).ply"
-OUT = ROOT / "data" / "viewer" / "room.ply"
+DELIVERED = ROOT / "data" / "supplied" / "Equipment Room.ply"
+OUT = ROOT / "data" / "viewer" / "equipment.ply"
 
 
 def write_ply(rows: np.ndarray, out: Path) -> dict:
@@ -91,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if not Path(args.ply).exists():
-        raise SystemExit(f"no capture at {args.ply}; put the delivered .ply in data/supplied/")
+        raise SystemExit(f"no capture at {args.ply}; put the supplied .ply in data/supplied/")
     info = build(Path(args.ply), Path(args.out))
     print(json.dumps(info, indent=2))
     return 0

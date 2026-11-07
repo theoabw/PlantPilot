@@ -14,9 +14,9 @@ retained box while walking through a wall the extraction omitted.
   larger than half the room is skipped and that the footprints are inflated once.
 - The floor layer blocks every cell where the capture never saw floor, meaning
   no gaussian within FLOOR_TOLERANCE_M of the floor plane. Ground that was not
-  observed is not ground to walk on. On a truncated capture this is what stops
-  the planner leaving the room; where a capture sees floor nearly everywhere,
-  as the complete one does, the object and overhead layers hold the perimeter.
+  observed is not ground to walk on. On a capture with gaps in its coverage this
+  stops the planner leaving the room; where the capture sees floor nearly
+  everywhere, the object and overhead layers hold the perimeter.
 - The vertical-surface layer blocks a cell when a wall crosses the robot's path.
   Each gaussian's own ellipsoid gives its surface normal: the thinnest `size`
   axis, rotated by the `rot` quaternion into the scene frame. A cell blocks when
@@ -90,7 +90,7 @@ OBJECT_MAX_SIDE_M = 2.2
 # becoming an obstacle, and the closing pass fills a one-cell pinhole in a ring.
 OBJECT_MIN_POINTS_PER_CELL = 2
 # The floor layer: a cell is walkable ground only when the capture saw floor in
-# it. The floor plane is fitted to 1.6 cm rms in both supplied captures, so a
+# it. The floor plane is fitted to 1.6 cm rms on the boiler room capture, so a
 # gaussian within 8 cm of it is floor, and 8 cm is also below the lowest height a
 # robot body is modelled from (OBSTACLE_MIN_HEIGHT_M), so the two rules agree.
 FLOOR_TOLERANCE_M = 0.08
@@ -110,9 +110,9 @@ WALL_NORMAL_UP_DOT = 0.40
 # the robot's own height: across 0.55 m a machine face and a wall look the same,
 # so a span test in that band cannot tell them apart. The room's working height
 # separates them: a wall runs from the floor to where the room ends, and a
-# machine's face stops at the machine. Measured on both captures, the surfaces
-# between 1.2 and 2.0 m of vertical run are the room's perimeter and its full
-# height partitions, and the machine faces drop out and stay with the object
+# machine's face stops at the machine. Measured on the boiler room capture, the
+# surfaces between 1.2 and 2.0 m of vertical run are the room's perimeter and its
+# full height partitions, and the machine faces drop out and stay with the object
 # layer, which is where the extraction already covers them.
 WALL_CEILING_M = 2.00
 WALL_SPAN_M = 1.20
@@ -141,9 +141,8 @@ WALL_MAX_GAP_M = 0.20
 # The grid is never replaced when it looks crowded; at this blocked fraction the
 # artifact says `saturated` so a reviewer looks at the floor and axis instead of
 # the router quietly finding a free room. The floor layer blocks the unobserved
-# ring outside the room, which is most of the grid in the boiler capture, so the
-# fraction describes how much of the grid is not walkable ground rather than how
-# much of the room is full.
+# ring outside the room, so the fraction describes how much of the grid is not
+# walkable ground rather than how much of the room is full.
 MAX_BLOCKED_FRACTION = 0.85
 # The extracted boxes are already conservative axis aligned footprints of an
 # oriented box, so the route needs only a small extra margin on top of them.

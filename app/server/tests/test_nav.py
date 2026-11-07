@@ -216,8 +216,8 @@ def test_build_route_unreachable_with_full_wall_blocker(tmp_path):
 
 
 def test_a_y_down_capture_gets_its_path_in_scene_coordinates():
-    # the boiler room and the equipment room are y down; the floor height is
-    # negative, and the path must sit slightly above the floor in scene y
+    # the boiler room capture is y down; the floor height is negative, and the
+    # path must sit slightly above the floor in scene y
     assert nav.path_height(-1.181, -1) == pytest.approx(1.131, abs=0.001)
     assert nav.path_height(-1.181, 1) == pytest.approx(-1.131, abs=0.001)
 

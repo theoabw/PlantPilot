@@ -3,7 +3,7 @@
   "version": 1,
   "capture": "Equipment Room.ply",
   "reviewed_by": "box audit 2026-11-07, plus multi-view instance fusion review 2026-11-07",
-  "note": "Reviewed objects in the Equipment Room capture. Seven boxes come from the automatic proposal layer and survived a visual audit, and the eighth, the office chair, was recovered by multi-view SAM 3 instance fusion. Each entry separates the observed object type from an inferred function, with the evidence that supports the label and a confidence level. Where the fusion recovered the same object, the entry carries `fused` with the support views, the score, the vertical coverage and the floor gap; the box the review accepted is kept under `reviewed_box`.",
+  "note": "Reviewed objects in the boiler room capture. Seven boxes come from the automatic proposal layer and survived a visual audit, and the eighth, the office chair, was recovered by multi-view SAM 3 instance fusion. Each entry separates the observed object type from an inferred function, with the evidence that supports the label and a confidence level. Where the fusion recovered the same object, the entry carries `fused` with the support views, the score, the vertical coverage and the floor gap; the box the review accepted is kept under `reviewed_box`.",
   "anchors": [
     {
       "id": "AN-0238fdab",

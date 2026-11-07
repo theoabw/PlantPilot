@@ -238,7 +238,7 @@ const followTargetHeight: Record<RobotProfile, number> = {
 
 // Route points and the robot's origin sit this far above the floor.
 const ROBOT_FLOOR_OFFSET_M = 0.07
-// The room's overhead structure starts around 1.95 m, and the camera's obstacle
+// The room's overhead structure starts around 1.97 m, and the camera's obstacle
 // band ends at 1.85 m: above this the band says nothing about the camera.
 const CAMERA_MAX_HEIGHT_M = 1.75
 // The first attempts stay near the wanted view; the later ones are closer or
@@ -2090,8 +2090,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
   }, [])
 
-  // The capture's own up axis decides how the room is turned upright. Both
-  // supplied captures are -y, but the viewer reads it from the metadata.
+  // The capture's own up axis decides how the room is turned upright. The
+  // supplied boiler room capture is -y, but the viewer reads it from the metadata.
   useEffect(() => {
     const state = stateRef.current
     if (!state) {
