@@ -748,7 +748,7 @@ export default function RoomLab() {
     setCameraMove(false)
     // Always plan from where the robot stands now, so it can walk from one
     // destination to the next without teleporting back to the dock.
-    planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
+    planRoute(obstacleBlockers(), clearanceRadius, robot, undefined, {
       target: destinationXZRef.current,
       startAfter: true,
       label: destinationLabel ?? undefined,
@@ -772,7 +772,7 @@ export default function RoomLab() {
     ]
     const displayName =
       humanize(selectedMapping?.class) || selectedObject.label || humanize(selectedObject.class)
-    planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
+    planRoute(obstacleBlockers(), clearanceRadius, robot, undefined, {
       target,
       startAfter: true,
       label: displayName,
