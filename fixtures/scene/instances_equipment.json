@@ -1,0 +1,306 @@
+{
+ "artifact": "fused_instances",
+ "version": 1,
+ "capture": "Equipment Room.ply",
+ "method": "multi_view_sam3_instance_fusion",
+ "source": "seventeen posed views of data/supplied/Equipment Room.ply, SAM 3 masks lifted through the splat's own depth and fused across views",
+ "note": "Objects the fusion measured and a reviewer looked at. Each box is fitted upright from the instance's own gaussians. This file is evidence for a label: it does not change a box in objects.json, it lets the class stage name an object that shape alone cannot name.",
+ "instances": [
+  {
+   "id": "SB-0000",
+   "anchor_id": "AN-0238fdab",
+   "label": "red-painted pipe run",
+   "class": "pipework",
+   "object_class": "pipe",
+   "centre": [
+    -1.0574,
+    0.0109,
+    0.1271
+   ],
+   "axes": [
+    [
+     -0.0,
+     1.0,
+     -0.0
+    ],
+    [
+     0.99939,
+     0.0,
+     0.0349
+    ],
+    [
+     -0.0349,
+     0.0,
+     0.99939
+    ]
+   ],
+   "extents": [
+    1.6671,
+    0.4536,
+    0.1196
+   ],
+   "views": 10,
+   "score": 0.78,
+   "vertical_coverage": 0.884
+  },
+  {
+   "id": "SB-0003",
+   "anchor_id": "AN-7b2029e0",
+   "label": "red hose and cover on the floor",
+   "class": "equipment",
+   "object_class": "machine",
+   "centre": [
+    1.2302,
+    0.9669,
+    -2.5601
+   ],
+   "axes": [
+    [
+     0.96815,
+     0.0,
+     0.25038
+    ],
+    [
+     -0.25038,
+     0.0,
+     0.96815
+    ],
+    [
+     -0.0,
+     1.0,
+     -0.0
+    ]
+   ],
+   "extents": [
+    0.9504,
+    0.7753,
+    0.4489
+   ],
+   "views": 4,
+   "score": 0.8062,
+   "vertical_coverage": 1.0
+  },
+  {
+   "id": "SB-0005",
+   "anchor_id": "AN-51c6f8ce",
+   "label": "pump and motor assembly",
+   "class": "motor",
+   "object_class": "pump",
+   "centre": [
+    -0.8381,
+    0.7776,
+    1.91
+   ],
+   "axes": [
+    [
+     0.98325,
+     0.0,
+     0.18224
+    ],
+    [
+     -0.0,
+     1.0,
+     -0.0
+    ],
+    [
+     -0.18224,
+     0.0,
+     0.98325
+    ]
+   ],
+   "extents": [
+    0.8723,
+    0.8007,
+    0.7907
+   ],
+   "views": 3,
+   "score": 0.473,
+   "vertical_coverage": 0.895
+  },
+  {
+   "id": "SB-0004",
+   "anchor_id": "AN-b3544c88",
+   "label": "red door or cabinet",
+   "class": "cabinet",
+   "object_class": "cabinet",
+   "centre": [
+    -2.7144,
+    0.3435,
+    2.7839
+   ],
+   "axes": [
+    [
+     -0.0,
+     1.0,
+     -0.0
+    ],
+    [
+     0.96593,
+     -0.0,
+     -0.25882
+    ],
+    [
+     0.25882,
+     0.0,
+     0.96593
+    ]
+   ],
+   "extents": [
+    1.2376,
+    0.6154,
+    0.3472
+   ],
+   "views": 4,
+   "score": 0.5746,
+   "vertical_coverage": 0.992
+  },
+  {
+   "id": "SB-0002",
+   "anchor_id": "AN-5dbcb330",
+   "label": "blue vertical vessel",
+   "class": "equipment",
+   "object_class": "machine",
+   "centre": [
+    -2.4783,
+    0.3998,
+    0.9431
+   ],
+   "axes": [
+    [
+     -0.0,
+     1.0,
+     -0.0
+    ],
+    [
+     0.84339,
+     0.0,
+     0.5373
+    ],
+    [
+     -0.5373,
+     0.0,
+     0.84339
+    ]
+   ],
+   "extents": [
+    1.4317,
+    0.6254,
+    0.5062
+   ],
+   "views": 6,
+   "score": 0.7454,
+   "vertical_coverage": 0.87
+  },
+  {
+   "id": "SB-0006",
+   "anchor_id": "AN-2368abf6",
+   "label": "floor-level equipment cluster",
+   "class": "equipment",
+   "object_class": "machine",
+   "centre": [
+    -3.4106,
+    0.6944,
+    3.0556
+   ],
+   "axes": [
+    [
+     -0.0,
+     1.0,
+     -0.0
+    ],
+    [
+     -0.20791,
+     0.0,
+     0.97815
+    ],
+    [
+     0.97815,
+     0.0,
+     0.20791
+    ]
+   ],
+   "extents": [
+    0.9395,
+    0.7973,
+    0.7325
+   ],
+   "views": 2,
+   "score": 0.8945,
+   "vertical_coverage": 1.0
+  },
+  {
+   "id": "SB-0001",
+   "anchor_id": "AN-3f29eeb0",
+   "label": "washing machine",
+   "class": "equipment",
+   "object_class": "machine",
+   "centre": [
+    -0.829,
+    0.5693,
+    -0.553
+   ],
+   "axes": [
+    [
+     -0.0,
+     1.0,
+     -0.0
+    ],
+    [
+     -0.07846,
+     0.0,
+     0.99692
+    ],
+    [
+     0.99692,
+     0.0,
+     0.07846
+    ]
+   ],
+   "extents": [
+    0.8805,
+    0.7358,
+    0.5223
+   ],
+   "views": 10,
+   "score": 0.6038,
+   "vertical_coverage": 0.976
+  },
+  {
+   "id": "SBX-0005",
+   "anchor_id": null,
+   "label": "office chair",
+   "class": "furniture",
+   "object_class": "seat",
+   "centre": [
+    1.2529,
+    0.7135,
+    -1.8488
+   ],
+   "axes": [
+    [
+     -0.0,
+     1.0,
+     -0.0
+    ],
+    [
+     0.94832,
+     -0.0,
+     -0.3173
+    ],
+    [
+     0.3173,
+     0.0,
+     0.94832
+    ]
+   ],
+   "extents": [
+    0.8931,
+    0.6179,
+    0.6037
+   ],
+   "views": 6,
+   "score": 0.9544,
+   "vertical_coverage": 1.0
+  }
+ ]
+}
