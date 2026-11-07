@@ -70,7 +70,7 @@ const VERDICT_CLASSES: Record<ReasoningDifferential['verdict'], string> = {
 }
 
 type RobotOption = {
-  id: 'manual' | 'humanoid' | 'amr' | 'cargo'
+  id: 'humanoid' | 'amr' | 'cargo'
   label: string
   radius: number
   height: number
@@ -81,7 +81,6 @@ const ROBOTS: RobotOption[] = [
   { id: 'humanoid', label: 'Humanoid', radius: 0.18, height: 1.35, crouchHeight: 0.95 },
   { id: 'amr', label: 'Compact AMR', radius: 0.2, height: 0.55 },
   { id: 'cargo', label: 'Cargo AMR', radius: 0.45, height: 0.9 },
-  { id: 'manual', label: 'Manual human', radius: 0.18, height: 1.35 },
 ]
 
 const routeMessage = (route: RoomRoute | null): string => {
@@ -120,6 +119,7 @@ export default function RoomLab() {
   const [nearby, setNearby] = useState<string[]>([])
   const [follow, setFollow] = useState(false)
   const [cameraMove, setCameraMove] = useState(false)
+  const [manualControl, setManualControl] = useState(false)
   const [firstPerson, setFirstPerson] = useState(false)
   const [tripToken, setTripToken] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -593,19 +593,11 @@ export default function RoomLab() {
     setRobotId(id)
     setCustomRadius(radius ?? null)
     const option = ROBOTS.find((candidate) => candidate.id === id) ?? ROBOTS[1]
-    if (id === 'manual') {
-      setCameraMove(false)
-      setFirstPerson(false)
-      setFollow(true)
-      setArrivalDismissed(true)
-      planRoute(obstacleBlockers(), option.radius, option, 'Manual human controls', {
-        target: destinationXZRef.current,
-      })
-      return
-    }
-    setFirstPerson(false)
     setCameraMove(false)
-    setFollow(false)
+    if (!manualControl) {
+      setFirstPerson(false)
+      setFollow(false)
+    }
     const chosenRadius = radius ?? option.radius
     planRoute(
       obstacleBlockers(),
@@ -651,13 +643,13 @@ export default function RoomLab() {
   }, [selectedObject])
 
   const startMission = () => {
-    if (robotId === 'manual') {
-      return
-    }
     if (!routeReady && !destinationXZRef.current) {
       return
     }
     setBrowserOpen(false)
+    setManualControl(false)
+    setFirstPerson(false)
+    setCameraMove(false)
     // Always plan from where the robot stands now, so it can walk from one
     // destination to the next without teleporting back to the dock.
     planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
@@ -671,9 +663,12 @@ export default function RoomLab() {
   }
 
   const sendToEquipment = () => {
-    if (!selectedObject || robotId === 'manual') {
+    if (!selectedObject) {
       return
     }
+    setManualControl(false)
+    setFirstPerson(false)
+    setCameraMove(false)
     const axes = route?.grid?.horizontal_axes ?? [0, 2]
     const target: [number, number] = [
       selectedObject.centre[axes[0]],
@@ -772,12 +767,12 @@ export default function RoomLab() {
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}
-            showRobot={robot.id === 'manual' || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
+            showRobot={manualControl || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
             crouchSpans={crouchSpans}
             focusTarget={focusTarget}
             focusToken={focusToken}
             robotProfile={robot.id}
-            manualHuman={robot.id === 'manual'}
+            manualControl={manualControl}
             firstPerson={firstPerson}
             route={route}
             tripToken={tripToken}
@@ -1151,28 +1146,27 @@ export default function RoomLab() {
             <button
               type="button"
               onClick={sendToEquipment}
-              disabled={robotId === 'manual'}
-              className="flex-1 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              className="flex-1 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-black text-slate-950 hover:bg-cyan-400"
             >
-              {robotId === 'manual' ? 'Switch to a robot to route' : 'Send robot here'}
+              Send robot here
             </button>
           </div>
         </aside>
       ) : null}
 
       {/* Mission card, progress bar and arrival */}
-      {showMission && (mission || robotId === 'manual') ? (
+      {showMission && mission ? (
         <section className="absolute bottom-4 left-4 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700/80 bg-slate-950/90 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-center justify-between">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-300">
-              {robotId === 'manual' ? 'Manual character' : 'Mission'}
+              Mission
             </p>
             <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-              {robotId === 'manual' ? 'Ready to walk' : driving ? 'Driving' : 'Ready'}
+              {driving ? 'Driving' : manualControl ? 'Manual control' : 'Ready'}
             </span>
           </div>
           <h2 className="mt-1 text-lg font-black leading-tight text-white">
-            {robotId === 'manual' ? 'Walk the room' : mission?.tag === mission?.label ? (
+            {mission?.tag === mission?.label ? (
               mission?.label
             ) : (
               <>
@@ -1183,26 +1177,22 @@ export default function RoomLab() {
           <p
             className="mt-1 text-xs font-semibold"
             style={{
-              color: robotId === 'manual' || !targetMapping
+              color: !targetMapping
                 ? '#cbd5e1'
                 : STATE_COLOURS[targetMapping.state],
             }}
           >
-            {robotId === 'manual' ? 'WASD or arrow keys to walk around the captured floor' : mission?.condition}
+            {mission?.condition}
           </p>
-          {robotId !== 'manual' ? (
-            <>
-              <p className="mt-2 text-[11px] font-semibold text-slate-400">
-                {routeReady
-                  ? `${(route?.distance_m ?? 0).toFixed(1)} m route · ${(route?.clearance_m ?? 0).toFixed(2)} m clearance`
-                  : routeMessage(route)}
-              </p>
-              <p className="mt-1 text-[9px] font-semibold leading-snug text-amber-300/80">
-                Synthetic builder-pack scenario. Target placement is procedural, not a confirmed fault in this room.
-              </p>
-            </>
-          ) : null}
-          {robotId !== 'manual' && crouchSpans.length > 0 && routeReady ? (
+          <p className="mt-2 text-[11px] font-semibold text-slate-400">
+            {routeReady
+              ? `${(route?.distance_m ?? 0).toFixed(1)} m route · ${(route?.clearance_m ?? 0).toFixed(2)} m clearance`
+              : routeMessage(route)}
+          </p>
+          <p className="mt-1 text-[9px] font-semibold leading-snug text-amber-300/80">
+            Synthetic builder-pack scenario. Target placement is procedural, not a confirmed fault in this room.
+          </p>
+          {crouchSpans.length > 0 && routeReady ? (
             <p className="mt-1 text-[10px] font-semibold text-amber-200">
               Ducks under low pipework for {crouchSpans.reduce((total, [from, to]) => total + Math.max(0, to - from), 0).toFixed(1)} m of this route
             </p>
@@ -1229,20 +1219,14 @@ export default function RoomLab() {
             </p>
           </div>
           <div className="mt-3 flex gap-2">
-            {robotId === 'manual' ? (
-              <p className="flex-1 rounded-lg border border-slate-700 px-3 py-2.5 text-xs font-semibold text-slate-300">
-                Use WASD or arrow keys to walk. Choose first person or third person in the camera controls.
-              </p>
-            ) : (
-              <button
-                type="button"
-                onClick={startMission}
-                disabled={!mission}
-                className="flex-1 rounded-lg bg-cyan-500 px-3 py-2.5 text-sm font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-              >
-                Send robot
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={startMission}
+              disabled={!mission}
+              className="flex-1 rounded-lg bg-cyan-500 px-3 py-2.5 text-sm font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+            >
+              Send robot
+            </button>
             {destinationObjectId || targetAnchor || mapped?.target_object_id ? (
               <button
                 type="button"
@@ -1467,12 +1451,30 @@ export default function RoomLab() {
           >
             Overview
           </button>
-          {robotId === 'manual' ? (
+          <button
+            type="button"
+            aria-pressed={manualControl}
+            onClick={() => {
+              const next = !manualControl
+              setManualControl(next)
+              setCameraMove(false)
+              setFirstPerson(false)
+              setFollow(next)
+              if (next) {
+                setTrip({ mode: 'idle', travelled: 0, total: 0 })
+                setArrivalDismissed(true)
+              }
+            }}
+            className={`px-3 py-1.5 hover:bg-slate-800 ${manualControl ? 'text-cyan-300' : ''}`}
+          >
+            {manualControl ? 'Manual control · WASD / arrows' : 'Manual control'}
+          </button>
+          {manualControl ? (
             <div className="px-3 py-2 text-[10px] leading-relaxed text-slate-400">
-              WASD or arrow keys to walk · drag to look in first person
+              WASD or arrow keys to move · drag to look in first person
             </div>
           ) : null}
-          {robotId === 'manual' ? (
+          {manualControl ? (
             <>
               <button
                 type="button"
@@ -1498,7 +1500,7 @@ export default function RoomLab() {
               </button>
             </>
           ) : null}
-          {robotId !== 'manual' && (driving || arrived) ? (
+          {!manualControl && (driving || arrived) ? (
             <button
               type="button"
               onClick={() => {
@@ -1510,7 +1512,7 @@ export default function RoomLab() {
               {follow ? 'Following' : 'Follow'}
             </button>
           ) : null}
-          {robotId !== 'manual' ? (
+          {!manualControl ? (
             <button
               type="button"
               aria-pressed={cameraMove}

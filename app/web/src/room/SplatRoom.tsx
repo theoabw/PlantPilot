@@ -74,8 +74,8 @@ type Props = {
   frameOpacity: number
   focusTarget: { centre: [number, number, number]; radius: number } | null
   focusToken: number
-  robotProfile: 'manual' | 'humanoid' | 'amr' | 'cargo'
-  manualHuman: boolean
+  robotProfile: 'humanoid' | 'amr' | 'cargo'
+  manualControl: boolean
   firstPerson: boolean
   crouchSpans: [number, number][]
   showRobot: boolean
@@ -155,7 +155,25 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
 }
 
 
-type RobotProfile = 'manual' | 'humanoid' | 'amr' | 'cargo'
+type RobotProfile = 'humanoid' | 'amr' | 'cargo'
+
+const firstPersonEyeHeight: Record<RobotProfile, number> = {
+  humanoid: 1.3,
+  amr: 0.42,
+  cargo: 0.68,
+}
+
+const followTargetHeight: Record<RobotProfile, number> = {
+  humanoid: 0.78,
+  amr: 0.28,
+  cargo: 0.45,
+}
+
+const followDistances: Record<RobotProfile, number> = {
+  humanoid: 2.55,
+  amr: 2.05,
+  cargo: 2.35,
+}
 
 /**
  * A procedural service robot. A walking humanoid is a small industrial worker
@@ -180,7 +198,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   shadow.position.y = 0.005
   group.add(shadow)
 
-  if (profile === 'humanoid' || profile === 'manual') {
+  if (profile === 'humanoid') {
     const bob = new THREE.Group()
     group.add(bob)
     const HIP_Y = 0.8
@@ -480,7 +498,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualHuman, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -544,7 +562,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     orbitPointerActive: boolean
     cameraMove: boolean
     movementKeys: Set<string>
-    manualHuman: boolean
+    manualControl: boolean
     firstPerson: boolean
     manualYaw: number
     manualPitch: number
@@ -578,8 +596,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   followRef.current = follow
   const cameraMoveRef = useRef(cameraMove)
   cameraMoveRef.current = cameraMove
-  const manualHumanRef = useRef(manualHuman)
-  manualHumanRef.current = manualHuman
+  const manualControlRef = useRef(manualControl)
+  manualControlRef.current = manualControl
   const firstPersonRef = useRef(firstPerson)
   firstPersonRef.current = firstPerson
   const nearbyRef = useRef(onNearby)
@@ -798,7 +816,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     renderer.domElement.addEventListener('pointercancel', stopPointerLook)
     const onPointerDown = (event: PointerEvent) => {
       const current = stateRef.current
-      if (current?.manualHuman && current.firstPerson) {
+      if (current?.manualControl && current.firstPerson) {
         current.pointerLookActive = true
         current.lastPointerX = event.clientX
         current.lastPointerY = event.clientY
@@ -868,7 +886,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     controls.addEventListener('change', onControlsChange)
     const onCameraKeyDown = (event: KeyboardEvent) => {
       if (
-        (!cameraMoveRef.current && !manualHumanRef.current)
+        (!cameraMoveRef.current && !manualControlRef.current)
         || event.altKey
         || event.ctrlKey
         || event.metaKey
@@ -1106,11 +1124,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       const heading = stateRef.current?.motion.heading ?? robot.rotation.y
       robotForward.set(0, 0, 1).applyAxisAngle(up, heading)
-      const lookHeight = robotProfile === 'humanoid' || robotProfile === 'manual' ? 0.78 : 0.45
-      const followDistance = robotProfile === 'humanoid' || robotProfile === 'manual' ? 2.55 : 2.35
+      const lookHeight = followTargetHeight[robotProfile]
+      const distance = followDistances[robotProfile]
       const rawDesired = robot.position
         .clone()
-        .addScaledVector(robotForward, -followDistance)
+        .addScaledVector(robotForward, -distance)
         .add(new THREE.Vector3(0, lookHeight + 0.8, 0))
       const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, lookHeight, 0))
       const state = stateRef.current
@@ -1172,7 +1190,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const moveManualHuman = (dt: number): boolean => {
       const state = stateRef.current
       const person = state?.motion.robot
-      if (!state?.manualHuman || !person || state.movementKeys.size === 0) {
+      if (!state?.manualControl || !person || state.movementKeys.size === 0) {
         return false
       }
       const forward = camera.getWorldDirection(new THREE.Vector3())
@@ -1228,11 +1246,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const updateFirstPersonCamera = () => {
       const state = stateRef.current
       const person = state?.motion.robot
-      if (!state?.manualHuman || !state.firstPerson || !person) {
+      if (!state?.manualControl || !state.firstPerson || !person) {
         return
       }
       person.visible = false
-      camera.position.copy(person.position).add(new THREE.Vector3(0, 1.28, 0))
+      camera.position
+        .copy(person.position)
+        .add(new THREE.Vector3(0, firstPersonEyeHeight[robotProfile], 0))
       camera.rotation.order = 'YXZ'
       camera.rotation.set(state.manualPitch, state.manualYaw, 0)
       camera.updateMatrixWorld()
@@ -1241,7 +1261,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     const moveCameraFromKeys = (dt: number) => {
       const state = stateRef.current
-      if (!state?.cameraMove || state.manualHuman || state.movementKeys.size === 0) {
+      if (!state?.cameraMove || state.manualControl || state.movementKeys.size === 0) {
         return
       }
       const forward = camera.getWorldDirection(new THREE.Vector3())
@@ -1271,7 +1291,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       renderRef.current()
     }
     const advanceMotion = (dt: number) => {
-      const motion = stateRef.current?.motion
+      const live = stateRef.current
+      const motion = live?.motion
+      if (live?.manualControl) {
+        return
+      }
       if (!motion || !motion.active || !motion.robot || !motion.curve) {
         return
       }
@@ -1309,7 +1333,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         lastTime = now
         advanceMotion(dt)
         let manualMoving = false
-        if (stateRef.current?.manualHuman) {
+        if (stateRef.current?.manualControl) {
           if (stateRef.current.firstPerson) {
             updateFirstPersonCamera()
           }
@@ -1330,8 +1354,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           const live = stateRef.current
           animated(
             now / 1000,
-            live?.manualHuman ? live.manualTravelled : live?.motion.travelled ?? 0,
-            live?.manualHuman ? manualMoving : live?.motion.active ?? false,
+            live?.manualControl ? live.manualTravelled : live?.motion.travelled ?? 0,
+            live?.manualControl ? manualMoving : live?.motion.active ?? false,
           )
           if (stateRef.current?.motion.active) {
             renderRef.current()
@@ -1565,7 +1589,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       orbitPointerActive: false,
       cameraMove: cameraMoveRef.current,
       movementKeys: new Set<string>(),
-      manualHuman: manualHumanRef.current,
+      manualControl: manualControlRef.current,
       firstPerson: firstPersonRef.current,
       manualYaw: Math.PI,
       manualPitch: 0,
@@ -2619,7 +2643,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.cumulative = []
     motion.robot = null
     motion.reached = false
-    state.manualHuman = robotProfile === 'manual'
+    state.manualControl = manualControl
     state.movementKeys.clear()
 
     const cameraGrid = route?.camera_grid ?? null
@@ -2671,8 +2695,24 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
 
     if (!route || !route.reachable || route.path.length === 0) {
       if (previousRobot) {
-        state.routeGroup.add(previousRobot)
-        motion.robot = previousRobot
+        const robot = previousRobot.userData.profile === robotProfile
+          ? previousRobot
+          : buildRobot(robotProfile)
+        if (robot !== previousRobot) {
+          robot.position.copy(previousRobot.position)
+          state.manualTravelled = 0
+        }
+        robot.visible = !(manualControl && firstPersonRef.current)
+        state.routeGroup.add(robot)
+        motion.robot = robot
+        motion.heading = robot.rotation.y
+        const scenePosition = robot.position
+          .clone()
+          .applyQuaternion(state.world.quaternion.clone().invert())
+        robotPositionRef.current = [
+          scenePosition.getComponent(walkGrid?.horizontal_axes[0] ?? 0),
+          scenePosition.getComponent(walkGrid?.horizontal_axes[1] ?? 2),
+        ]
       }
       tripRef.current({ mode: 'idle', travelled: 0, total: 0 })
       renderRef.current()
@@ -2742,25 +2782,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       decor.add(ring)
     }
 
-    const keepManualPosition =
-      robotProfile === 'manual' && previousRobot?.userData.profile === 'manual'
-    const previousPosition = keepManualPosition ? previousRobot.position.clone() : null
-    let manualStart: THREE.Vector3 | null = null
-    if (robotProfile === 'manual' && !keepManualPosition && robotPositionRef.current) {
-      const axes = walkGrid?.horizontal_axes ?? [0, 2]
-      const up = upVector(upAxis ?? route.up_axis)
-      const upAxisIndex = up.findIndex((component) => Math.abs(component) > 0.5)
-      const upSign = up[upAxisIndex] >= 0 ? 1 : -1
-      const localStart = new THREE.Vector3()
-      localStart.setComponent(axes[0], robotPositionRef.current[0])
-      localStart.setComponent(axes[1], robotPositionRef.current[1])
-      localStart.setComponent(upAxisIndex, upSign * ((floorHeight ?? route.floor_height_m) + 0.07))
-      manualStart = localStart.applyQuaternion(state.world.quaternion)
-    }
-    const robot = keepManualPosition ? previousRobot : buildRobot(robotProfile)
-    if (robotProfile === 'manual') {
-      robot.userData.profile = 'manual'
-    } else {
+    const previousPosition = previousRobot?.position.clone() ?? null
+    const keepRobot = previousRobot?.userData.profile === robotProfile
+    const robot = keepRobot && previousRobot ? previousRobot : buildRobot(robotProfile)
+    if (!keepRobot) {
       state.manualTravelled = 0
     }
     motion.points = points
@@ -2771,11 +2796,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.arrow = arrows
     motion.arrowOffset = 0
     motion.arrowSpacing = 0.45
-    robot.position.copy(previousPosition ?? manualStart ?? points[0])
+    robot.position.copy(previousPosition ?? points[0])
     motion.heading = robot.rotation.y
     state.routeGroup.add(robot)
     motion.robot = robot
-    if (robotProfile !== 'manual') {
+    if (!previousRobot && !manualControl) {
       state.placeRobotAt?.(0.016)
     } else {
       const scenePosition = robot.position
@@ -2789,7 +2814,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.updateArrows?.()
     tripRef.current({ mode: 'idle', travelled: 0, total: motion.total })
     renderRef.current()
-  }, [route, floorHeight, upAxis, robotProfile])
+  }, [route, floorHeight, upAxis, robotProfile, manualControl])
 
   useEffect(() => {
     const state = stateRef.current
@@ -2843,27 +2868,31 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     if (!state) {
       return
     }
-    state.manualHuman = manualHuman
+    state.manualControl = manualControl
     state.firstPerson = firstPerson
     state.pointerLookActive = false
     state.movementKeys.clear()
+    if (manualControl) {
+      state.motion.active = false
+    }
     state.controls.enabled = !firstPerson
-    if (state.manualHuman && state.motion.robot) {
-      state.motion.robot.visible = !firstPerson
+    if (state.motion.robot) {
+      state.motion.robot.visible = !(manualControl && firstPerson)
     }
     if (firstPerson && state.motion.robot) {
       state.manualYaw = state.motion.robot.rotation.y + Math.PI
       state.manualPitch = 0
       state.followOffset = null
-    } else if (state.manualHuman && state.follow && state.motion.robot) {
+    } else if (manualControl && state.follow && state.motion.robot) {
       const person = state.motion.robot
       const forward = new THREE.Vector3(0, 0, 1)
         .applyAxisAngle(new THREE.Vector3(0, 1, 0), person.rotation.y)
-      const target = person.position.clone().add(new THREE.Vector3(0, 0.78, 0))
+      const targetHeight = followTargetHeight[robotProfile]
+      const target = person.position.clone().add(new THREE.Vector3(0, targetHeight, 0))
       const eye = person.position
         .clone()
-        .addScaledVector(forward, -2.55)
-        .add(new THREE.Vector3(0, 1.58, 0))
+        .addScaledVector(forward, -followDistances[robotProfile])
+        .add(new THREE.Vector3(0, targetHeight + 0.8, 0))
       state.camera.position.copy(eye)
       state.controls.target.copy(target)
       state.camera.lookAt(target)
@@ -2872,7 +2901,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       state.followTransitionStart = performance.now()
     }
     renderRef.current()
-  }, [manualHuman, firstPerson])
+  }, [manualControl, firstPerson, robotProfile, follow])
 
   if (glError) {
     return (
