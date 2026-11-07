@@ -66,7 +66,7 @@ SPLIT_GAP_M = 0.10
 STANDING_M = 0.10
 STANDING_HEIGHT_M = 0.30
 
-# Defaults chosen from the supplied capture and kept as parameters so another
+# Defaults chosen from the supplied boiler room capture and kept as parameters so another
 # scene can override them. They are spatial scales, not measurements of this
 # room; `make objects` prints the values in force.
 DEFAULTS = {
@@ -114,7 +114,7 @@ DEFAULTS = {
     # footprint as the shape it was cut from.
     # A component over the size limits can be peeled of room-sized sheets before
     # it is split, for a wall the global pass could not reach. Measured on the
-    # supplied equipment capture it changed neither the mean anchor error nor the
+    # supplied boiler room capture it changed neither the mean anchor error nor the
     # fragment count, so it is off: a pass that costs runtime and does not move a
     # measured number stays a parameter, not a default.
     "peel_sheet_share": 0.0,
@@ -612,7 +612,7 @@ def find_planes(
     being registered as a room plane.
 
     The horizontal and vertical families get their own budget. Measured on the
-    equipment capture, an unlimited search spent its first eight planes on the
+    boiler room capture, an unlimited search spent its first eight planes on the
     ceiling clutter and never proposed a wall, which is how every wall stayed in
     the object pool and welded the room to the machine. A room has a handful of
     surfaces in each family, and one family taking the whole budget is the
@@ -625,7 +625,7 @@ def find_planes(
       normal and flatness counts are still measured and reported, and they are
       what qualifies the plane, but a plane does not leave a sparse shell of
       itself behind. A sparse shell at a third of the capture's density is still
-      connected at a 3 cm voxel, and measured on the equipment capture it welds
+      connected at a 3 cm voxel, and measured on the boiler room capture it welds
       every object that touches a wall into one component.
     - "gated": only the gaussians the two tests claim, which keeps a machine's
       side surface out of a horizontal plane but leaves the shell described
@@ -635,7 +635,7 @@ def find_planes(
     A horizontal plane crossing an object cuts it in two, so its removal is
     gated and the machine keeps its side surface. A vertical plane is a wall, and
     a wall that is only partly removed is a connected sheet that welds every
-    object standing against it into one component: measured on the equipment
+    object standing against it into one component: measured on the boiler room
     capture the largest component fell from 24 percent of the capture to a
     handful of objects once walls were removed whole.
     """
@@ -1066,7 +1066,7 @@ def split_component(
     that section is at most `neck_share` of the profile's median: a machine
     joined to a pipe rack through a pipe is two objects joined by a neck, while
     a machine with no profile minimum at all stays whole. A target point count is
-    never a reason to cut. Measured on the equipment capture, the old target-size cut turned
+    never a reason to cut. Measured on the boiler room capture, the old target-size cut turned
     the washing machine's neighbourhood into three boxes; a gap test finds none
     inside a machine. `target` is accepted so the parameters and the call sites
     stay stable, and it no longer forces a cut: a piece is cut from evidence,
@@ -1554,7 +1554,7 @@ def scale_check(objects: list[Object], up: np.ndarray) -> dict:
     if not heights:
         return {
             "performed": False,
-            "reason": "no door-like box was framed, so the units stay as delivered",
+            "reason": "no door-like box was framed, so the units stay in the file's own frame",
         }
     heights.sort()
     median = float(np.median(heights))

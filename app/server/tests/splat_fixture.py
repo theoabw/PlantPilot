@@ -2,7 +2,7 @@
 
 The real capture is not in the repository, so the tests build their own: a
 floor plane, two solid blocks, a pipe run, and a tail of uninitialised rows that
-must be dropped exactly like the delivered file's tail. Everything is offline
+must be dropped exactly like a malformed export's tail. Everything is offline
 and deterministic.
 """
 
@@ -65,7 +65,7 @@ def write_ply(path: Path, xyz: np.ndarray, *, garbage_rows: int = 0) -> Path:
         f.write(header(total))
         f.write(rows.tobytes())
         for index in range(garbage_rows):
-            # the delivered file's tail: huge finite numbers, then NaN
+            # a malformed export's tail: huge finite numbers, then NaN
             row = np.full(len(PROPERTIES), 1.0e26, dtype=np.float32)
             if index % 2:
                 row[1] = np.nan

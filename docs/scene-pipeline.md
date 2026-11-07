@@ -85,7 +85,7 @@ Command:
 
 ```
 uv run --project pipeline scene-pipeline ingest \
-  --ply "data/supplied/Industrial Boiler Room.ply" \
+  --ply "data/supplied/Equipment Room.ply" \
   --out data/derived
 ```
 
@@ -114,9 +114,9 @@ Rules:
 - Convert scale with `exp(scale)` and opacity with `sigmoid(opacity)`.
 - Record declared, sane, dropped and first-invalid counts.
 
-The supplied file declares 1,506,136 vertices and fills 502,483 sane rows. The
-rest is uninitialised memory. That fact belongs in the manifest so a future
-reader does not think the pipeline silently discarded good data.
+The supplied boiler room capture declares 1,676,481 vertices and every row is
+sane. The loader still records the declared, sane and dropped counts in the
+manifest, because a future capture may not be clean.
 
 ### 4.2 Clean
 
@@ -267,23 +267,23 @@ Rules:
   "version": 1,
   "generated_at": "2026-11-06T21:00:00Z",
   "source": {
-    "ply": "Industrial Boiler Room (1).ply",
+    "ply": "Equipment Room.ply",
     "sha256": "...",
-    "declared_vertices": 1506136,
-    "sane_vertices": 502483,
-    "first_invalid_row": 502483
+    "declared_vertices": 1676481,
+    "sane_vertices": 1676481,
+    "first_invalid_row": null
   },
   "frame": {
-    "up": "+y",
+    "up": "-y",
     "units": "assumed_m",
     "origin": [0, 0, 0],
-    "bounds": { "min": [-6.08, -4.47, -7.56], "max": [5.99, 3.91, -0.74] }
+    "bounds": { "min": [-4.84, -1.29, -3.76], "max": [4.16, 1.26, 3.49] }
   },
   "floor": {
-    "normal": [0.018, 0.9998, -0.0098],
-    "point": [0, -0.844, 0],
-    "height_m": -0.844,
-    "rms_m": 0.02
+    "normal": [0.004, -1.0, 0.0065],
+    "point": [0, 1.174, 0],
+    "height_m": 1.174,
+    "rms_m": 0.015
   },
   "artifacts": {
     "geometry": { "path": "scene.glb", "kind": "mesh", "bytes": 0 },

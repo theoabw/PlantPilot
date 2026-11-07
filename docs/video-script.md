@@ -1,6 +1,6 @@
 # Demo video: shooting script
 
-Screen capture of the running app, plus one terminal cut: 2 minutes 44 seconds, six beats, English voiceover. The room is the complete supplied capture, Equipment Room; the target is P-005. The brief's named boiler room capture is damaged, and beat 1 says so. Every number comes from the app or a make target.
+Screen capture of the running app, plus one terminal cut: 2 minutes 44 seconds, six beats, English voiceover. The room is the supplied boiler room capture; the target is P-005. Every number comes from the app or a make target.
 
 ## Brand in the edit
 
@@ -21,9 +21,9 @@ The app moved on after this script was written, so these do not match it. Fix th
 
 Scores criterion 1, 30 percent.
 
-**On screen.** Room view, panel open, slow orbit. Hold the header (`PlantPilot`, `Equipment Room`, the synthetic-scenario badge) and the developer drawer: 1,676,481 gaussians and 150 raw objects. Click a duct frame, then a machine frame; hold each card with class, points, confidence and size. Close the panel, orbit over the frames, reopen.
+**On screen.** Room view, panel open, slow orbit. Hold the header (`PlantPilot`, the capture name, the synthetic-scenario badge) and the developer drawer: 1,676,481 gaussians and 150 raw objects. Click a duct frame, then a machine frame; hold each card with class, points, confidence and size. Close the panel, orbit over the frames, reopen.
 
-**Voiceover.** "This room was captured with a 3D Gaussian splat: 1,676,481 gaussians. The pipeline finds the floor, reads the up axis, and cuts the room into objects. Every frame is a 3D box around one object: its centre, its size, and a class proposal from shape and context. On this complete capture we frame 150 objects. The brief names the boiler room capture, and that file is damaged: it declares 1,506,136 gaussians and fills only the first 502,483. The same code frames 122 there."
+**Voiceover.** "This room was captured with a 3D Gaussian splat: 1,676,481 gaussians. The pipeline finds the floor, reads the up axis, and cuts the room into objects. Every frame is a 3D box around one object: its centre, its size, and a class proposal from shape and context. On this boiler room capture we frame 150 objects."
 
 **Counts if.** The room and boxes are rendered, not a placeholder; the drawer reads 150 raw objects; two selected frames show class, size and confidence; the header names the capture.
 

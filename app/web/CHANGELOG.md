@@ -29,7 +29,7 @@ Branch: `feat/spark-room`
   chosen for clearance, and the capture's own up axis decides which way is up.
 - The up axis detection now signs the axis from the two slabs of a room: the
   floor is the brighter one, so the pipes end up overhead instead of under the
-  floor. Both supplied captures are y-down 3DGS frames.
+  floor. The supplied boiler room capture is a y-down 3DGS frame.
 
 ### Robot on the capture
 

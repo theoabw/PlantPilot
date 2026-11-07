@@ -166,7 +166,7 @@ def test_the_report_prints_the_three_counts(tmp_path):
     assert "sane prefix" in report
     assert "rendered" in report
     assert "up axis" in report
-    assert "502" not in report  # no boiler room number leaks into a synthetic run
+    assert "502" not in report  # no supplied-capture number leaks into a synthetic run
     payload = json.loads(json.dumps(meta))
     assert payload["frame"]["up_axis"] == "+y"
 

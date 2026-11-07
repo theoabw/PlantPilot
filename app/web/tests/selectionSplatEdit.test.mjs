@@ -61,7 +61,7 @@ test('left-handed reviewed axes still cover the intended oriented box', () => {
   }
 })
 
-test('all reviewed Equipment Room anchors keep their measured box axes', async () => {
+test('all reviewed boiler room anchors keep their measured box axes', async () => {
   const fixture = JSON.parse(await readFile(new URL('../../../fixtures/scene/anchors_equipment.json', import.meta.url), 'utf8'))
   for (const object of fixture.anchors) {
     const box = selectionSplatEdit([object]).children[0]

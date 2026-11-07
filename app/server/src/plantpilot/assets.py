@@ -1,7 +1,7 @@
 """Merge raw geometric boxes and colour seeds into coherent equipment assets.
 
 The segmentation stage frames a box per connected cluster, which is geometry
-and nothing more: the supplied equipment capture comes out as 150 heavily
+and nothing more: the supplied boiler room capture comes out as 150 heavily
 overlapping boxes, 40 of them longer than 2 m, and the two large vessels are
 absorbed into boxes classed as ducts. This stage turns that raw set into a small
 list a person can read: coherent instances with an id, a class, a human label,

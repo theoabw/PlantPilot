@@ -132,31 +132,6 @@ def test_the_object_splats_endpoint_serves_a_manifest_and_a_ply(monkeypatch, tmp
     assert client.get("/api/object-splat/zzz").status_code == 404
 
 
-def test_the_meshes_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
-    from plantpilot import main
-
-    monkeypatch.setattr(main, "MESH_DIR", tmp_path / "meshes")
-    assert client.get("/api/scene/meshes").status_code == 404
-    assert "make object-meshes" in client.get("/api/scene/meshes").json()["detail"]
-    assert client.get("/api/mesh/AN-5dbcb330").status_code == 404
-
-
-def test_the_meshes_endpoint_serves_the_manifest_and_a_mesh(monkeypatch, tmp_path):
-    from plantpilot import main
-
-    directory = tmp_path / "meshes"
-    directory.mkdir()
-    (directory / "manifest.json").write_text(json.dumps({"artifact": "object_meshes", "objects": []}))
-    (directory / "AN-5dbcb330.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
-    monkeypatch.setattr(main, "MESH_DIR", directory)
-    body = client.get("/api/scene/meshes").json()
-    assert body["artifact"] == "object_meshes"
-    response = client.get("/api/mesh/AN-5dbcb330")
-    assert response.status_code == 200
-    assert response.content.startswith(b"ply")
-    assert client.get("/api/mesh/not-an-id").status_code == 404
-
-
 def test_the_filters_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 

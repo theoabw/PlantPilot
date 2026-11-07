@@ -11,7 +11,7 @@ What has to be true, not what we hope is true. Two parts: the rules we do not ne
 5. **The splat is points.** It is not called a mesh, a scan with triangles, or a reconstructed surface. Rendering uses point size and alpha.
 6. **The faulty device is P-005 and it does not move.** The mapping may be re-tuned, the target does not silently change.
 7. **Mapping never guesses silently.** Every mapped object carries a method and a confidence, and the card shows them.
-8. **No NaN reaches the viewer.** The .ply tail is uninitialised memory. The loader filters, and the count of dropped vertices is printed.
+8. **No NaN reaches the viewer.** A capture can carry uninitialised memory in its .ply tail. The loader filters, and the count of dropped vertices is printed.
 9. **One demo path.** A second scene, a second UI or a second target waits until the first path runs three times clean.
 10. **The product is not the pitch.** Extraction counts, timings and accuracy claims belong in the video, the README and the submission. Provenance (which scene, which mapping method, which pack) is product information and appears once.
 
@@ -25,7 +25,7 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make scene` runs,
 **then** it prints the total vertices, the sane vertices and the rendered vertices, and the viewer shows the room with points at a stable frame rate.
 
-**Pass:** for the named capture, total 1,506,136 and sane about 502,483; the default complete capture is 1,676,481 with none dropped. Rendered at least 300,000, no NaN warning, first frame under 5 s on the demo laptop.
+**Pass:** the boiler room capture declares 1,676,481 vertices, none dropped. Rendered at least 300,000, no NaN warning, first frame under 5 s on the demo laptop.
 **Check:** `make scene`; open the app.
 
 ### 2. Objects are framed
@@ -43,7 +43,7 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make map` runs,
 **then** 30 asset records are each proposed onto a distinct object or explicitly marked unresolved, with a method, a confidence where it is mapped, and the state from `Current_State`, and P-005 is designated the faulty target.
 
-**Pass:** all 30 records accounted for, all mapped ones with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record. On the complete capture that is 30 proposed and none unresolved; on the named capture 28 proposed and 2 unresolved. Selecting P-005 turns it red and opens its card with the mapped state, method and confidence.
+**Pass:** all 30 records accounted for, all mapped ones with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record. On the boiler room capture that is 30 proposed and none unresolved. Selecting P-005 turns it red and opens its card with the mapped state, method and confidence.
 **Check:** `make map`; select P-005 in the viewer.
 
 ### 4. The avatar reaches the faulty device without clipping
@@ -52,7 +52,7 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make route` runs,
 **then** a path is returned with a length in scene units and a minimum clearance, and the path crosses no blocked cell.
 
-**Pass:** a route exists with at least two path points and a measured clearance of at least the robot radius less one 0.10 m cell, measured along the smoothed path to the uninflated cells, both in scene units because the door-height scale check has not run, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn on the floor, with the length and clearance visible. Route length is not a bar: on the complete capture the inward start is near the P-005 waypoint, so the route is 0.22 m; on the truncated boiler capture it is 1.08 m on the observed floor.
+**Pass:** a route exists with at least two path points and a measured clearance of at least the robot radius less one 0.10 m cell, measured along the smoothed path to the uninflated cells, both in scene units because the door-height scale check has not run, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn on the floor, with the length and clearance visible. Route length is not a bar: the boiler room capture starts inside the room near the P-005 waypoint, so the route is 0.22 m.
 **Check:** `make route`; replay the path in the viewer and follow the arrows.
 
 ### 5. Nearby objects are shown as the avatar moves

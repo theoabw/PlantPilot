@@ -357,40 +357,6 @@ export function objectSplatUrl(anchorId: string): string {
   return `/api/object-splat/${anchorId}`
 }
 
-export type RoomMesh = {
-  anchor_id: string
-  label: string
-  class?: string
-  file: string
-  vertices: number
-  triangles: number
-  owned_gaussians?: number
-}
-
-export type RoomMeshes = {
-  artifact: string
-  version: number
-  source?: { scene?: string; anchors?: string }
-  counts?: { objects?: number }
-  objects: RoomMesh[]
-}
-
-export async function fetchRoomMeshes(): Promise<RoomMeshes> {
-  const response = await fetch('/api/scene/meshes')
-  if (!response.ok) {
-    throw new Error(
-      response.status === 404
-        ? 'no object meshes on the server, run make object-meshes'
-        : `/api/scene/meshes answered ${response.status}`,
-    )
-  }
-  return (await response.json()) as RoomMeshes
-}
-
-export function meshAssetUrl(anchorId: string): string {
-  return `/api/mesh/${anchorId}`
-}
-
 export type RoomFilters = {
   artifact: string
   version: number
