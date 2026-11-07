@@ -1299,32 +1299,10 @@ def build_route(
 
     # Load objects if available
     objects: list[dict] = []
-    walkable_ceiling_m = WALKABLE_HEIGHT_MAX_M  # scene-relative override below
     if objects_path and objects_path.exists():
         try:
             obj_data = json.loads(objects_path.read_text())
             objects = obj_data if isinstance(obj_data, list) else obj_data.get("objects", [])
-            # Fix 4: derive walkable ceiling from the measured floor-to-next-plane
-            # distance stored in the objects artifact rather than using the hard-coded
-            # 2.0 m constant. The boiler room has only 1.95 m to the first horizontal
-            # plane; using 2.0 m would pull pipe-tray / duct points into the obstacle
-            # band and risk blocking the entire room.
-            # objects.json records this as planes[i].height for horizontal planes, or
-            # we use (next_horizontal_plane_height - floor_height) when available.
-            planes = obj_data.get("planes", {}).get("items", []) if isinstance(obj_data, dict) else []
-            floor_info = obj_data.get("floor", {}) if isinstance(obj_data, dict) else {}
-            floor_h = floor_info.get("height")
-            if floor_h is not None and planes:
-                # Find the lowest horizontal plane above the floor
-                above_floor = [
-                    p.get("offset", 0.0)
-                    for p in planes
-                    if p.get("horizontal") and p.get("offset", 0.0) > floor_h + 0.5
-                ]
-                if above_floor:
-                    clearance_to_ceil = min(above_floor) - floor_h
-                    # Keep 10 cm margin below the ceiling plane
-                    walkable_ceiling_m = max(1.5, round(clearance_to_ceil - 0.10, 2))
         except Exception:
             objects = []
 
@@ -1381,7 +1359,7 @@ def build_route(
             objects=objects,
             walkable_height_max_m=max(
                 OBSTACLE_MIN_HEIGHT_M,
-                min(float(agent_height_m), float(walkable_ceiling_m)),
+                min(float(agent_height_m), WALKABLE_HEIGHT_MAX_M),
             ),
             safety_margin_m=ROUTE_SAFETY_MARGIN_M,
             normals=normals,
@@ -1540,7 +1518,7 @@ def build_route(
             objects=objects,
             walkable_height_max_m=max(
                 OBSTACLE_MIN_HEIGHT_M,
-                min(float(standing_height_m), float(walkable_ceiling_m)),
+                min(float(standing_height_m), WALKABLE_HEIGHT_MAX_M),
             ),
             safety_margin_m=0.0,
             normals=normals,

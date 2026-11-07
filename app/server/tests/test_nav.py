@@ -683,3 +683,34 @@ def test_the_service_waypoint_reads_the_box_through_its_own_frame():
     gap_x = max(footprint.x0 - waypoint[0], 0.0, waypoint[0] - footprint.x1)
     gap_z = max(footprint.z0 - waypoint[1], 0.0, waypoint[1] - footprint.z1)
     assert math.hypot(gap_x, gap_z) == pytest.approx(nav.DEFAULT_CLEARANCE_TARGET_M, abs=0.15)
+
+
+def test_a_tall_robot_is_not_cut_short_by_a_plane_below_its_height(tmp_path):
+    # Horizontal plane records used to cap the body band at 1.5 m on any capture,
+    # because their offset is a plane constant and not a height above the floor.
+    objects = tmp_path / "objects.json"
+    objects.write_text(json.dumps({
+        "objects": [],
+        "floor": {"height": 0.0},
+        "planes": {"items": [{"horizontal": True, "offset": 0.6}]},
+    }))
+    # Pipework at 1.7 m, which a 1.5 m cap would hide from a 1.9 m body.
+    _pocket_scene(tmp_path)
+    axis = np.arange(0.2, 2.8, 0.02)
+    band_x, band_z = np.meshgrid(axis, axis)
+    points = np.stack([band_x.ravel(), np.full(band_x.size, 1.7), band_z.ravel()], axis=1)
+    floor = np.load(tmp_path / "scene.npz")["xyz"]
+    scene = tmp_path / "pipes.npz"
+    np.savez(
+        scene,
+        xyz=np.concatenate([floor, points]),
+        meta=np.array(json.dumps({"frame": {"up_axis_index": 1, "up_axis_sign": 1}})),
+    )
+    tall = nav.build_route(
+        scene_path=scene,
+        objects_path=objects,
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        agent_height_m=1.9,
+    )
+    assert tall["grid_stats"]["overhead_blocked_cells"] > 0
