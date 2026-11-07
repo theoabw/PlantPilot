@@ -470,6 +470,16 @@ export default function RoomLab() {
     return equipmentRows.find((row) => row.record.id === selectedId) ?? null
   }, [selectedId, equipmentRows])
 
+  // What the robot turns to face when it arrives: the destination object, or the
+  // mapped target on the shipped route, which no click has chosen.
+  const arrivalCentre = useMemo(() => {
+    const id = destinationObjectId ?? targetAnchor?.id ?? mapped?.target_object_id ?? null
+    if (!id) {
+      return null
+    }
+    return anchorById.get(id)?.centre ?? data?.objects.find((object) => object.id === id)?.centre ?? null
+  }, [destinationObjectId, targetAnchor, mapped, anchorById, data])
+
   const selectedObject = useMemo(() => {
     if (!selectedId) {
       return null
@@ -853,6 +863,7 @@ export default function RoomLab() {
             obstacles={obstacles}
             robotPositionRef={robotPositionRef}
             motionPausedRef={motionPausedRef}
+            arrivalCentre={arrivalCentre}
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}

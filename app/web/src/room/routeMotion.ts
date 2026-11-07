@@ -169,3 +169,11 @@ export function easeFollowOffset(
     z: Math.cos(angle + turn) * reach,
   }
 }
+
+/** Turn a heading toward a target by a blend, the short way round. */
+export function turnHeading(current: number, target: number, blend: number): number {
+  let delta = target - current
+  while (delta > Math.PI) delta -= Math.PI * 2
+  while (delta < -Math.PI) delta += Math.PI * 2
+  return current + delta * blend
+}

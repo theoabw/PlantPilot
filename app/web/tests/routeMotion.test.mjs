@@ -96,3 +96,9 @@ test('easing between opposite offsets keeps the camera away from the robot', () 
   }
   assert.ok(offset.z > 1)
 })
+
+test('a heading turns the short way across the wrap', () => {
+  const next = motion.turnHeading(3, -3, 0.5)
+  assert.ok(next > 3)
+  assert.ok(Math.abs(motion.turnHeading(0, 1, 1) - 1) < 1e-9)
+})

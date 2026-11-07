@@ -7,7 +7,7 @@ import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
-import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, sightClear, slideStep } from './routeMotion'
+import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, sightClear, slideStep, turnHeading } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -28,6 +28,7 @@ type Motion = {
   arrowSpacing: number
   robot: THREE.Group | null
   reached: boolean
+  faceHeading: number | null
 }
 
 type WalkMask = {
@@ -74,6 +75,7 @@ type Props = {
   obstacles: [number, number][]
   robotPositionRef: { current: [number, number] | null }
   motionPausedRef: { current: boolean }
+  arrivalCentre: [number, number, number] | null
   onPlaceObstacle: (point: [number, number]) => void
   showOccupancy: boolean
   showRoute: boolean
@@ -524,7 +526,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -621,6 +623,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   cameraMoveRef.current = cameraMove
   const manualControlRef = useRef(manualControl)
   manualControlRef.current = manualControl
+  const arrivalCentreRef = useRef(arrivalCentre)
+  arrivalCentreRef.current = arrivalCentre
   const robotProfileRef = useRef(robotProfile)
   robotProfileRef.current = robotProfile
   const firstPersonRef = useRef(firstPerson)
@@ -1393,12 +1397,27 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       renderRef.current()
     }
+    const faceArrivalAsset = (dt: number) => {
+      const motion = stateRef.current?.motion
+      if (!motion?.robot || motion.faceHeading === null || motion.active) {
+        return
+      }
+      const heading = motion.heading ?? motion.robot.rotation.y
+      const next = turnHeading(heading, motion.faceHeading, smoothFactor(4, Math.max(dt, 0.001)))
+      if (Math.abs(next - heading) < 0.002) {
+        motion.faceHeading = null
+      }
+      motion.heading = next
+      motion.robot.rotation.y = next
+      renderRef.current()
+    }
     const advanceMotion = (dt: number) => {
       const live = stateRef.current
       const motion = live?.motion
       if (live?.manualControl) {
         return
       }
+      faceArrivalAsset(dt)
       if (!motion || !motion.active || !motion.robot || !motion.curve) {
         return
       }
@@ -1419,6 +1438,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         renderRef.current()
         if (!motion.reached) {
           motion.reached = true
+          // Inspect the asset: the route ends along its last tangent, which is
+          // often pointing past it.
+          const centre = arrivalCentreRef.current
+          if (centre && live) {
+            const asset = new THREE.Vector3(...centre).applyQuaternion(live.world.quaternion).sub(motion.robot.position)
+            motion.faceHeading = Math.hypot(asset.x, asset.z) > 0.05 ? Math.atan2(asset.x, asset.z) : null
+          }
           // No arrival cut: the camera keeps its follow framing so the robot is
           // left standing at the target, ready for the next destination.
           tripRef.current({ mode: 'arrived', travelled: motion.total, total: motion.total })
@@ -1676,6 +1702,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         arrowSpacing: 0.55,
         robot: null,
         reached: false,
+        faceHeading: null,
       },
       follow: followRef.current,
       followOffset: null,
@@ -2727,6 +2754,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.cumulative = []
     motion.robot = null
     motion.reached = false
+    motion.faceHeading = null
     state.manualControl = manualControl
     state.movementKeys.clear()
 
@@ -2925,6 +2953,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.motion.active = false
     state.motion.travelled = 0
     state.motion.reached = false
+    state.motion.faceHeading = null
     state.motion.arrowOffset = 0
     state.manualTravelled = 0
     state.movementKeys.clear()
@@ -2968,6 +2997,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     // The curve starts under a robot that was on it, so this copy does not move
     // one; only a robot too far away to be on the route is placed on its start.
     motion.heading = motion.robot.rotation.y
+    motion.faceHeading = null
     motion.arrowOffset = 0
     if (motion.curve) {
       motion.robot.position.copy(motion.curve.getPointAt(0))
