@@ -92,7 +92,9 @@ def footprint(box: dict, up: np.ndarray) -> tuple[float, float, float, float]:
     centre = np.asarray(box["centre"], dtype=np.float64)
     axes = np.asarray(box["axes"], dtype=np.float64)
     extents = np.asarray(box["extents"], dtype=np.float64)
-    reach = 0.5 * (np.abs(axes) @ extents)
+    # axes holds one box axis per row, so projecting onto a world axis sums
+    # the matching column over the rows: |axes.T| @ extents, never |axes| @ extents.
+    reach = 0.5 * (np.abs(axes.T) @ extents)
     vertical = UP_BY_NAME["y"]
     horizontal = [axis for axis in range(3) if axis != vertical]
     return (

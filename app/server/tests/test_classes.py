@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import copy
 
+import pytest
+
 from plantpilot import classes
 
 UP = [0.0, -1.0, 0.0]
@@ -170,3 +172,62 @@ def test_two_runs_are_identical():
     first = classes.refine(copy.deepcopy(source))
     second = classes.refine(copy.deepcopy(source))
     assert first == second
+
+
+def rotated_box(object_id: str, class_name: str, angle_degrees: float) -> dict:
+    """A box turned about the up axis, which is the case a row read gets wrong."""
+    import math
+
+    angle = math.radians(angle_degrees)
+    axes = [
+        [math.cos(angle), 0.0, math.sin(angle)],
+        [0.0, 1.0, 0.0],
+        [-math.sin(angle), 0.0, math.cos(angle)],
+    ]
+    return {
+        "id": object_id,
+        "centre": [0.0, 0.5, 0.0],
+        "axes": axes,
+        "extents": [1.6, 0.9, 0.4],
+        "points": 100,
+        "class": class_name,
+        "class_confidence": 0.4,
+        "class_reason": "shape rule",
+    }
+
+
+def test_the_footprint_does_not_depend_on_the_order_of_the_axes():
+    import numpy as np
+
+    frame = rotated_box("OBJ-001", "machine", 37.0)
+    plain = classes.footprint(frame, np.array(UP))
+    for order in ([1, 2, 0], [2, 0, 1], [0, 2, 1]):
+        permuted = {**frame, "axes": [frame["axes"][i] for i in order], "extents": [frame["extents"][i] for i in order]}
+        moved = classes.footprint(permuted, np.array(UP))
+        assert moved == class_approx(plain)
+
+
+def class_approx(values):
+    import pytest
+
+    return pytest.approx(list(values), abs=1e-9)
+
+
+def test_the_footprint_matches_the_projected_corners():
+    import itertools
+
+    import numpy as np
+
+    frame = rotated_box("OBJ-001", "machine", 37.0)
+    centre = np.array(frame["centre"])
+    axes = np.array(frame["axes"])
+    extents = np.array(frame["extents"])
+    corners = np.array([
+        centre + sum(sign * 0.5 * extents[index] * axes[index] for index, sign in enumerate(signs))
+        for signs in itertools.product([-1, 1], repeat=3)
+    ])
+    reach = classes.footprint(frame, np.array(UP))
+    assert reach[0] == pytest.approx(float(corners[:, 0].min()), abs=1e-9)
+    assert reach[1] == pytest.approx(float(corners[:, 0].max()), abs=1e-9)
+    assert reach[2] == pytest.approx(float(corners[:, 2].min()), abs=1e-9)
+    assert reach[3] == pytest.approx(float(corners[:, 2].max()), abs=1e-9)

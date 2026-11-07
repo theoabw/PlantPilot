@@ -132,3 +132,42 @@ def test_the_summary_and_the_artifact_agree(tmp_path):
     table = audit.summary(written)
     assert "AN-1" in table
     assert "floating" in table.lower()
+
+
+def test_the_audit_footprint_is_the_projected_corner_box():
+    import itertools
+    import math
+
+    audit = load_audit()
+    up = np.array([0.0, -1.0, 0.0])
+    angle = math.radians(37.0)
+    axes = [[math.cos(angle), 0.0, math.sin(angle)], [0.0, 1.0, 0.0], [-math.sin(angle), 0.0, math.cos(angle)]]
+    extents = [1.6, 0.9, 0.4]
+    frame = {"id": "OBJ-001", "class": "machine", "centre": [0.0, 0.5, 0.0], "axes": axes, "extents": extents}
+    centre = np.array(frame["centre"])
+    matrix = np.array(axes)
+    lengths = np.array(extents)
+    corners = np.array([
+        centre + sum(sign * 0.5 * lengths[index] * matrix[index] for index, sign in enumerate(signs))
+        for signs in itertools.product([-1, 1], repeat=3)
+    ])
+    x0, x1, z0, z1 = audit.box_footprint(frame, up)
+    assert x0 == pytest.approx(float(corners[:, 0].min()), abs=1e-9)
+    assert x1 == pytest.approx(float(corners[:, 0].max()), abs=1e-9)
+    assert z0 == pytest.approx(float(corners[:, 2].min()), abs=1e-9)
+    assert z1 == pytest.approx(float(corners[:, 2].max()), abs=1e-9)
+
+
+def test_the_audit_footprint_ignores_the_order_of_the_axes():
+    import math
+
+    audit = load_audit()
+    up = np.array([0.0, -1.0, 0.0])
+    angle = math.radians(37.0)
+    axes = [[math.cos(angle), 0.0, math.sin(angle)], [0.0, 1.0, 0.0], [-math.sin(angle), 0.0, math.cos(angle)]]
+    frame = {"id": "OBJ-001", "class": "machine", "centre": [0.0, 0.5, 0.0], "axes": axes, "extents": [1.6, 0.9, 0.4]}
+    plain = audit.box_footprint(frame, up)
+    for order in ([1, 2, 0], [2, 0, 1], [0, 2, 1]):
+        permuted = {**frame, "axes": [axes[i] for i in order], "extents": [frame["extents"][i] for i in order]}
+        moved = audit.box_footprint(permuted, up)
+        assert moved == pytest.approx(list(plain), abs=1e-9)
