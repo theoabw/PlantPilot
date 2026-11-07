@@ -15,3 +15,5 @@ proof/
 *.ply
 *.npz
 *.png
+# The served icons and link preview, the only PNGs the page needs.
+!app/web/public/brand/*.png

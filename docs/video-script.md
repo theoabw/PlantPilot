@@ -2,6 +2,10 @@
 
 Screen capture of the running app, plus one terminal cut: 2 minutes 44 seconds, six beats, English voiceover. The room is the complete supplied capture, Equipment Room; the target is P-005. The brief's named boiler room capture is damaged, and beat 1 says so. Every number comes from the app or a make target.
 
+## Brand in the edit
+
+Open on [`brand/title-1920x1080-dark.png`](brand/title-1920x1080-dark.png) and keep [`brand/logo-bug-600x192-dark.png`](brand/logo-bug-600x192-dark.png) in a corner the header and panels do not use. Count the title card in the two-minute limit.
+
 ## Read this before the first take
 
 The app moved on after this script was written, so these do not match it. Fix them in the edit, not at the shoot:

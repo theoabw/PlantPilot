@@ -1,4 +1,11 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/plantpilot-horizontal-on-dark.svg">
+  <img src="docs/brand/plantpilot-horizontal-on-light.svg" alt="PlantPilot" width="320">
+</picture>
+
 # PlantPilot
+
+**From scan to service.**
 
 PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival. The demo runs on the complete capture the organisers re-uploaded after the first delivery was found truncated; the capture the brief names is also processed, with its numbers reported. There is no network at demo time.
 
@@ -145,5 +152,6 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 - `docs/slides.md`: the six-slide deck content and speaker notes.
 - `docs/video-script.md`: the shooting script for the demo video.
 - `docs/acceptance.md`: the checks the pipeline is held to.
+- `docs/brand/README.md`: the logo, colours and the assets for the deck and video.
 
 The code is MIT, see `LICENCE`.
