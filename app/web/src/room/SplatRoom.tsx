@@ -288,6 +288,17 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       fromTarget: THREE.Vector3
       toTarget: THREE.Vector3
     } | null
+    cameraMask: {
+      x0: number
+      z0: number
+      cell_m: number
+      rows: number
+      cols: number
+      axes: [number, number]
+      bits: Uint8Array
+    } | null
+    safeCameraPosition: ((desired: THREE.Vector3, focus: THREE.Vector3) => THREE.Vector3) | null
+    cameraFree: ((world: THREE.Vector3, marginM?: number) => boolean) | null
     boxGroup: THREE.Group
     pickGroup: THREE.Group
     boxes: BoxView[]
@@ -588,6 +599,136 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       motion.robot.rotation.y = motion.heading
     }
+    // Camera avoidance works from the route's eye-level occupancy band, so it
+    // is scene agnostic: walls, machine bodies and pipework at camera height
+    // are avoided, and an escape above the robot guarantees the camera can
+    // always re-enter the scene instead of being trapped outside it.
+    const sceneXZOf = (world: THREE.Vector3): [number, number] | null => {
+      const mask = stateRef.current?.cameraMask
+      if (!mask) {
+        return null
+      }
+      const live = stateRef.current
+      if (!live) {
+        return null
+      }
+      const scene = world.clone().applyQuaternion(live.world.quaternion.clone().invert())
+      return [scene.getComponent(mask.axes[0]), scene.getComponent(mask.axes[1])]
+    }
+    const cellBlocked = (col: number, row: number): boolean => {
+      const mask = stateRef.current?.cameraMask
+      if (!mask) {
+        return false
+      }
+      if (col < 0 || row < 0 || col >= mask.cols || row >= mask.rows) {
+        return true
+      }
+      const index = row * mask.cols + col
+      return (mask.bits[index >> 3] & (0x80 >> (index & 7))) !== 0
+    }
+    const cameraFree = (world: THREE.Vector3, marginM = 0.2): boolean => {
+      const mask = stateRef.current?.cameraMask
+      if (!mask) {
+        return true
+      }
+      const xz = sceneXZOf(world)
+      if (!xz) {
+        return true
+      }
+      const col = Math.floor((xz[0] - mask.x0) / mask.cell_m)
+      const row = Math.floor((xz[1] - mask.z0) / mask.cell_m)
+      const radius = Math.max(1, Math.ceil(marginM / mask.cell_m))
+      for (let dr = -radius; dr <= radius; dr += 1) {
+        for (let dc = -radius; dc <= radius; dc += 1) {
+          if (cellBlocked(col + dc, row + dr)) {
+            return false
+          }
+        }
+      }
+      return true
+    }
+    const nearestStructure = (world: THREE.Vector3): number => {
+      const mask = stateRef.current?.cameraMask
+      const xz = sceneXZOf(world)
+      if (!mask || !xz) {
+        return 1.5
+      }
+      for (let dist = 0.15; dist <= 1.5; dist += 0.15) {
+        for (let step = 0; step < 10; step += 1) {
+          const angle = (step / 10) * Math.PI * 2
+          const px = xz[0] + Math.cos(angle) * dist
+          const pz = xz[1] + Math.sin(angle) * dist
+          const col = Math.floor((px - mask.x0) / mask.cell_m)
+          const row = Math.floor((pz - mask.z0) / mask.cell_m)
+          if (cellBlocked(col, row)) {
+            return dist
+          }
+        }
+      }
+      return 1.5
+    }
+    const segmentFree = (from: THREE.Vector3, to: THREE.Vector3, marginM = 0.12): boolean => {
+      const steps = Math.max(3, Math.ceil(from.distanceTo(to) / 0.1))
+      for (let step = 1; step < steps; step += 1) {
+        const point = from.clone().lerp(to, step / steps)
+        if (!cameraFree(point, marginM)) {
+          return false
+        }
+      }
+      return true
+    }
+    const safeCameraPosition = (desired: THREE.Vector3, focus: THREE.Vector3): THREE.Vector3 => {
+      if (!stateRef.current?.cameraMask) {
+        return desired
+      }
+      if (cameraFree(desired, 0.12) && nearestStructure(desired) > 0.25) {
+        return desired
+      }
+      const baseDirection = desired.clone().sub(focus)
+      const length = Math.max(0.9, baseDirection.length())
+      baseDirection.y = 0
+      if (baseDirection.lengthSq() < 1e-5) {
+        baseDirection.set(0, 0, -1)
+      }
+      baseDirection.normalize()
+      const up = new THREE.Vector3(0, 1, 0)
+      const attempts: [number, number, number][] = [
+        [0.3, 1, 1.0], [-0.3, 1, 1.0], [0.6, 0.92, 1.15], [-0.6, 0.92, 1.15],
+        [0.9, 0.8, 0.85], [-0.9, 0.8, 0.85], [1.25, 0.75, 1.1], [-1.25, 0.75, 1.1],
+        [0, 0.8, 1.5], [0.45, 0.62, 0.7], [-0.45, 0.62, 0.7], [0, 0.6, 1.85],
+      ]
+      let best: THREE.Vector3 | null = null
+      let bestScore = -Infinity
+      for (const [angle, distanceScale, heightM] of attempts) {
+        const direction = baseDirection.clone().applyAxisAngle(up, angle)
+        const horizontal = Math.max(0.85, length * distanceScale)
+        const candidate = new THREE.Vector3(
+          focus.x + direction.x * horizontal,
+          Math.max(focus.y + heightM, desired.y - 0.4),
+          focus.z + direction.z * horizontal,
+        )
+        if (!cameraFree(candidate, 0.1)) {
+          continue
+        }
+        const clearance = nearestStructure(candidate)
+        const sightLine = segmentFree(focus, candidate, 0.05) ? 0.25 : 0
+        const score = clearance + sightLine - 0.14 * Math.abs(angle) - 0.18 * (1 - distanceScale)
+        if (score > bestScore) {
+          bestScore = score
+          best = candidate
+        }
+      }
+      if (best) {
+        return best
+      }
+      // Guaranteed escape: directly above the robot, above the avoidance band.
+      return new THREE.Vector3(focus.x + 0.18, focus.y + 2.35, focus.z + 0.18)
+    }
+    if (stateRef.current) {
+      stateRef.current.safeCameraPosition = safeCameraPosition
+      stateRef.current.cameraFree = cameraFree
+    }
+
     const updateFollow = (dt: number) => {
       const robot = stateRef.current?.motion.robot
       if (!robot) {
@@ -595,10 +736,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       const heading = stateRef.current?.motion.heading ?? robot.rotation.y
       robotForward.set(0, 0, 1).applyAxisAngle(up, heading)
-      const desiredPosition = robot.position.clone().addScaledVector(robotForward, -2.8).add(new THREE.Vector3(0, 1.5, 0))
+      const rawDesired = robot.position.clone().addScaledVector(robotForward, -2.8).add(new THREE.Vector3(0, 1.5, 0))
       const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, 0.5, 0))
+      const safeDesired = safeCameraPosition(rawDesired, desiredTarget)
       const factor = smoothFactor(6, Math.max(dt, 0.001))
-      camera.position.lerp(desiredPosition, factor)
+      if (!cameraFree(camera.position, 0.12)) {
+        camera.position.copy(safeDesired)
+      } else {
+        camera.position.lerp(safeDesired, factor)
+      }
       controls.target.lerp(desiredTarget, factor)
     }
     const advanceMotion = (dt: number) => {
@@ -845,6 +991,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       placeRobotAt: null,
       updateArrows: null,
       focusTween: null,
+      cameraMask: null,
+      safeCameraPosition: null,
+      cameraFree: null,
       boxGroup,
       pickGroup,
       boxes: [],
@@ -1306,8 +1455,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const radius = Math.max(1.0, focusTarget.radius)
     // Move a short way toward the object and aim at it. A full reposition
     // invented a new viewpoint that could end up inside plant geometry.
-    const toPosition = state.camera.position.clone().lerp(centre, 0.4)
-    toPosition.y = Math.max(centre.y + Math.max(0.9, radius * 1.1), toPosition.y)
+    const rawPosition = state.camera.position.clone().lerp(centre, 0.4)
+    rawPosition.y = Math.max(centre.y + Math.max(0.9, radius * 1.1), rawPosition.y)
+    const toPosition = state.safeCameraPosition
+      ? state.safeCameraPosition(rawPosition, centre)
+      : rawPosition
     state.focusTween = {
       start: performance.now(),
       duration: 700,
@@ -1655,7 +1807,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     if (!state || !frame || resetToken === 0) {
       return
     }
-    state.camera.position.copy(frame.eye)
+    const safeEye = state.safeCameraPosition
+      ? state.safeCameraPosition(frame.eye.clone(), frame.target.clone())
+      : frame.eye
+    state.camera.position.copy(safeEye)
     state.controls.target.copy(frame.target)
     state.controls.update()
     renderRef.current()
@@ -1788,6 +1943,29 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.cumulative = []
     motion.robot = null
     motion.reached = false
+
+    const cameraGrid = route?.camera_grid ?? null
+    if (cameraGrid) {
+      const binary = atob(cameraGrid.blocked_packed)
+      const bits = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) {
+        bits[index] = binary.charCodeAt(index)
+      }
+      state.cameraMask = {
+        x0: cameraGrid.x0,
+        z0: cameraGrid.z0,
+        cell_m: cameraGrid.cell_m,
+        rows: cameraGrid.rows,
+        cols: cameraGrid.cols,
+        axes: [
+          cameraGrid.horizontal_axes[0] ?? 0,
+          cameraGrid.horizontal_axes[1] ?? 2,
+        ],
+        bits,
+      }
+    } else {
+      state.cameraMask = null
+    }
 
     if (!route || !route.reachable || route.path.length < 2) {
       tripRef.current({ mode: 'idle', travelled: 0, total: 0 })

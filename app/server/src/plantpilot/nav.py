@@ -49,6 +49,11 @@ WALKABLE_HEIGHT_MAX_M = 2.00
 # exist, and an object only blocks when it reaches into the robot's body height.
 ROBOT_HEIGHT_M = 0.55
 OBSTACLE_MIN_HEIGHT_M = 0.08
+# The follow camera sits around 1.5 m above the floor, so it needs its own
+# obstacle band: robot leg height says nothing about the pipework at eye level.
+CAMERA_BAND_MIN_M = 1.15
+CAMERA_BAND_MAX_M = 1.85
+CAMERA_STRUCTURE_MIN_POINTS = 50
 LARGE_FOOTPRINT_SHARE = 0.5
 # The structural layer counts gaussians per CELL_M cell inside the robot band.
 # Measured on the two supplied captures, starting at the requested 3 to 5:
@@ -112,6 +117,17 @@ def _blocks_the_robot(obj: dict, floor_y: float, up_axis: int, up_axis_sign: int
     height = float(centre[up_axis]) * float(up_axis_sign)
     low, high = height - half, height + half
     return not (high < floor_y + OBSTACLE_MIN_HEIGHT_M or low > floor_y + ROBOT_HEIGHT_M)
+
+
+def _blocks_the_camera(obj: dict, floor_y: float, up_axis: int, up_axis_sign: int) -> bool:
+    """True when the object reaches into the camera's eye-level band."""
+    centre = np.asarray(obj.get("centre", [0.0, 0.0, 0.0]), dtype=float)
+    axes = np.asarray(obj.get("axes", np.eye(3)), dtype=float)
+    extents = np.asarray(obj.get("extents", [0.0, 0.0, 0.0]), dtype=float)
+    half = float(np.abs(axes[up_axis, :]) @ (extents / 2.0))
+    height = float(centre[up_axis]) * float(up_axis_sign)
+    low, high = height - half, height + half
+    return not (high < floor_y + CAMERA_BAND_MIN_M or low > floor_y + CAMERA_BAND_MAX_M)
 
 
 def object_footprint(obj: dict, up_axis: int = 1) -> Rect:
@@ -305,6 +321,20 @@ class Grid:
         ).reshape(rows, cols)
         structural_cells = (per_cell >= structure_min_points).astype(np.uint8)
 
+        # Independent camera layer, at eye level and without robot inflation.
+        camera_band = (heights >= floor_y + CAMERA_BAND_MIN_M) & (
+            heights <= floor_y + CAMERA_BAND_MAX_M
+        )
+        camera_cols = np.floor((h_x[camera_band] - x0) / CELL_M).astype(np.int64)
+        camera_rows = np.floor((h_z[camera_band] - z0) / CELL_M).astype(np.int64)
+        camera_inside = (
+            (camera_cols >= 0) & (camera_cols < cols) & (camera_rows >= 0) & (camera_rows < rows)
+        )
+        camera_per_cell = np.bincount(
+            camera_rows[camera_inside] * cols + camera_cols[camera_inside], minlength=rows * cols
+        ).reshape(rows, cols)
+        camera_cells = (camera_per_cell >= CAMERA_STRUCTURE_MIN_POINTS).astype(np.uint8)
+
         blocked |= object_cells
         blocked |= structural_cells
 
@@ -321,6 +351,8 @@ class Grid:
         grid_instance.object_cells = int(np.sum(object_cells == 1))
         grid_instance.structural_cells = int(np.sum(structural_cells == 1))
         grid_instance.structure_min_points = int(structure_min_points)
+        grid_instance.camera_mask = camera_cells
+        grid_instance.camera_cells = int(np.sum(camera_cells == 1))
         grid_instance.blocked_fraction = round(blocked_cells / max(1, total_cells), 4)
         grid_instance.saturated = bool(grid_instance.blocked_fraction > MAX_BLOCKED_FRACTION)
         return grid_instance
@@ -1024,6 +1056,19 @@ def build_route(
             "blocked_packed": __import__("base64").b64encode(
                 np.packbits(grid.blocked.astype(np.uint8).ravel())
             ).decode("ascii"),
+        },
+        "camera_grid": {
+            "x0": round(grid.x0, 3),
+            "z0": round(grid.z0, 3),
+            "cell_m": CELL_M,
+            "rows": grid.rows,
+            "cols": grid.cols,
+            "horizontal_axes": [horizontal[0], horizontal[1]],
+            "blocked_packed": __import__("base64").b64encode(
+                np.packbits(np.asarray(getattr(grid, "camera_mask", np.zeros_like(grid.blocked))).astype(np.uint8).ravel())
+            ).decode("ascii"),
+            "camera_band_m": [CAMERA_BAND_MIN_M, CAMERA_BAND_MAX_M],
+            "camera_blocked_cells": int(getattr(grid, "camera_cells", 0)),
         },
         "grid_stats": {
             "cols": grid.cols,
