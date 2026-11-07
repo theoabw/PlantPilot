@@ -162,8 +162,8 @@ card; an arbitrary visit gets a plain arrival card and an invitation to choose
 the next machine. The follow camera keeps its framing at arrival instead of
 cutting to a new view.
 
-The room view is a contextual product shell: a minimal header, a mission card
-  with one primary action, an equipment browser on demand, an object card on
+The room view is a contextual product shell: a minimal header, an on-demand
+  mission card and equipment browser, an object card on
   selection, a layers menu for the derived channels, and a developer drawer for
   raw detections, confidence, occupancy and builder diagnostics. Only the
   reviewed anchors are outlined, labels appear on selection or in developer

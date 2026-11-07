@@ -17,7 +17,7 @@ Industrial field-service teams and inspection robots work in plants where the ph
 
 1. The room view opens on the capture, with the extracted 3D frames.
 2. The builder panel lists the supplied pack's assets, with the faulty target P-005 marked.
-3. Press Send robot and the robot follows the planned route; assets within 2.5 m brighten and their tags and states are listed.
+3. Open Mission and press Send robot. The robot follows the planned route; assets within 2.5 m brighten and their tags and states are listed.
 4. On arrival the diagnosis card opens with the finding, its evidence counts, the next safe check and the document it is grounded in.
 5. `?perf=1` on the URL adds a draw and render-time overlay for performance checks.
 
@@ -136,7 +136,7 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 - The capture is a real supplied scan. Both PLY files are supplied captures; the boiler file's readable prefix is 502,483 rows.
 - The builder pack is supplied synthetic data: its assets, telemetry, alarms, data-quality cases and documents are synthetic Valmet data, not measured plant data.
 - The mapping is proposed, not confirmed, and it has no physical coordinates from the pack: the workbook ships synthetic records, not measured positions. Every record has `status: proposed` or `status: unresolved`; the score is a match score, not a calibrated probability.
-- The viewer keeps that distinction visible. Pack frames are off by default and labelled synthetic; the equipment card calls out a procedural pack record separately from the observed object; the mission card and arrival diagnosis are marked as a synthetic scenario. A pack condition is never presented as a measurement of the physical machine it was assigned to.
+- The viewer keeps that distinction visible. Pack frames are off by default and labelled synthetic; the equipment card calls out a procedural pack record separately from the observed object; the arrival diagnosis is marked as a synthetic scenario. A pack condition is never presented as a measurement of the physical machine it was assigned to.
 - Class labels are geometric proposals, not identifications. The brief allows geometric heuristics, and no open-vocabulary model is in the demo path.
 - Units are scene units treated as metres. No door-height scale check has been performed, and the 1.92 m clear height between the boiler room's floor and its ceiling plane means the units are not exact metres.
 - The robot is a viewer marker, not a physical simulation: it follows the planned segments at 0.5 m/s.
