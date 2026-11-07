@@ -127,6 +127,7 @@ const NEARBY_RADIUS_M = 2.5
 const SELECTED_COLOUR = 0xffffff
 const TARGET_COLOUR = 0xff3030
 const MAPPED_COLOUR = 0x22d3ee
+const ROBOT_TRIM_COLOUR = 0x26d6bc
 const ROUTE_COLOUR = 0xfbbf24
 
 // The procedural humanoid reads this while animating; a single viewer instance
@@ -236,7 +237,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
     const frontPack = mesh(new THREE.BoxGeometry(0.16, 0.1, 0.05), 0x1f2937)
     frontPack.position.set(0, 1.16, 0.145)
     bob.add(frontPack)
-    const frontLight = mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), 0x22d3ee, 0.9)
+    const frontLight = mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), ROBOT_TRIM_COLOUR, 0.9)
     frontLight.position.set(0, 1.18, 0.175)
     bob.add(frontLight)
     const shoulders = mesh(new THREE.BoxGeometry(0.42, 0.1, 0.21), 0x475569)
@@ -245,7 +246,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
     const backpack = mesh(new THREE.BoxGeometry(0.26, 0.3, 0.12), 0x1e293b)
     backpack.position.set(0, 1.22, -0.17)
     bob.add(backpack)
-    const packLight = mesh(new THREE.BoxGeometry(0.18, 0.035, 0.02), 0x22d3ee, 0.8)
+    const packLight = mesh(new THREE.BoxGeometry(0.18, 0.035, 0.02), ROBOT_TRIM_COLOUR, 0.8)
     packLight.position.set(0, 1.24, -0.235)
     bob.add(packLight)
     const neck = mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.08, 10), 0x1f2937)
@@ -258,7 +259,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
     const visor = mesh(new THREE.BoxGeometry(0.15, 0.045, 0.03), 0x0f172a, 0.95)
     visor.position.set(0, 1.59, 0.1)
     bob.add(visor)
-    const visorStripe = mesh(new THREE.BoxGeometry(0.12, 0.012, 0.012), 0x22d3ee, 0.9)
+    const visorStripe = mesh(new THREE.BoxGeometry(0.12, 0.012, 0.012), ROBOT_TRIM_COLOUR, 0.9)
     visorStripe.position.set(0, 1.6, 0.112)
     bob.add(visorStripe)
     const helmet = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 20), 0xf8fafc)
@@ -407,7 +408,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
     const bumperBack = mesh(new THREE.BoxGeometry(0.1, 0.12, 0.07), 0x0b1220)
     bumperBack.position.set(side * (chassisWidth / 2 - 0.03), 0.17, -chassisLength / 2 - 0.02)
     body.add(bumperBack)
-    const sideStrip = mesh(new THREE.BoxGeometry(0.015, 0.04, chassisLength * 0.55), 0x22d3ee, 0.7)
+    const sideStrip = mesh(new THREE.BoxGeometry(0.015, 0.04, chassisLength * 0.55), ROBOT_TRIM_COLOUR, 0.7)
     sideStrip.position.set(side * (chassisWidth / 2 + 0.005), 0.26, 0)
     body.add(sideStrip)
     const rail = mesh(new THREE.BoxGeometry(0.04, 0.03, chassisLength - 0.12), 0x64748b)
@@ -424,7 +425,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   frontBar.position.set(0, 0.3, chassisLength / 2 + 0.01)
   body.add(frontBar)
   for (const side of [-1, 1]) {
-    const lamp = mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 12), 0x22d3ee, 0.95)
+    const lamp = mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 12), ROBOT_TRIM_COLOUR, 0.95)
     lamp.rotation.x = Math.PI / 2
     lamp.position.set(side * 0.16, 0.3, chassisLength / 2 + 0.02)
     body.add(lamp)
@@ -445,7 +446,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   lidar.position.y = 0.38
   const lidarBand = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.05, 18), 0x0b1220)
   lidar.add(lidarBand)
-  const lidarGlass = mesh(new THREE.CylinderGeometry(0.077, 0.077, 0.022, 18), 0x22d3ee, 0.8)
+  const lidarGlass = mesh(new THREE.CylinderGeometry(0.077, 0.077, 0.022, 18), ROBOT_TRIM_COLOUR, 0.8)
   lidarGlass.position.y = 0.01
   lidar.add(lidarGlass)
   const lidarCap = mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.03, 18), 0x475569)
@@ -458,7 +459,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   cameraBar.position.set(0.12, 0.55, -0.18)
   body.add(cameraBar)
   for (const side of [-1, 1]) {
-    const lens = mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.03, 10), 0x22d3ee, 0.9)
+    const lens = mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.03, 10), ROBOT_TRIM_COLOUR, 0.9)
     lens.rotation.x = Math.PI / 2
     lens.position.set(0.12 + side * 0.06, 0.55, -0.15)
     body.add(lens)
@@ -3006,10 +3007,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         </div>
       ) : null}
       {!loaded ? (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80">
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-brand-navy/90">
+          <img src="/brand/plantpilot-stacked-on-dark.svg" alt="PlantPilot" className="h-40 w-auto" />
+          <p className="text-sm font-semibold text-slate-300">From scan to service.</p>
           <span className="text-lg font-bold text-white">loading the capture</span>
           <div className="h-2 w-64 overflow-hidden rounded-full bg-slate-800">
-            <div className="h-full bg-cyan-400 transition-all" style={{ width: `${Math.max(3, progress)}%` }} />
+            <div className="h-full bg-brand-mint transition-all" style={{ width: `${Math.max(3, progress)}%` }} />
           </div>
           <p className="text-sm font-semibold text-slate-300">{progress}% of the gaussian splats</p>
         </div>

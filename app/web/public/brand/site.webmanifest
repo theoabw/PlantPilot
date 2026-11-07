@@ -1,0 +1,26 @@
+{
+  "name": "PlantPilot",
+  "short_name": "PlantPilot",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#182C3A",
+  "theme_color": "#182C3A",
+  "icons": [
+    {
+      "src": "app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "maskable-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
