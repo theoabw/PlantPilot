@@ -129,6 +129,34 @@ const SELECTED_COLOUR = 0xffffff
 const TARGET_COLOUR = 0xff3030
 const MAPPED_COLOUR = 0x22d3ee
 const ROUTE_COLOUR = 0xfbbf24
+// What an overlay looks like where structure hides it: faint, so the robot and
+// the route stay findable behind a machine and a false occlusion from the coarse
+// splat depth reads as a dim patch instead of a hole.
+const GHOST_OPACITY = 0.2
+const ROBOT_GHOST_COLOUR = 0x7dd3fc
+
+function ghostMaterial(color: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: GHOST_OPACITY,
+    depthFunc: THREE.GreaterDepth,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+}
+
+/**
+ * Draw `mesh` faintly wherever it is behind something. The ghost is a child of
+ * the mesh so it follows every animation, and it sorts just before the mesh:
+ * the solid draw writes depth, so a ghost drawn after it would show through the
+ * object's own body.
+ */
+function addGhost(mesh: THREE.Mesh, color: number): void {
+  const ghost = new THREE.Mesh(mesh.geometry, ghostMaterial(color))
+  ghost.renderOrder = mesh.renderOrder - 0.5
+  mesh.add(ghost)
+}
 
 // The procedural humanoid reads this while animating; a single viewer instance
 // owns it, so a module-level value avoids rebuilding the model on crouch changes.
@@ -193,8 +221,24 @@ const followDistances: Record<RobotProfile, number> = {
  * feet and wheels match the route speed.
  */
 function buildRobot(profile: RobotProfile): THREE.Group {
+  const group = buildRobotBody(profile)
+  const parts: THREE.Mesh[] = []
+  group.traverse((child) => {
+    if (child instanceof THREE.Mesh && !child.userData.noGhost) {
+      parts.push(child)
+    }
+  })
+  for (const part of parts) {
+    addGhost(part, ROBOT_GHOST_COLOUR)
+  }
+  return group
+}
+
+function buildRobotBody(profile: RobotProfile): THREE.Group {
+  // No renderOrder on this group or on the pivots under it. three.js takes a
+  // group's renderOrder as the sort key of everything below it, and the ghosts
+  // only sort before the solid parts when all of them share one key.
   const group = new THREE.Group()
-  group.renderOrder = 3
   group.userData.profile = profile
   const material = (color: number, opacity = 1) =>
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity })
@@ -206,6 +250,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   const shadow = mesh(new THREE.RingGeometry(0.2, 0.32, 36), 0x0b1220, 0.38)
   shadow.rotation.x = -Math.PI / 2
   shadow.position.y = 0.005
+  shadow.userData.noGhost = true
   group.add(shadow)
 
   if (profile === 'humanoid') {
@@ -2628,6 +2673,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     )
     ring.rotation.x = -Math.PI / 2
     ring.renderOrder = 4
+    addGhost(ring, TARGET_COLOUR)
     group.add(ring)
     const pole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.012, 0.012, 1.0, 8),
@@ -2635,6 +2681,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     )
     pole.position.y = 0.5
     pole.renderOrder = 4
+    addGhost(pole, TARGET_COLOUR)
     group.add(pole)
     const cap = new THREE.Mesh(
       new THREE.SphereGeometry(0.045, 12, 10),
@@ -2642,6 +2689,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     )
     cap.position.y = 1.0
     cap.renderOrder = 4
+    addGhost(cap, TARGET_COLOUR)
     group.add(cap)
     state.beaconGroup.add(group)
     renderRef.current()
@@ -2801,6 +2849,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     arrows.renderOrder = 3
     const decor = new THREE.Group()
     decor.add(arrows)
+    // The trail stays readable behind a machine. Sharing the instance matrices
+    // means the ghost chevrons scroll with the solid ones at no extra upload.
+    const arrowGhosts = new THREE.InstancedMesh(arrowGeometry, ghostMaterial(ROUTE_COLOUR), arrowCount)
+    arrowGhosts.instanceMatrix = arrows.instanceMatrix
+    arrowGhosts.frustumCulled = false
+    arrowGhosts.renderOrder = 2.5
+    decor.add(arrowGhosts)
     state.routeGroup.add(decor)
     if (stateRef.current) {
       stateRef.current.decorGroup = decor
@@ -2814,6 +2869,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       ring.rotation.x = -Math.PI / 2
       ring.position.copy(point)
       ring.position.y += 0.01
+      addGhost(ring, ROUTE_COLOUR)
       decor.add(ring)
     }
 
