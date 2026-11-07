@@ -142,6 +142,12 @@ the `scene lab` button.
   layer, `GET /api/scene/objects` serves the raw extraction and
   `GET /api/scene/mapped` serves the mapping when `make map` has run. Everything
   is local, so the demo makes no network calls.
+- The room view is a contextual product shell: a minimal header, a mission card
+  with one primary action, an equipment browser on demand, an object card on
+  selection, a layers menu for the derived channels, and a developer drawer for
+  raw detections, confidence, occupancy and builder diagnostics. Only the
+  reviewed anchors are outlined, labels appear on selection or in developer
+  mode, and navigation markers exist only while a mission is running.
 - The room view draws the reviewed anchors by default, as thin outlines, and
   shows labels and provenance only on selection. If a capture has no reviewed
   fixture it falls back to the automatic proposal layer, and the raw extraction
