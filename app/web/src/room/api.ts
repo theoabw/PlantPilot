@@ -137,6 +137,8 @@ export type RoomRoute = {
   reason?: string
   target_asset_id: string
   target_waypoint: number[]
+  target_waypoint_from?: string
+  goal_snap_m?: number | null
   start: number[]
   path: number[][]
   path_samples?: { position: number[]; distance_along_path_m: number }[]

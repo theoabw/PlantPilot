@@ -248,3 +248,41 @@ export function boundedStep(at: Point2, step: Point2, bounds: Bounds2): Point2 {
     z: axis(at.z, step.z, bounds.minZ, bounds.maxZ),
   }
 }
+
+/** A crouched stop has to be this much closer to be worth walking folded. */
+export const CROUCH_STOP_GAIN_M = 0.3
+
+type PlannedStop = {
+  reachable: boolean
+  target_waypoint_from?: string
+  goal_snap_m?: number | null
+}
+
+/**
+ * Whether a standing plan leaves a crouched one worth asking for: it was refused,
+ * or it only reached ground short of the destination, which a lower body may
+ * get closer to.
+ */
+export function shouldTryCrouched(standing: PlannedStop): boolean {
+  return !standing.reachable || standing.target_waypoint_from === 'goal_override_reachable'
+}
+
+/**
+ * Whether the crouched plan replaces the standing one. A refusal loses to
+ * anything reachable; between two stops, crouching has to bring the robot
+ * meaningfully closer, because it means walking folded for part of the route.
+ */
+export function prefersCrouched(standing: PlannedStop, crouched: PlannedStop): boolean {
+  if (!crouched.reachable) {
+    return false
+  }
+  if (!standing.reachable) {
+    return true
+  }
+  const standingSnap = standing.goal_snap_m
+  const crouchedSnap = crouched.goal_snap_m
+  if (standingSnap === null || standingSnap === undefined || crouchedSnap === null || crouchedSnap === undefined) {
+    return false
+  }
+  return standingSnap - crouchedSnap > CROUCH_STOP_GAIN_M
+}

@@ -126,3 +126,20 @@ test('the free camera slides along the bounds and can come back in', () => {
   assert.deepEqual(motion.boundedStep({ x: 12, z: 5 }, { x: -0.1, z: 0 }, bounds), { x: -0.1, z: 0 })
   assert.deepEqual(motion.boundedStep({ x: 12, z: 5 }, { x: 0.1, z: 0 }, bounds), { x: 0, z: 0 })
 })
+
+test('a crouched plan is tried when standing was refused or stopped short', () => {
+  assert.equal(motion.shouldTryCrouched({ reachable: false }), true)
+  assert.equal(motion.shouldTryCrouched({ reachable: true, target_waypoint_from: 'goal_override_reachable' }), true)
+  assert.equal(motion.shouldTryCrouched({ reachable: true, target_waypoint_from: 'goal_override' }), false)
+  assert.equal(motion.shouldTryCrouched({ reachable: true }), false)
+})
+
+test('crouching wins only for a refusal or a meaningfully closer stop', () => {
+  const standing = { reachable: true, goal_snap_m: 2.71 }
+  assert.equal(motion.prefersCrouched(standing, { reachable: true, goal_snap_m: 1.22 }), true)
+  assert.equal(motion.prefersCrouched(standing, { reachable: true, goal_snap_m: 2.5 }), false)
+  assert.equal(motion.prefersCrouched(standing, { reachable: false, goal_snap_m: 0 }), false)
+  assert.equal(motion.prefersCrouched({ reachable: false }, { reachable: true }), true)
+  assert.equal(motion.prefersCrouched({ reachable: false }, { reachable: false }), false)
+  assert.equal(motion.prefersCrouched({ reachable: true }, { reachable: true, goal_snap_m: 0 }), false)
+})

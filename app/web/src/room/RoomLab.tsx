@@ -35,7 +35,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
-import { nextDestination } from './routeMotion'
+import { nextDestination, prefersCrouched, shouldTryCrouched } from './routeMotion'
 
 type MissionTarget = {
   tag: string
@@ -646,20 +646,21 @@ export default function RoomLab() {
     }
     planWithHeight(profile.height)
       .then((result) => {
-        if (result.reachable || !profile.crouchHeight) {
+        if (request !== planRequestRef.current) {
+          return
+        }
+        if (!profile.crouchHeight || !shouldTryCrouched(result)) {
           finish(result, false)
           return
         }
-        // A humanoid can duck. Plan the crouched route and let the planner tell
-        // us which stretches actually need it, so the model walks upright
-        // everywhere else.
+        // A humanoid can duck, so a refused route or a stop short of the machine
+        // gets a crouched plan too. The planner says which stretches actually
+        // need crouching, so the model walks upright everywhere else.
         planWithHeight(profile.crouchHeight, profile.height)
-          .then((crouched) =>
-            finish(
-              crouched.reachable ? crouched : result,
-              crouched.reachable && (crouched.crouch_spans_m?.length ?? 0) > 0,
-            ),
-          )
+          .then((crouched) => {
+            const useCrouched = prefersCrouched(result, crouched)
+            finish(useCrouched ? crouched : result, useCrouched && (crouched.crouch_spans_m?.length ?? 0) > 0)
+          })
           .catch(() => finish(result, false))
       })
       .catch(() => {
