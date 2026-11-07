@@ -1,3 +1,6 @@
+import json
+import math
+from pathlib import Path
 import numpy as np
 import pytest
 
@@ -93,6 +96,35 @@ def test_build_route_contract(tmp_path):
     assert "path" in route
     assert "path_samples" in route
     assert "grid_stats" in route
+
+
+def test_equipment_capture_uses_reviewed_door_start(tmp_path):
+    rng = np.random.default_rng(42)
+    points = rng.uniform(low=[-6.0, 0.0, -6.0], high=[6.0, 0.0, 6.0], size=(5000, 3))
+    scene_path = tmp_path / "scene.npz"
+    np.savez(
+        scene_path,
+        xyz=points,
+        meta=np.array(json.dumps({
+            "frame": {"up_axis_index": 1, "up_axis_sign": 1},
+            "source": {"file": "Equipment Room.ply"},
+        })),
+    )
+
+    route = nav.build_route(scene_path=scene_path, output_path=None, agent_radius_m=0.20)
+
+    assert route["start"][0] == pytest.approx(-0.585, abs=0.1)
+    assert route["start"][2] == pytest.approx(-4.144, abs=0.1)
+    assert nav._configured_start_position("another-capture.ply") is None
+
+    reroute = nav.build_route(
+        scene_path=scene_path,
+        output_path=None,
+        agent_radius_m=0.20,
+        start_override=(1.0, 1.0),
+    )
+    assert reroute["start"][0] == pytest.approx(1.0, abs=0.1)
+    assert reroute["start"][2] == pytest.approx(1.0, abs=0.1)
 
 
 # ---------------------------------------------------------------------------
