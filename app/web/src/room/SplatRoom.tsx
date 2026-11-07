@@ -6,7 +6,7 @@ import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { stableHalfDepthShader } from './depthSplatShader'
-import { CLICK_MAX_DRAG_PX, isPickable, nestedPick, visiblePick } from './pickObject'
+import { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, visiblePick } from './pickObject'
 import { heightSplatFilter } from './heightSplatFilter'
 import { topDownPose } from './topDownPose'
 import { selectionSplatEdit } from './selectionSplatEdit'
@@ -934,6 +934,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
     }
     const onPointerMove = (event: PointerEvent) => {
+      if (pressed?.pointerId === event.pointerId) {
+        pressed.dragged = draggedSincePress(pressed, { x: event.clientX, y: event.clientY })
+      }
       const liveState = stateRef.current
       if (liveState?.pointerLookActive && liveState.firstPerson) {
         liveState.manualYaw -= (event.clientX - liveState.lastPointerX) * 0.004
@@ -978,13 +981,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     renderer.domElement.addEventListener('pointercancel', stopPointerLook)
     // Selection waits for the release: a press can start an orbit, and selecting
     // on it would rebuild the highlight for every drag that begins over an object.
-    let pressed: { x: number; y: number; pointerId: number } | null = null
+    let pressed: { x: number; y: number; pointerId: number; dragged: boolean } | null = null
     let splatPickAllowed = true
     // The source splats include what a filter hides on screen, so the test only
     // applies while the whole capture is drawn.
     const splatRayDistances = (): number[] => {
       const liveSplat = stateRef.current?.splat
-      if (!splatPickAllowed || !liveSplat?.visible || boxedSplatsOnlyRef.current) {
+      if (!splatPickAllowed || !liveSplat?.visible || !splatOcclusionEnabled(boxedSplatsOnlyRef.current, heightCutoffRef.current)) {
         return []
       }
       const started = performance.now()
@@ -1005,7 +1008,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         event.preventDefault()
         return
       }
-      pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }
+      pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, dragged: false }
     }
     const onPointerCancel = () => {
       pressed = null
@@ -1016,7 +1019,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       if (
         !press
         || press.pointerId !== event.pointerId
-        || Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_MAX_DRAG_PX
+        || draggedSincePress(press, { x: event.clientX, y: event.clientY })
       ) {
         return
       }

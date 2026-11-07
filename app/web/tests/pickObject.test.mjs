@@ -7,7 +7,24 @@ import * as THREE from 'three'
 const source = await readFile(new URL('../src/room/pickObject.ts', import.meta.url), 'utf8')
 const js = ts.transpile(source, { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 })
   .replace("'three'", JSON.stringify(import.meta.resolve('three')))
-const { isPickable, nestedPick, hiddenBySplats, visiblePick } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`)
+const { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, hiddenBySplats, visiblePick } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`)
+
+test('a drag that returns to the press point still cannot select', () => {
+  const press = { x: 20, y: 30, dragged: false }
+  press.dragged = draggedSincePress(press, { x: 100, y: 30 })
+  assert.equal(draggedSincePress(press, { x: 20, y: 30 }), true)
+  assert.equal(draggedSincePress({ x: 20, y: 30, dragged: false }, { x: 22, y: 31 }), false)
+})
+
+test('hidden source splats cannot reject clicks in a filtered view', () => {
+  assert.equal(splatOcclusionEnabled(false, null), true)
+  assert.equal(splatOcclusionEnabled(true, null), false)
+  assert.equal(splatOcclusionEnabled(false, 1.5), false)
+  assert.equal(splatOcclusionEnabled(false, 0), false)
+  const hit = { distance: 5, object: new THREE.Object3D() }
+  const query = () => splatOcclusionEnabled(false, 1.5) ? [1, 1.1] : []
+  assert.equal(visiblePick([hit], query), hit)
+})
 
 const box = (centre, size) => {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial())

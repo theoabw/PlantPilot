@@ -3,6 +3,19 @@ import * as THREE from 'three'
 /** A press that moved further than this was a camera drag, not a click. */
 export const CLICK_MAX_DRAG_PX = 6
 
+/** Once a press becomes a drag, returning to its origin does not make it a click. */
+export function draggedSincePress(
+  press: { x: number; y: number; dragged: boolean },
+  point: { x: number; y: number },
+): boolean {
+  return press.dragged || Math.hypot(point.x - press.x, point.y - press.y) > CLICK_MAX_DRAG_PX
+}
+
+/** Source-splat raycasts cannot see the edits that hide rendered splats. */
+export function splatOcclusionEnabled(boxedSplatsOnly: boolean, heightCutoff: number | null): boolean {
+  return !boxedSplatsOnly && heightCutoff === null
+}
+
 /** A longer side than this on a structural box means it wraps the room. */
 const ROOM_SIZED_SIDE_M = 2.2
 const ROOM_CLASSES = new Set(['surface', 'structure'])
