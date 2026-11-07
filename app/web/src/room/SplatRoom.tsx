@@ -6,7 +6,7 @@ import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { stableHalfDepthShader } from './depthSplatShader'
-import { CLICK_MAX_DRAG_PX, isPickable, nestedPick } from './pickObject'
+import { CLICK_MAX_DRAG_PX, hiddenBySplats, isPickable, nestedPick } from './pickObject'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 
@@ -134,6 +134,13 @@ const ROUTE_COLOUR = 0xfbbf24
 // the route stay findable behind a machine and a false occlusion from the coarse
 // splat depth reads as a dim patch instead of a hole.
 const GHOST_OPACITY = 0.2
+// Only fairly solid splats can hide a box from a click: the default cut of 0.2
+// also catches faint floaters hanging in open air between the camera and a box.
+const PICK_SURFACE_ALPHA = 0.4
+// One ray over the capture takes about 60 to 200 ms on a CPU core: fine once per
+// click, far too slow for hover or for labels. A machine slower than this keeps
+// the plain box pick rather than a click that visibly lags.
+const PICK_RAY_BUDGET_MS = 300
 const ROBOT_GHOST_COLOUR = 0x7dd3fc
 
 function ghostMaterial(color: number): THREE.MeshBasicMaterial {
@@ -678,6 +685,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   placeObstacleRef.current = onPlaceObstacle
   const explodeRef = useRef(explode)
   explodeRef.current = explode
+  const boxedSplatsOnlyRef = useRef(boxedSplatsOnly)
+  boxedSplatsOnlyRef.current = boxedSplatsOnly
 
   // One effect owns the canvas and the render loop; the others only add content.
   useEffect(() => {
@@ -820,6 +829,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         // rather than guessed from the URL.
         url: splatUrl,
         fileType: SplatFileType.PLY,
+        minRaycastOpacity: PICK_SURFACE_ALPHA,
         onProgress: (event: ProgressEvent) => {
           if (event.lengthComputable && event.total > 0) {
             setProgress(Math.round((event.loaded / event.total) * 100))
@@ -919,6 +929,22 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     // Selection waits for the release: a press can start an orbit, and selecting
     // on it would rebuild the highlight for every drag that begins over an object.
     let pressed: { x: number; y: number; pointerId: number } | null = null
+    let splatPickAllowed = true
+    // The source splats include what a filter hides on screen, so the test only
+    // applies while the whole capture is drawn.
+    const splatRayDistances = (): number[] => {
+      const liveSplat = stateRef.current?.splat
+      if (!splatPickAllowed || !liveSplat?.visible || boxedSplatsOnlyRef.current) {
+        return []
+      }
+      const started = performance.now()
+      const crossed: THREE.Intersection[] = []
+      liveSplat.raycast(raycaster, crossed)
+      if (performance.now() - started > PICK_RAY_BUDGET_MS) {
+        splatPickAllowed = false
+      }
+      return crossed.map((entry) => entry.distance)
+    }
     const onPointerDown = (event: PointerEvent) => {
       const current = stateRef.current
       if (current?.manualControl && current.firstPerson) {
@@ -975,7 +1001,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       const hit = nestedPick(raycaster.intersectObjects(pickGroup.children, false))
       const id = hit?.object.userData.objectId
-      if (typeof id === 'string') {
+      // A frame behind a wall is hidden by the depth test, so its click is too.
+      if (typeof id === 'string' && hit && !hiddenBySplats(hit.distance, splatRayDistances())) {
         selectRef.current(id)
       }
     }
