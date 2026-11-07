@@ -1555,6 +1555,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
         const liveState = stateRef.current
         const liveObjects = objectsRef.current
+        // With the frames off there is nothing to measure, and a list left as it
+        // was would keep naming what the robot passed before they went off.
+        if (liveObjects.length === 0 && lastNearbyKey !== '') {
+          lastNearbyKey = ''
+          nearbyRef.current([])
+        }
         if (liveState?.motion.robot && liveObjects.length > 0 && now - lastNearby > 500) {
           lastNearby = now
           const robot = liveState.motion.robot
