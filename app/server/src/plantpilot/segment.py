@@ -217,6 +217,25 @@ def gaussian_normals(scene: Scene) -> np.ndarray | None:
     return normals / np.maximum(length, 1e-12)
 
 
+def plane_fit_usable(points: np.ndarray, limit: int = 5_000) -> bool:
+    """True when a least squares plane is determined: three points, not collinear.
+
+    A plane removal can be left with an empty or one dimensional set: a wall
+    sampled coarser than the column cell passes the band support test with a gate
+    that claims nothing. Fitting that set is a crash, and fitting a collinear set
+    is a plane whose normal is arbitrary, so both are refused here. The check
+    runs on a decimated sample because rank is a property of the whole set.
+    """
+    if points.shape[0] < 3:
+        return False
+    if points.shape[0] > limit:
+        picks = np.linspace(0, points.shape[0] - 1, limit).astype(np.int64)
+        points = points[picks]
+    centred = points - points.mean(axis=0)
+    values = np.linalg.svd(centred, compute_uv=False, full_matrices=False)
+    return bool(values.size >= 2 and float(values[1]) > 1e-6)
+
+
 def pooled_normals(xyz: np.ndarray, normals: np.ndarray, voxel: float) -> np.ndarray:
     """The dominant normal direction of each gaussian's voxel.
 
@@ -254,15 +273,24 @@ def pooled_normals(xyz: np.ndarray, normals: np.ndarray, voxel: float) -> np.nda
     tensor[:, 0, 1] = tensor[:, 1, 0] = outward[:, 3]
     tensor[:, 0, 2] = tensor[:, 2, 0] = outward[:, 4]
     tensor[:, 1, 2] = tensor[:, 2, 1] = outward[:, 5]
-    # Power iteration on a symmetric 3x3: the dominant eigenvector of a mean of
-    # outer products converges in a handful of steps, and a batched LAPACK call
-    # over half a million tiny matrices costs more than the rest of the stage.
-    direction = np.full((count, 3), 1.0 / math.sqrt(3.0), dtype=np.float64)
+    # Power iteration on a symmetric 3x3, started from the tensor's own largest
+    # row rather than from a fixed direction. A voxel whose normals all share one
+    # direction has a tensor that is that direction's outer product, so every non
+    # zero row is parallel to it and the first step is already the answer. A
+    # fixed start can be exactly perpendicular to that direction, and iterating a
+    # nullspace vector returns the nullspace vector for ever: a gaussian normal
+    # of (0, 1, -1) used to pool to (1, 0, 0), with no agreement at all. The
+    # tensor's trace is one, so its largest row is never zero.
+    rows = np.linalg.norm(tensor, axis=2)
+    start = tensor[np.arange(count), np.argmax(rows, axis=1)]
+    length = np.linalg.norm(start, axis=1, keepdims=True)
+    fallback = np.zeros((count, 3), dtype=np.float64)
+    fallback[:, 0] = 1.0
+    direction = np.where(length > 1e-12, start / np.maximum(length, 1e-12), fallback)
     for _ in range(8):
         direction = np.einsum("ij,ijk->ik", direction, tensor)
         length = np.linalg.norm(direction, axis=1, keepdims=True)
-        flat = length[:, 0] < 1e-12
-        direction = np.where(flat[:, None], np.array([1.0, 0.0, 0.0]), direction / np.maximum(length, 1e-12))
+        direction = np.where(length > 1e-12, direction / np.maximum(length, 1e-12), fallback)
     return direction[inverse]
 
 
@@ -438,6 +466,116 @@ def score_plane_candidates(
     return scores
 
 
+def consider_plane(
+    xyz: np.ndarray,
+    normal: np.ndarray,
+    offset: float,
+    *,
+    up: np.ndarray,
+    threshold: float,
+    normals: np.ndarray | None,
+    agreement: float,
+    column_cell: float,
+    column_window: float,
+    column_share: float,
+    column_min_points: int,
+    removal: str,
+    vertical_removal: str,
+    minimum: int,
+) -> dict | None:
+    """Straighten, fit, gate and classify one plane proposal.
+
+    Returns the plane that would be removed, with its removal mask, its gate
+    counts, its family, its mode and its residual, or None when the proposal is
+    not a plane this stage can act on. Every fitting step is guarded: a sparse
+    capture can pass the band support test with a gate that claims nothing, and
+    a least squares fit needs at least three non-collinear points, so the set is
+    checked before it is fitted and the band is used when the gate is empty.
+
+    The family, the removal mode, the removal mask and the reported counts are
+    all read from the same fitted plane, after the refits that can move it: a
+    refit can turn a near horizontal candidate into a vertical one, and the
+    artifact must never report a plane in the wrong family.
+    """
+    for _ in range(2):
+        band = np.abs(xyz @ normal + offset) < threshold
+        if int(band.sum()) < 3:
+            break
+        normal, offset, _ = _fit_plane_lsq(xyz[band])
+    if not plane_fit_usable(xyz[np.abs(xyz @ normal + offset) < threshold]):
+        return None
+    gated, _ = plane_removal_mask(
+        xyz,
+        normal,
+        offset,
+        threshold=threshold,
+        normals=normals,
+        agreement=agreement,
+        cell=column_cell,
+        window=column_window,
+        share=column_share,
+        min_points=column_min_points,
+    )
+    band = np.abs(xyz @ normal + offset) < threshold
+    refit_points = xyz[gated] if plane_fit_usable(xyz[gated]) else xyz[band]
+    if not plane_fit_usable(refit_points):
+        return None
+    normal, offset, _ = _fit_plane_lsq(refit_points)
+    removed, stats = plane_removal_mask(
+        xyz,
+        normal,
+        offset,
+        threshold=threshold,
+        normals=normals,
+        agreement=agreement,
+        cell=column_cell,
+        window=column_window,
+        share=column_share,
+        min_points=column_min_points,
+    )
+    horizontal = abs(float(normal @ up)) > 0.85
+    mode = removal if horizontal else vertical_removal
+    if mode == "band":
+        removed = np.abs(xyz @ normal + offset) < threshold
+    if int(removed.sum()) < 3:
+        return None
+    # One more refit, on the removal set itself: this is the plane whose removal
+    # and whose residual are reported. The family and the mode are read again,
+    # because this fit can move the plane across the family boundary.
+    normal, offset, _ = _fit_plane_lsq(xyz[removed])
+    horizontal = abs(float(normal @ up)) > 0.85
+    mode = removal if horizontal else vertical_removal
+    removed, stats = plane_removal_mask(
+        xyz,
+        normal,
+        offset,
+        threshold=threshold,
+        normals=normals,
+        agreement=agreement,
+        cell=column_cell,
+        window=column_window,
+        share=column_share,
+        min_points=column_min_points,
+    )
+    if mode == "band":
+        removed = np.abs(xyz @ normal + offset) < threshold
+    inlier_count = int(removed.sum())
+    support = int(stats["band_inliers"]) if mode == "band" else inlier_count
+    if inlier_count < 3 or support < max(3, minimum):
+        return None
+    residual = xyz[removed] @ normal + offset
+    return {
+        "normal": normal,
+        "offset": offset,
+        "removed": removed,
+        "stats": stats,
+        "horizontal": bool(horizontal),
+        "mode": mode,
+        "inliers": inlier_count,
+        "rms": float(np.sqrt(np.mean(residual ** 2))),
+    }
+
+
 def find_planes(
     xyz: np.ndarray,
     *,
@@ -573,58 +711,46 @@ def find_planes(
             threshold=threshold,
             agreement=agreement,
         )
-        best = int(shortlisted[int(np.argmax(rescored))])
-        normal = candidates[best]
-        offset = float(offsets[best])
-        # Straighten the proposal on the full cloud before the gated count, so a
-        # candidate that came from one noisy normal still lands on the plane.
-        for _ in range(2):
-            band = np.abs(xyz @ normal + offset) < threshold
-            if int(band.sum()) < 3:
-                break
-            normal, offset, _ = _fit_plane_lsq(xyz[band])
-        removed, stats = plane_removal_mask(
-            xyz,
-            normal,
-            offset,
-            threshold=threshold,
-            normals=search_normals,
-            agreement=agreement,
-            cell=column_cell,
-            window=column_window,
-            share=column_share,
-            min_points=column_min_points,
-        )
-        horizontal = abs(float(normal @ up)) > 0.85
-        mode = removal if horizontal else vertical_removal
-        # The support that decides whether a plane is worth removing is the
-        # support its own family is removed on: a wall is justified by how much
-        # of it is there, a horizontal plane by how much of it is a surface.
-        support = stats["band_inliers"] if mode == "band" else stats["removed"]
-        if support < max(3, min_fraction * total):
+        # Try the best few proposals in order. A candidate can fail on its own
+        # evidence, and it can fail on its family budget after the refit flips
+        # it: either way the next proposal is tried rather than ending the whole
+        # search, which is what a single greedy candidate does.
+        accepted = None
+        for rank in np.argsort(rescored)[::-1][:4]:
+            chosen = int(shortlisted[int(rank)])
+            result = consider_plane(
+                xyz,
+                candidates[chosen],
+                float(offsets[chosen]),
+                up=up,
+                threshold=threshold,
+                normals=search_normals,
+                agreement=agreement,
+                column_cell=column_cell,
+                column_window=column_window,
+                column_share=column_share,
+                column_min_points=column_min_points,
+                removal=removal,
+                vertical_removal=vertical_removal,
+                minimum=min_fraction * total,
+            )
+            if result is None:
+                continue
+            if (result["horizontal"] and horizontal_count >= int(horizontal_max)) or (
+                not result["horizontal"] and vertical_count >= int(vertical_max)
+            ):
+                continue
+            accepted = result
             break
-        # One refit on the gated set, then count again: the reported plane is the
-        # plane whose removal is reported.
-        normal, offset, _ = _fit_plane_lsq(xyz[removed])
-        removed, stats = plane_removal_mask(
-            xyz,
-            normal,
-            offset,
-            threshold=threshold,
-            normals=search_normals,
-            agreement=agreement,
-            cell=column_cell,
-            window=column_window,
-            share=column_share,
-            min_points=column_min_points,
-        )
-        if mode == "band":
-            removed = np.abs(xyz @ normal + offset) < threshold
-        inlier_count = int(removed.sum())
-        if inlier_count < max(3, min_fraction * total):
+        if accepted is None:
             break
-        normal, offset, _ = _fit_plane_lsq(xyz[removed])
-        rms = float(np.sqrt(np.mean((xyz[removed] @ normal + offset) ** 2)))
+        normal = accepted["normal"]
+        offset = float(accepted["offset"])
+        removed = accepted["removed"]
+        stats = accepted["stats"]
+        horizontal = accepted["horizontal"]
+        inlier_count = int(accepted["inliers"])
+        rms = float(accepted["rms"])
         if horizontal:
             horizontal_count += 1
         else:
@@ -633,7 +759,7 @@ def find_planes(
             Plane(
                 normal=[round(float(v), 6) for v in normal],
                 offset=round(float(offset), 6),
-                inliers=int(inlier_count),
+                inliers=inlier_count,
                 rms_m=round(float(rms), 5),
                 horizontal=bool(horizontal),
                 kind="horizontal" if horizontal else "vertical",
@@ -642,7 +768,6 @@ def find_planes(
                 flat_inliers=int(stats["flat_inliers"]),
             )
         )
-        inlier_count = int(removed.sum())
         keep &= ~removed
         # Take the band out of the sample pool as well, so the same surface is
         # not proposed again a centimetre away from where it was just removed.

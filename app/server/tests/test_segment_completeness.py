@@ -343,3 +343,127 @@ def test_the_object_layer_reports_its_new_stages(tmp_path):
         assert key in counts
     for obj in payload["objects"]:
         assert "bottom_above_floor" in obj and "floor_snapped" in obj
+
+
+def test_a_sparse_rotation_free_wall_is_fitted_instead_of_dropped():
+    """A wall sampled coarser than a column passes the band test with no gate.
+
+    Each column of the flatness test holds fewer points than its minimum, so the
+    gate claims nothing at all. The plane is real, its band support is large, and
+    the refit used to run on the empty set: an IndexError in the least squares
+    fit. The refit now falls back to the band, and the wall is framed.
+    """
+    xs = np.arange(-1.0, 1.01, 0.2)
+    ys = np.arange(0.1, 2.11, 0.2)
+    gx, gy = np.meshgrid(xs, ys, indexing="ij")
+    wall = np.stack([gx.ravel(), gy.ravel(), np.full(gx.size, 1.0)], axis=1)
+    planes, keep = seg.find_planes(
+        wall,
+        up=UP,
+        threshold=0.03,
+        max_planes=3,
+        min_fraction=0.05,
+        sample_points=wall.shape[0],
+        iterations=300,
+        seed=0,
+        normals=None,
+        normal_draws=0,
+        agreement=0.8,
+        column_cell=0.05,
+        column_window=0.12,
+        column_share=0.7,
+        column_min_points=3,
+        horizontal_max=2,
+        vertical_max=2,
+    )
+    assert len(planes) == 1
+    plane = planes[0]
+    assert plane.kind == "vertical"
+    assert plane.inliers == wall.shape[0]
+    assert plane.band_inliers >= plane.inliers
+    assert int((~keep).sum()) == wall.shape[0]
+
+
+def test_a_pooled_normal_keeps_a_diagonal_direction():
+    """Pooling must not start from a vector that is perpendicular to the voxel.
+
+    The power iteration used to start from (1, 1, 1) and fall back to x, and a
+    voxel holding one diagonal normal can be perpendicular to both: the pooled
+    normal came back as x with no agreement, so the plane gate refused the whole
+    voxel.
+    """
+    points = np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0], [0.0, 0.01, 0.0], [0.01, 0.01, 0.0]])
+    for normal in (np.array([0.0, 1.0, -1.0]), np.array([1.0, 1.0, 1.0]), np.array([1.0, 0.0, 0.0])):
+        unit = normal / np.linalg.norm(normal)
+        pooled = seg.pooled_normals(points, np.tile(unit, (points.shape[0], 1)), 0.08)
+        assert abs(float(pooled[0] @ unit)) > 0.999
+        assert np.linalg.norm(pooled, axis=1) == pytest.approx(1.0, abs=1e-6)
+
+
+def _sheet_and_wall():
+    """A sheet at 33 degrees, whose fitted normal is vertical, and a wall.
+
+    The sheet's gaussians carry a normal 2 degrees flatter than the sheet itself,
+    so the proposal is in the horizontal family and the refit that straightens it
+    lands in the vertical one. That flip is what the budget has to survive.
+    """
+    fit_angle = np.arccos(0.84)
+    normal_angle = np.arccos(0.86)
+    tangent = np.array([np.cos(fit_angle), -np.sin(fit_angle), 0.0])
+    second = np.array([0.0, 0.0, 1.0])
+    u, v = np.meshgrid(np.arange(-0.6, 0.61, 0.02), np.arange(-0.6, 0.61, 0.02), indexing="ij")
+    sheet = u.ravel()[:, None] * tangent + v.ravel()[:, None] * second + np.array([0.0, 1.0, 0.0])
+    proposed = np.array([np.sin(normal_angle), np.cos(normal_angle), 0.0])
+    sheet_normals = np.tile(proposed, (sheet.shape[0], 1))
+    wall_y, wall_z = np.meshgrid(np.arange(0.1, 1.6, 0.05), np.arange(-0.6, 0.61, 0.05), indexing="ij")
+    wall = np.stack([np.full(wall_y.size, -1.2), wall_y.ravel(), wall_z.ravel()], axis=1)
+    wall_normals = np.tile(np.array([1.0, 0.0, 0.0]), (wall.shape[0], 1))
+    return np.concatenate([sheet, wall]), np.concatenate([sheet_normals, wall_normals])
+
+
+def _find(points, normals, *, horizontal_max, vertical_max):
+    return seg.find_planes(
+        points,
+        up=UP,
+        threshold=0.03,
+        max_planes=6,
+        min_fraction=0.02,
+        sample_points=min(6000, points.shape[0]),
+        iterations=300,
+        seed=0,
+        normals=normals,
+        normal_draws=400,
+        agreement=0.8,
+        normal_pool_m=0.08,
+        score_points=4000,
+        column_cell=0.05,
+        column_window=0.12,
+        column_share=0.7,
+        column_min_points=3,
+        horizontal_max=horizontal_max,
+        vertical_max=vertical_max,
+    )
+
+
+def test_the_orientation_budget_holds_after_the_fit():
+    """A candidate is budgeted on the family its fitted plane lands in.
+
+    The sheet below is proposed as horizontal, because its gaussians carry a
+    normal 2 degrees off its own surface, and the refit turns it vertical. The
+    artifact used to report nine horizontal planes against a parameter of eight
+    for the same reason. The bound is now checked after the fit, so no run can
+    report more planes of a family than its parameter allows.
+    """
+    points, normals = _sheet_and_wall()
+    for horizontal_max, vertical_max in ((2, 0), (0, 2), (1, 1), (2, 3)):
+        planes, _ = _find(points, normals, horizontal_max=horizontal_max, vertical_max=vertical_max)
+        horizontal = sum(1 for plane in planes if plane.horizontal)
+        vertical = sum(1 for plane in planes if not plane.horizontal)
+        assert horizontal <= horizontal_max
+        assert vertical <= vertical_max
+    empty, _ = _find(points, normals, horizontal_max=2, vertical_max=0)
+    assert empty == []
+    both, _ = _find(points, normals, horizontal_max=2, vertical_max=3)
+    assert sum(1 for plane in both if plane.horizontal) == 0
+    assert sum(1 for plane in both if not plane.horizontal) == 2
+    assert abs(abs(float(np.asarray(both[0].normal) @ UP)) - 0.84) < 0.05
