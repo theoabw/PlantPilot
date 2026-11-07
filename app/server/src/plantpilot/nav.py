@@ -82,6 +82,16 @@ DEFAULT_CLEARANCE_TARGET_M = 0.90
 MIN_WAYPOINT_DISTANCE_M = 0.60
 PROXIMITY_RADIUS_M = 2.50
 PROXIMITY_STEP_M = 0.50
+STRUCTURAL_OBJECT_CLASSES = {
+    "beam",
+    "duct",
+    "panel",
+    "pallet",
+    "pipe",
+    "structure",
+    "surface",
+    "unknown",
+}
 
 
 @dataclass
@@ -191,6 +201,7 @@ class Grid:
         blocked_mask: np.ndarray | None = None,
         safety_margin_m: float | None = None,
     ):
+        self.spec = spec
         self.agent_radius_m = agent_radius_m
         self.safety_margin_m = SAFETY_MARGIN_M if safety_margin_m is None else float(safety_margin_m)
         if spec is not None:
@@ -288,6 +299,8 @@ class Grid:
         object_cells = np.zeros((rows, cols), dtype=np.uint8)
         if objects:
             for obj in objects:
+                if str(obj.get("class") or obj.get("class_proposal", "")).lower() in STRUCTURAL_OBJECT_CLASSES:
+                    continue
                 if not _blocks_the_robot(obj, floor_y, up_axis, up_axis_sign):
                     continue
                 footprint = object_footprint(obj, up_axis=up_axis)
@@ -491,10 +504,16 @@ def derive_start_position(
                 cell = grid.nearest_walkable(*grid.to_cell((cx, cz)), max_m=1.0)
                 if cell:
                     return grid.to_world(*cell)
+    elif grid.spec is not None:
+        mid_r, mid_c = grid.rows // 2, grid.cols // 2
+        cell = grid.nearest_walkable(mid_r, mid_c, max_m=5.0)
+        if cell:
+            return grid.to_world(*cell)
 
-    # Perimeter edge search: test walkable boundary cells for highest clearance
+    # Perimeter edge search: test walkable boundary cells for highest clearance.
+    # The robot should enter from a wall, not spawn in the centre of machinery.
     best_candidate: tuple[float, tuple[int, int]] | None = None
-    pad = 2
+    pad = 1
     edge_cells: list[tuple[int, int]] = []
     for c in range(pad, grid.cols - pad):
         edge_cells.append((pad, c))
@@ -512,13 +531,21 @@ def derive_start_position(
     if best_candidate:
         return grid.to_world(*best_candidate[1])
 
-    # Absolute fallback: search from center outwards
-    mid_r, mid_c = grid.rows // 2, grid.cols // 2
-    cell = grid.nearest_walkable(mid_r, mid_c, max_m=5.0)
-    if cell:
-        return grid.to_world(*cell)
+    # If inflation closed the exact perimeter, search inward from each edge
+    # rather than jumping to the centre. This preserves a plausible wall-side
+    # entry point and avoids placing the robot inside the machinery field.
+    edge_candidates: list[tuple[float, tuple[int, int]]] = []
+    for r in range(grid.rows):
+        for c in range(grid.cols):
+            if not grid.walkable(r, c):
+                continue
+            edge_distance = min(r, c, grid.rows - 1 - r, grid.cols - 1 - c)
+            edge_candidates.append((float(edge_distance), (r, c)))
+    if edge_candidates:
+        edge_candidates.sort(key=lambda item: (item[0], -float(grid.clearance_m[item[1]])))
+        return grid.to_world(*edge_candidates[0][1])
 
-    return (grid.x0 + 1.0, grid.z0 + 1.0)
+    return (grid.x0 + 0.5, grid.z0 + 0.5)
 
 
 def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> dict[str, Any]:
@@ -812,7 +839,7 @@ def build_route(
     target_asset_id: str = "P-005",
     output_path: Path | None = None,
     manual_floor_y: float | None = None,
-    agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
+    agent_radius_m: float = 0.20,
     agent_height_m: float = ROBOT_HEIGHT_M,
     blockers: list[list[float]] | None = None,
     start_override: tuple[float, float] | None = None,

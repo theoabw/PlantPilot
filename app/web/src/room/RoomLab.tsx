@@ -179,7 +179,8 @@ export default function RoomLab() {
           if (value?.target_waypoint) {
             const waypoint = value.target_waypoint
             setDestinationScene([waypoint[0], waypoint[1], waypoint[2]])
-            destinationXZRef.current = [waypoint[0], waypoint[2]]
+            const axes = value.grid?.horizontal_axes ?? [0, 2]
+            destinationXZRef.current = [waypoint[axes[0]], waypoint[axes[1]]]
           }
         }
       })
@@ -675,7 +676,6 @@ export default function RoomLab() {
       objectId: equipment.id,
     })
     setSelectedId(equipment.id)
-    setFocusToken((value) => value + 1)
   }
 
   const placeObstacle = (point: [number, number]) => {

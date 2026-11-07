@@ -1858,7 +1858,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       toTarget: centre.clone(),
     }
     renderRef.current()
-  }, [focusTarget, focusToken])
+  }, [focusToken])
 
   // Pastel object tint for the semantics channel: one small splat layer with
   // only the reviewed anchors, drawn over the dimmed capture so the photo still
