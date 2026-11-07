@@ -91,6 +91,7 @@ const SELECTED_COLOUR = 0xffffff
 const TARGET_COLOUR = 0xff3030
 const MAPPED_COLOUR = 0x22d3ee
 const ROUTE_COLOUR = 0xfbbf24
+const MAX_VIEWER_SPLATS = 700_000
 
 // The procedural humanoid reads this while animating; a single viewer instance
 // owns it, so a module-level value avoids rebuilding the model on crouch changes.
@@ -518,6 +519,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   selectedRef.current = selectedId
   const objectsRef = useRef(objects)
   objectsRef.current = objects
+  const objectsByIdRef = useRef(new Map<string, RoomObject>())
+  objectsByIdRef.current = new Map(objects.map((object) => [object.id, object]))
   const mappedRef = useRef(mappedIds)
   mappedRef.current = mappedIds
   const targetRef = useRef(targetId)
@@ -634,7 +637,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       // Spark caps the splats it accumulates (2^19 by default); a capture above
       // that budget would silently render only part of the room.
       if (maxSplats > 0) {
-        spark.maxSplats = maxSplats
+        spark.maxSplats = Math.min(maxSplats, MAX_VIEWER_SPLATS)
       }
       // Draw the splats first, so every ordinary mesh in the scene (the robot,
       // the route line, the object frames) depth-tests against them and stays
@@ -1187,7 +1190,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           const live = stateRef.current
           if (live) {
             for (const pill of Array.from(labelsRef.current.children) as HTMLDivElement[]) {
-              const object = objectsRef.current.find((candidate) => candidate.id === pill.dataset.objectId)
+              const object = pill.dataset.objectId ? objectsByIdRef.current.get(pill.dataset.objectId) : undefined
               if (!object) {
                 pill.style.display = 'none'
                 continue

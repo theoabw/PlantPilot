@@ -651,24 +651,31 @@ export default function RoomLab() {
   }
 
   const sendToEquipment = () => {
-    if (!selectedObject) {
+    const equipment = selectedObject ?? targetAnchor ?? (
+      mapped?.target_object_id
+        ? data?.objects.find((object) => object.id === mapped.target_object_id) ?? null
+        : null
+    )
+    if (!equipment) {
       return
     }
     const axes = route?.grid?.horizontal_axes ?? [0, 2]
     const target: [number, number] = [
-      selectedObject.centre[axes[0]],
-      selectedObject.centre[axes[1]],
+      equipment.centre[axes[0]],
+      equipment.centre[axes[1]],
     ]
     const displayName =
-      humanize(selectedMapping?.class) || selectedObject.label || humanize(selectedObject.class)
+      humanize(selectedMapping?.class) || equipment.label || humanize(equipment.class)
     planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
       target,
       startAfter: true,
       label: displayName,
       tag: selectedMapping?.tag ?? displayName,
       condition: selectedMapping ? severityText(selectedMapping) : 'Selected equipment',
-      objectId: selectedObject.id,
+      objectId: equipment.id,
     })
+    setSelectedId(equipment.id)
+    setFocusToken((value) => value + 1)
   }
 
   const placeObstacle = (point: [number, number]) => {
@@ -735,7 +742,7 @@ export default function RoomLab() {
             maxSplats={data.source.points + 20_000}
             splatUrl={splatAssetUrl(data.source.points)}
             filterUrl={view === 'photo' || view === 'objects' ? null : filterAssetUrl(view)}
-            contourUrl={view === 'edges' || view === 'semantics' ? '/api/filter/contours' : null}
+            contourUrl={view === 'edges' ? '/api/filter/contours' : null}
             objectOverlayUrl={view === 'semantics' ? '/api/filter/anchors_overlay' : null}
             showLabels={devMode || view === 'objects'}
             framesVisible={displayObjects.length > 0}
@@ -751,8 +758,8 @@ export default function RoomLab() {
             robotPositionRef={robotPositionRef}
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
-            showRoute={driving}
-            showRobot={trip.mode !== 'idle'}
+            showRoute={Boolean(route?.reachable)}
+            showRobot={Boolean(route?.path?.length)}
             crouchSpans={crouchSpans}
             focusTarget={focusTarget}
             focusToken={focusToken}
@@ -1147,18 +1154,28 @@ export default function RoomLab() {
               ? `${(route?.distance_m ?? 0).toFixed(1)} m route · ${(route?.clearance_m ?? 0).toFixed(2)} m clearance`
               : routeMessage(route)}
           </p>
+          {!routeReady ? (
+            <div role="alert" className="mt-2 rounded-lg border border-amber-400/50 bg-amber-500/10 px-3 py-2">
+              <p className="text-xs font-black text-amber-200">No cleared path for this robot</p>
+              <p className="mt-0.5 text-[10px] font-semibold leading-snug text-amber-100/80">
+                Choose a smaller robot, clear an obstacle, or select another machine before sending it.
+              </p>
+            </div>
+          ) : null}
           {crouchSpans.length > 0 && routeReady ? (
             <p className="mt-1 text-[10px] font-semibold text-amber-200">
               Ducks under low pipework for {crouchSpans.reduce((total, [from, to]) => total + Math.max(0, to - from), 0).toFixed(1)} m of this route
             </p>
           ) : null}
           <div className="mt-3">
+            <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-slate-500">Robot</p>
             <div className="flex rounded-lg border border-slate-700 bg-slate-900/60 p-0.5">
               {ROBOTS.map((option) => (
                 <button
                   key={option.id}
                   type="button"
                   onClick={() => changeRobot(option.id)}
+                  aria-pressed={robotId === option.id && customRadius === null}
                   className={`flex-1 rounded-md px-1.5 py-1 text-[10px] font-black uppercase tracking-wide ${
                     robotId === option.id && customRadius === null
                       ? 'bg-cyan-500/20 text-cyan-200'
@@ -1170,14 +1187,14 @@ export default function RoomLab() {
               ))}
             </div>
             <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              Clearance radius {clearanceRadius.toFixed(2)} m
+              {robot.label} · {clearanceRadius.toFixed(2)} m footprint radius · {robot.height.toFixed(2)} m high
             </p>
           </div>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
               onClick={startMission}
-              disabled={!mission}
+              disabled={!mission || !routeReady}
               className="flex-1 rounded-lg bg-cyan-500 px-3 py-2.5 text-sm font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
               Send robot
@@ -1185,10 +1202,10 @@ export default function RoomLab() {
             {destinationObjectId || targetAnchor || mapped?.target_object_id ? (
               <button
                 type="button"
-                onClick={() => setSelectedId(destinationObjectId ?? targetAnchor?.id ?? mapped?.target_object_id ?? null)}
+                onClick={sendToEquipment}
                 className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-200 hover:border-slate-400"
               >
-                Inspect
+                Inspect machine
               </button>
             ) : null}
           </div>
