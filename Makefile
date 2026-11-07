@@ -51,7 +51,7 @@ PLANT_PLY ?= data/plant/plant.ply
 PLANT_SCENE ?= data/plant/scene.npz
 PLANT_OBJECTS ?= data/plant/objects.json
 
-.PHONY: demo web web-build corpus models register plates plant scan scene objects anchors filter-assets splat-asset pack map diagnose pipeline generality proof route openapi test check clean assets
+.PHONY: demo web web-build corpus models register plates plant scan scene objects anchors object-meshes filter-assets splat-asset pack map diagnose pipeline generality proof route openapi test check clean assets
 
 ## scene: ingest the splat into data/scene/scene.npz, then render a preview
 scene:
@@ -65,6 +65,10 @@ objects:
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --view top --out $(OBJECTS_TOP)
 	$(PY) python -m plantpilot.render --scene $(SCENE) --objects $(OBJECTS) --out $(OBJECTS_VIEW) \
 	  --mode splats --max-gaussians $(SPLAT_GAUSSIANS) --width $(PREVIEW_WIDTH) --height $(PREVIEW_HEIGHT) --no-labels
+
+## object-meshes: reconstruct one mesh per reviewed anchor (needs open3d)
+object-meshes: anchors
+	$(PY) python scripts/make_object_meshes.py --scene $(SCENE) --anchors $(ANCHORS) --out data/objects/meshes
 
 ## anchors: build the reviewed demo layer from the committed fixture
 anchors: scene

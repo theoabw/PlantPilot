@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, upVector } from './api'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
@@ -38,6 +39,14 @@ type Props = {
   maxSplats: number
   splatUrl: string
   filterUrl: string | null
+  contourUrl: string | null
+  objectOverlayUrl: string | null
+  showLabels: boolean
+  framesVisible: boolean
+  objectMode: boolean
+  hideSplat: boolean
+  explode: number
+  meshes: { id: string; label: string; url: string }[]
   route: RoomRoute | null
   tripToken: number
   follow: boolean
@@ -93,7 +102,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, meshes, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -110,6 +119,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     world: THREE.Group
     splat: SplatMesh | null
     splatUrl: string
+    contours: THREE.Points | null
+    overlay: SplatMesh | null
+    objectGroup: THREE.Group
+    meshGroups: Map<string, { group: THREE.Group; index: number }>
     boxGroup: THREE.Group
     pickGroup: THREE.Group
     boxes: BoxView[]
@@ -145,6 +158,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   const framedKeyRef = useRef<string>('')
   const labelRef = useRef<HTMLDivElement | null>(null)
   const beaconWorldRef = useRef<THREE.Vector3 | null>(null)
+  const labelsRef = useRef<HTMLDivElement | null>(null)
+  const showLabelsRef = useRef(showLabels)
+  showLabelsRef.current = showLabels
+  const objectModeRef = useRef(objectMode)
+  objectModeRef.current = objectMode
+  const explodeRef = useRef(explode)
+  explodeRef.current = explode
 
   // One effect owns the canvas and the render loop; the others only add content.
   useEffect(() => {
@@ -188,6 +208,14 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
 
     const world = new THREE.Group()
     scene.add(world)
+    const objectGroup = new THREE.Group()
+    objectGroup.name = 'objects'
+    world.add(objectGroup)
+    // the splat needs no lights, the extracted meshes do
+    scene.add(new THREE.HemisphereLight(0xf2f6ff, 0x1b2430, 1.1))
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.25)
+    keyLight.position.set(4, 6, 3)
+    scene.add(keyLight)
 
     let spark: SparkRenderer | null = null
     try {
@@ -272,6 +300,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
+      const liveState = stateRef.current
+      if (objectModeRef.current && liveState) {
+        const meshHit = raycaster.intersectObjects(liveState.objectGroup.children, true)[0]
+        const meshId = meshHit?.object.userData.objectId
+        if (typeof meshId === 'string') {
+          selectRef.current(meshId)
+          return
+        }
+      }
       const hit = raycaster.intersectObjects(pickGroup.children, false)[0]
       const id = hit?.object.userData.objectId
       if (typeof id === 'string') {
@@ -445,6 +482,27 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
             label.style.display = 'none'
           }
         }
+        if (labelsRef.current && showLabelsRef.current) {
+          const live = stateRef.current
+          if (live) {
+            for (const pill of Array.from(labelsRef.current.children) as HTMLDivElement[]) {
+              const object = objectsRef.current.find((candidate) => candidate.id === pill.dataset.objectId)
+              if (!object) {
+                pill.style.display = 'none'
+                continue
+              }
+              const worldPoint = new THREE.Vector3(...object.centre).applyQuaternion(live.world.quaternion)
+              const projected = worldPoint.clone().project(camera)
+              if (projected.z > 0 && projected.z < 1) {
+                pill.style.left = `${(projected.x * 0.5 + 0.5) * host.clientWidth}px`
+                pill.style.top = `${(-projected.y * 0.5 + 0.5) * host.clientHeight}px`
+                pill.style.display = 'block'
+              } else {
+                pill.style.display = 'none'
+              }
+            }
+          }
+        }
         if (needsRender || stateRef.current?.motion.active || now < warmupUntil) {
           needsRender = false
           const start = perfEnabled ? performance.now() : 0
@@ -494,6 +552,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       world,
       splat,
       splatUrl,
+      contours: null,
+      overlay: null,
+      objectGroup,
+      meshGroups: new Map(),
       boxGroup,
       pickGroup,
       boxes: [],
@@ -530,6 +592,31 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         ;(mesh.material as THREE.Material).dispose()
       })
       state?.pickGroup.clear()
+      if (state?.objectGroup) {
+        state.objectGroup.traverse((child) => {
+          const mesh = child as THREE.Mesh
+          mesh.geometry?.dispose()
+          const material = mesh.material as THREE.Material | THREE.Material[] | undefined
+          if (Array.isArray(material)) {
+            material.forEach((entry) => entry.dispose())
+          } else {
+            material?.dispose()
+          }
+        })
+        state.objectGroup.clear()
+        state.meshGroups.clear()
+      }
+      if (state?.overlay) {
+        state.world.remove(state.overlay)
+        state.overlay.dispose()
+        state.overlay = null
+      }
+      if (state?.contours) {
+        state.world.remove(state.contours)
+        state.contours.geometry.dispose()
+        ;(state.contours.material as THREE.Material).dispose()
+        state.contours = null
+      }
       state?.beaconGroup.children.forEach((child) => {
         const mesh = child as THREE.Mesh
         mesh.geometry?.dispose()
@@ -627,6 +714,261 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.world.add(mesh)
     renderRef.current()
   }, [filterUrl, splatUrl])
+
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state || state.meshGroups.size === 0) {
+      return
+    }
+    const roomCentre = new THREE.Vector3()
+    if (objectsRef.current.length > 0) {
+      for (const object of objectsRef.current) {
+        roomCentre.add(new THREE.Vector3(...object.centre))
+      }
+      roomCentre.multiplyScalar(1 / objectsRef.current.length)
+    }
+    state.meshGroups.forEach(({ group, index }) => {
+      const centre = group.userData.centre as THREE.Vector3 | undefined
+      if (!centre) {
+        return
+      }
+      const direction = centre.clone().sub(roomCentre)
+      if (direction.lengthSq() < 0.01) {
+        direction.set(0, 1, 0)
+      }
+      direction.normalize()
+      group.position.copy(direction).multiplyScalar(explode * (1.1 + 0.25 * index))
+    })
+    renderRef.current()
+    state.renderer.render(state.scene, state.camera)
+  }, [explode])
+
+  // Object mode: the reviewed anchors as separate meshes, each its own node.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    for (const { group } of state.meshGroups.values()) {
+      state.objectGroup.remove(group)
+      group.traverse((child) => {
+        const mesh = child as THREE.Mesh
+        mesh.geometry?.dispose()
+        const material = mesh.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(material)) {
+          material.forEach((entry) => entry.dispose())
+        } else {
+          material?.dispose()
+        }
+      })
+    }
+    state.meshGroups.clear()
+    if (!objectMode || meshes.length === 0) {
+      renderRef.current()
+      return
+    }
+    const roomCentre = new THREE.Vector3()
+    if (objectsRef.current.length > 0) {
+      for (const object of objectsRef.current) {
+        roomCentre.add(new THREE.Vector3(...object.centre))
+      }
+      roomCentre.multiplyScalar(1 / objectsRef.current.length)
+    }
+    const layout = (group: THREE.Group, index: number) => {
+      const centre = group.userData.centre as THREE.Vector3 | undefined
+      if (!centre) {
+        return
+      }
+      const direction = centre.clone().sub(roomCentre)
+      if (direction.lengthSq() < 0.01) {
+        direction.set(0, 1, 0)
+      }
+      direction.normalize()
+      group.position.copy(direction).multiplyScalar(explodeRef.current * (1.1 + 0.25 * index))
+    }
+    const loader = new PLYLoader()
+    meshes.forEach((entry, index) => {
+      const group = new THREE.Group()
+      group.userData.objectId = entry.id
+      state.meshGroups.set(entry.id, { group, index })
+      state.objectGroup.add(group)
+      loader.load(entry.url, (geometry) => {
+        geometry.computeBoundingBox()
+        geometry.computeVertexNormals()
+        const material = new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          flatShading: true,
+          roughness: 0.88,
+          metalness: 0.05,
+          side: THREE.DoubleSide,
+        })
+        const mesh = new THREE.Mesh(geometry, material)
+        mesh.userData.objectId = entry.id
+        group.add(mesh)
+        const boxCentre = geometry.boundingBox?.getCenter(new THREE.Vector3())
+        if (boxCentre) {
+          group.userData.centre = boxCentre
+          layout(group, index)
+        }
+        renderRef.current()
+        // the animation loop is throttled in a background tab, so draw the
+        // object meshes directly once they are ready
+        state.renderer.render(state.scene, state.camera)
+      })
+    })
+    renderRef.current()
+  }, [meshes, objectMode])
+
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    if (state.splat) {
+      state.splat.visible = !hideSplat
+    }
+    renderRef.current()
+  }, [hideSplat, filterUrl])
+
+  // In the derived channels the contours and labels carry the story, so the
+  // wireframe boxes step out of the way as the reference clips do.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    state.boxGroup.visible = framesVisible
+    state.pickGroup.visible = framesVisible
+    renderRef.current()
+  }, [framesVisible])
+
+  // Pastel object tint for the semantics channel: one small splat layer with
+  // only the reviewed anchors, drawn over the dimmed capture so the photo still
+  // reads through and the objects are the only coloured thing.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    if (state.overlay) {
+      state.world.remove(state.overlay)
+      state.overlay.dispose()
+      state.overlay = null
+    }
+    if (!objectOverlayUrl) {
+      renderRef.current()
+      return
+    }
+    const overlay = new SplatMesh({
+      url: objectOverlayUrl,
+      fileType: SplatFileType.PLY,
+      onLoad: () => renderRef.current(),
+    })
+    overlay.rotation.set(0, 0, 0)
+    overlay.initialized.catch(() => {
+      if (stateRef.current?.overlay === overlay) {
+        state.world.remove(overlay)
+        overlay.dispose()
+        state.overlay = null
+      }
+    })
+    state.overlay = overlay
+    state.world.add(overlay)
+    renderRef.current()
+  }, [objectOverlayUrl])
+
+  // Quiet label pills for the reviewed objects, as in the reference clips:
+  // one short label per object, no metadata wall.
+  useEffect(() => {
+    const host = labelsRef.current
+    if (!host) {
+      return
+    }
+    host.replaceChildren()
+    if (!showLabels) {
+      return
+    }
+    for (const object of objects) {
+      const pill = document.createElement('div')
+      pill.className =
+        'absolute hidden -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded border bg-slate-950/85 px-1 py-0.5 text-[9px] font-black text-slate-100'
+      pill.style.borderColor = `#${new THREE.Color(CLASS_COLOURS[object.class] ?? CLASS_COLOURS.unknown).getHexString()}`
+      pill.textContent = object.label ?? object.class
+      pill.dataset.objectId = object.id
+      host.appendChild(pill)
+    }
+    renderRef.current()
+  }, [objects, showLabels])
+
+  // Contour overlay for the edges channel: a thin screen-space point cloud on
+  // top of a dimmed capture, so the lines stay 1 to 2 px instead of soft splats.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    if (state.contours) {
+      state.world.remove(state.contours)
+      state.contours.geometry.dispose()
+      ;(state.contours.material as THREE.Material).dispose()
+      state.contours = null
+    }
+    if (!contourUrl) {
+      renderRef.current()
+      return
+    }
+    let cancelled = false
+    fetch(contourUrl)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`contours answered ${response.status}`)
+        }
+        return response.json() as Promise<{ points: number[][]; colors?: number[][] }>
+      })
+      .then((payload) => {
+        if (cancelled || !stateRef.current) {
+          return
+        }
+        const live = stateRef.current
+        const positions = new Float32Array(payload.points.length * 3)
+        payload.points.forEach((point, index) => {
+          positions[index * 3] = point[0]
+          positions[index * 3 + 1] = point[1]
+          positions[index * 3 + 2] = point[2]
+        })
+        const geometry = new THREE.BufferGeometry()
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+        let vertexColors = false
+        if (payload.colors && payload.colors.length === payload.points.length) {
+          const colors = new Float32Array(payload.colors.length * 3)
+          payload.colors.forEach((colour, index) => {
+            colors[index * 3] = colour[0] / 255
+            colors[index * 3 + 1] = colour[1] / 255
+            colors[index * 3 + 2] = colour[2] / 255
+          })
+          geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+          vertexColors = true
+        }
+        const material = new THREE.PointsMaterial({
+          color: vertexColors ? 0xffffff : 0xa8e6ff,
+          vertexColors,
+          size: 1.2,
+          sizeAttenuation: false,
+          transparent: true,
+          opacity: 0.9,
+          depthWrite: false,
+        })
+        const points = new THREE.Points(geometry, material)
+        points.renderOrder = 3
+        live.contours = points
+        live.world.add(points)
+        renderRef.current()
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [contourUrl])
 
   // Frame the room from the extracted objects, then add their boxes.
   useEffect(() => {
@@ -1084,6 +1426,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border-2 border-slate-900 bg-slate-950">
       <div ref={hostRef} className="h-full w-full" />
+      <div ref={labelsRef} className="pointer-events-none absolute inset-0 z-10" />
       <div
         ref={labelRef}
         className="pointer-events-none absolute z-20 hidden -translate-x-1/2 -translate-y-[125%] whitespace-nowrap rounded border border-white/60 bg-slate-950/90 px-1.5 py-0.5 text-[10px] font-black text-white"

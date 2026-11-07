@@ -5,14 +5,16 @@ import {
   STATE_LABEL,
   fetchRoomAnchors,
   fetchRoomFilters,
+  fetchRoomMeshes,
   fetchRoomAssets,
   fetchRoomMapped,
   fetchDiagnosis,
   fetchRoomObjects,
   fetchRoomRoute,
+  filterAssetUrl,
   splatAssetUrl,
 } from './api'
-import type { Diagnosis, MappedAsset, RoomAnchor, RoomAnchors, RoomAsset, RoomAssets, RoomFilters, RoomMapped, RoomObjects, RoomObject, RoomRoute } from './api'
+import type { Diagnosis, MappedAsset, RoomAnchor, RoomAnchors, RoomAsset, RoomAssets, RoomFilters, RoomMapped, RoomMesh, RoomMeshes, RoomObjects, RoomObject, RoomRoute } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
 import ViewToolbar from '../components/ViewToolbar'
 
@@ -24,6 +26,8 @@ export default function RoomLab({ onLeave }: Props) {
   const [data, setData] = useState<RoomObjects | null>(null)
   const [anchors, setAnchors] = useState<RoomAnchors | null>(null)
   const [filters, setFilters] = useState<RoomFilters | null>(null)
+  const [meshes, setMeshes] = useState<RoomMeshes | null>(null)
+  const [explode, setExplode] = useState(0)
   const [filterName, setFilterName] = useState(() => new URLSearchParams(window.location.search).get('filter') ?? 'photo')
   const [assets, setAssets] = useState<RoomAssets | null>(null)
   const [showRaw, setShowRaw] = useState(false)
@@ -66,6 +70,9 @@ export default function RoomLab({ onLeave }: Props) {
       .catch(() => undefined)
     fetchRoomFilters()
       .then((value) => alive && setFilters(value))
+      .catch(() => undefined)
+    fetchRoomMeshes()
+      .then((value) => alive && setMeshes(value))
       .catch(() => undefined)
     fetchRoomAssets()
       .then((value) => alive && setAssets(value))
@@ -156,6 +163,15 @@ export default function RoomLab({ onLeave }: Props) {
   const displayTargetId = assetsActive
     ? visibleAssets.find((asset) => (asset.source_object_ids ?? []).includes(mapped?.target_object_id ?? ''))?.id ?? null
     : (mapped?.target_object_id ?? null)
+
+  const viewerMeshes = useMemo(
+    () => (meshes?.objects ?? []).map((entry: RoomMesh) => ({
+      id: entry.anchor_id,
+      label: entry.label,
+      url: `/api/mesh/${entry.anchor_id}`,
+    })),
+    [meshes],
+  )
 
   const targetPoint = useMemo<[number, number, number] | null>(() => {
     const targetObject = mapped?.target_object_id
@@ -333,7 +349,15 @@ export default function RoomLab({ onLeave }: Props) {
                   cameraPose={data.camera ?? null}
                   maxSplats={data.source.points + 20_000}
                   splatUrl={splatAssetUrl(data.source.points)}
-                  filterUrl={filterName === 'photo' ? null : `/api/filter/${filterName}`}
+                  filterUrl={filterName === 'photo' || filterName === 'objects' ? null : filterAssetUrl(filterName)}
+                  contourUrl={filterName === 'edges' || filterName === 'semantics' ? '/api/filter/contours' : null}
+                  objectOverlayUrl={filterName === 'semantics' ? '/api/filter/anchors_overlay' : null}
+                  showLabels={filterName !== 'photo'}
+                  framesVisible={filterName === 'photo'}
+                  objectMode={filterName === 'objects'}
+                  hideSplat={filterName === 'objects'}
+                  explode={explode}
+                  meshes={viewerMeshes}
                   route={route}
                   tripToken={tripToken}
                   follow={follow}
@@ -394,7 +418,7 @@ export default function RoomLab({ onLeave }: Props) {
 
             {filters && filters.filters.applied.length > 0 ? (
               <div className="absolute left-3 top-[6.2rem] z-20 flex flex-wrap gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 p-1 backdrop-blur">
-                {['photo', ...filters.filters.applied].map((name) => (
+                {['photo', ...(meshes && meshes.objects.length > 0 ? ['objects'] : []), ...filters.filters.applied].map((name) => (
                   <button
                     key={name}
                     type="button"
@@ -562,6 +586,20 @@ export default function RoomLab({ onLeave }: Props) {
                         step={0.05}
                         value={minConfidence}
                         onChange={(event) => setMinConfidence(Number(event.target.value))}
+                        className="mt-1 w-full accent-cyan-400"
+                      />
+                    </label>
+                  ) : null}
+                  {meshes && meshes.objects.length > 0 ? (
+                    <label className="mt-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                      Explode objects {Math.round(explode * 100)} %
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={explode}
+                        onChange={(event) => setExplode(Number(event.target.value))}
                         className="mt-1 w-full accent-cyan-400"
                       />
                     </label>
