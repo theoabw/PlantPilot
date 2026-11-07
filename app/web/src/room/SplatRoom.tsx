@@ -5,6 +5,8 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
+import { stableHalfDepthShader } from './depthSplatShader'
+import { CLICK_MAX_DRAG_PX, hiddenBySplats, isPickable, nestedPick } from './pickObject'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 import { boundedStep, CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
@@ -136,6 +138,41 @@ const SELECTED_COLOUR = 0xffffff
 const TARGET_COLOUR = 0xff3030
 const MAPPED_COLOUR = 0x22d3ee
 const ROUTE_COLOUR = 0xfbbf24
+// What an overlay looks like where structure hides it: faint, so the robot and
+// the route stay findable behind a machine and a false occlusion from the coarse
+// splat depth reads as a dim patch instead of a hole.
+const GHOST_OPACITY = 0.2
+// Only fairly solid splats can hide a box from a click: the default cut of 0.2
+// also catches faint floaters hanging in open air between the camera and a box.
+const PICK_SURFACE_ALPHA = 0.4
+// One ray over the capture takes about 60 to 200 ms on a CPU core: fine once per
+// click, far too slow for hover or for labels. A machine slower than this keeps
+// the plain box pick rather than a click that visibly lags.
+const PICK_RAY_BUDGET_MS = 300
+const ROBOT_GHOST_COLOUR = 0x7dd3fc
+
+function ghostMaterial(color: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: GHOST_OPACITY,
+    depthFunc: THREE.GreaterDepth,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  })
+}
+
+/**
+ * Draw `mesh` faintly wherever it is behind something. The ghost is a child of
+ * the mesh so it follows every animation, and it sorts just before the mesh:
+ * the solid draw writes depth, so a ghost drawn after it would show through the
+ * object's own body.
+ */
+function addGhost(mesh: THREE.Mesh, color: number): void {
+  const ghost = new THREE.Mesh(mesh.geometry, ghostMaterial(color))
+  ghost.renderOrder = mesh.renderOrder - 0.5
+  mesh.add(ghost)
+}
 
 // The procedural humanoid reads this while animating; a single viewer instance
 // owns it, so a module-level value avoids rebuilding the model on crouch changes.
@@ -226,8 +263,24 @@ const followDistances: Record<RobotProfile, number> = {
  * feet and wheels match the route speed.
  */
 function buildRobot(profile: RobotProfile): THREE.Group {
+  const group = buildRobotBody(profile)
+  const parts: THREE.Mesh[] = []
+  group.traverse((child) => {
+    if (child instanceof THREE.Mesh && !child.userData.noGhost) {
+      parts.push(child)
+    }
+  })
+  for (const part of parts) {
+    addGhost(part, ROBOT_GHOST_COLOUR)
+  }
+  return group
+}
+
+function buildRobotBody(profile: RobotProfile): THREE.Group {
+  // No renderOrder on this group or on the pivots under it. three.js takes a
+  // group's renderOrder as the sort key of everything below it, and the ghosts
+  // only sort before the solid parts when all of them share one key.
   const group = new THREE.Group()
-  group.renderOrder = 3
   group.userData.profile = profile
   const material = (color: number, opacity = 1) =>
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity })
@@ -239,6 +292,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   const shadow = mesh(new THREE.RingGeometry(0.2, 0.32, 36), 0x0b1220, 0.38)
   shadow.rotation.x = -Math.PI / 2
   shadow.position.y = 0.005
+  shadow.userData.noGhost = true
   group.add(shadow)
 
   if (profile === 'humanoid') {
@@ -671,6 +725,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   placeObstacleRef.current = onPlaceObstacle
   const explodeRef = useRef(explode)
   explodeRef.current = explode
+  const boxedSplatsOnlyRef = useRef(boxedSplatsOnly)
+  boxedSplatsOnlyRef.current = boxedSplatsOnly
 
   // One effect owns the canvas and the render loop; the others only add content.
   useEffect(() => {
@@ -772,17 +828,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       // geometry with the SparkRenderer and refreshes Spark's per-frame uniforms
       // itself, because it runs first.
       //
-      // It is fill bound like the colour pass, so it draws every second splat:
-      // the splats overlap heavily in screen space, so half of them still leave
-      // a depth surface with no gap a thin overlay can pass through, at half
-      // the fill.
-      const depthVertexShader = spark.material.vertexShader.replace(
-        'void main() {',
-        'void main() {\n    if (mod(float(gl_InstanceID), 2.0) > 0.5) {\n        gl_Position = vec4(0.0, 0.0, 2.0, 1.0);\n        return;\n    }',
-      )
-      if (depthVertexShader === spark.material.vertexShader) {
-        console.warn('depth pass: the splat shader entry point moved, drawing every splat')
+      // It is fill bound like the colour pass, so it draws every second splat,
+      // always the same ones (see stableHalfDepthShader), at half the fill.
+      const stableDepthShader = stableHalfDepthShader(spark.material.vertexShader)
+      if (!stableDepthShader) {
+        console.warn('depth pass: the splat shader lookup moved, drawing every splat')
       }
+      const depthVertexShader = stableDepthShader ?? spark.material.vertexShader
       const depthMaterial = new THREE.ShaderMaterial({
         glslVersion: THREE.GLSL3,
         vertexShader: depthVertexShader,
@@ -818,6 +870,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         // rather than guessed from the URL.
         url: splatUrl,
         fileType: SplatFileType.PLY,
+        minRaycastOpacity: PICK_SURFACE_ALPHA,
         onProgress: (event: ProgressEvent) => {
           if (event.lengthComputable && event.total > 0) {
             setProgress(Math.round((event.loaded / event.total) * 100))
@@ -891,7 +944,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
-      const hit = raycaster.intersectObjects(pickGroup.children, false)[0]
+      const hit = nestedPick(raycaster.intersectObjects(pickGroup.children, false))
       const id = hit?.object.userData.objectId
       const box = typeof id === 'string' ? liveState.boxes.find((entry) => entry.id === id) : undefined
       if (box && hoveredBox?.material !== box.material) {
@@ -914,6 +967,25 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
     renderer.domElement.addEventListener('pointerup', stopPointerLook)
     renderer.domElement.addEventListener('pointercancel', stopPointerLook)
+    // Selection waits for the release: a press can start an orbit, and selecting
+    // on it would rebuild the highlight for every drag that begins over an object.
+    let pressed: { x: number; y: number; pointerId: number } | null = null
+    let splatPickAllowed = true
+    // The source splats include what a filter hides on screen, so the test only
+    // applies while the whole capture is drawn.
+    const splatRayDistances = (): number[] => {
+      const liveSplat = stateRef.current?.splat
+      if (!splatPickAllowed || !liveSplat?.visible || boxedSplatsOnlyRef.current) {
+        return []
+      }
+      const started = performance.now()
+      const crossed: THREE.Intersection[] = []
+      liveSplat.raycast(raycaster, crossed)
+      if (performance.now() - started > PICK_RAY_BUDGET_MS) {
+        splatPickAllowed = false
+      }
+      return crossed.map((entry) => entry.distance)
+    }
     const onPointerDown = (event: PointerEvent) => {
       const current = stateRef.current
       if (current?.manualControl && current.firstPerson) {
@@ -922,6 +994,21 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         current.lastPointerY = event.clientY
         renderer.domElement.setPointerCapture(event.pointerId)
         event.preventDefault()
+        return
+      }
+      pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }
+    }
+    const onPointerCancel = () => {
+      pressed = null
+    }
+    const onPointerUp = (event: PointerEvent) => {
+      const press = pressed
+      pressed = null
+      if (
+        !press
+        || press.pointerId !== event.pointerId
+        || Math.hypot(event.clientX - press.x, event.clientY - press.y) > CLICK_MAX_DRAG_PX
+      ) {
         return
       }
       const rect = renderer.domElement.getBoundingClientRect()
@@ -949,13 +1036,20 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           return
         }
       }
-      const hit = raycaster.intersectObjects(pickGroup.children, false)[0]
+      // A hidden frame is not on screen to point at.
+      if (!liveState?.boxGroup.visible) {
+        return
+      }
+      const hit = nestedPick(raycaster.intersectObjects(pickGroup.children, false))
       const id = hit?.object.userData.objectId
-      if (typeof id === 'string') {
+      // A frame behind a wall is hidden by the depth test, so its click is too.
+      if (typeof id === 'string' && hit && !hiddenBySplats(hit.distance, splatRayDistances())) {
         selectRef.current(id)
       }
     }
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    renderer.domElement.addEventListener('pointerup', onPointerUp)
+    renderer.domElement.addEventListener('pointercancel', onPointerCancel)
     const noteOrbitStart = () => {
       const state = stateRef.current
       if (state?.follow) {
@@ -1805,6 +1899,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       cancelAnimationFrame(frame)
       observer.disconnect()
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+      renderer.domElement.removeEventListener('pointerup', onPointerUp)
+      renderer.domElement.removeEventListener('pointercancel', onPointerCancel)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('pointerup', stopPointerLook)
@@ -2307,10 +2403,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     if (!state) {
       return
     }
-    state.boxGroup.visible = framesVisible
-    state.pickGroup.visible = framesVisible
+    // Exploding moves the objects and not their frames, so the frames would
+    // float around empty space and catch clicks meant for what moved away.
+    const shown = framesVisible && explode === 0
+    state.boxGroup.visible = shown
+    state.pickGroup.visible = shown
     renderRef.current()
-  }, [framesVisible])
+  }, [framesVisible, explode])
 
   useEffect(() => {
     const state = stateRef.current
@@ -2511,6 +2610,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const material = new THREE.LineBasicMaterial({
         color: boxColour(object, new Set(mappedIds), targetId),
         transparent: true,
+        // A frame is a guide, not a surface: writing depth would cut 1 px gaps
+        // in the robot wherever even a barely visible quiet frame crosses it.
+        depthWrite: false,
         opacity: QUIET_CLASSES.has(object.class) && !mappedIds.includes(object.id)
           ? 0.08
           : subtle
@@ -2525,15 +2627,17 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       group.add(lines)
       state.boxes.push({ id: object.id, lines, material })
 
-      const pick = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
-      )
-      pick.position.set(...object.centre)
-      pick.quaternion.copy(quaternion)
-      pick.scale.set(...object.extents)
-      pick.userData.objectId = object.id
-      state.pickGroup.add(pick)
+      if (isPickable(object, mappedIds.includes(object.id))) {
+        const pick = new THREE.Mesh(
+          new THREE.BoxGeometry(1, 1, 1),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+        )
+        pick.position.set(...object.centre)
+        pick.quaternion.copy(quaternion)
+        pick.scale.set(...object.extents)
+        pick.userData.objectId = object.id
+        state.pickGroup.add(pick)
+      }
 
       // The box is oriented, so its axis aligned extent is the sum of the axis
       // projections of its half extents, not a sphere around the centre.
@@ -2777,6 +2881,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     )
     ring.rotation.x = -Math.PI / 2
     ring.renderOrder = 4
+    addGhost(ring, TARGET_COLOUR)
     group.add(ring)
     const pole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.012, 0.012, 1.0, 8),
@@ -2784,6 +2889,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     )
     pole.position.y = 0.5
     pole.renderOrder = 4
+    addGhost(pole, TARGET_COLOUR)
     group.add(pole)
     const cap = new THREE.Mesh(
       new THREE.SphereGeometry(0.045, 12, 10),
@@ -2791,6 +2897,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     )
     cap.position.y = 1.0
     cap.renderOrder = 4
+    addGhost(cap, TARGET_COLOUR)
     group.add(cap)
     state.beaconGroup.add(group)
     renderRef.current()
@@ -2966,6 +3073,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     arrows.renderOrder = 3
     const decor = new THREE.Group()
     decor.add(arrows)
+    // The trail stays readable behind a machine. Sharing the instance matrices
+    // means the ghost chevrons scroll with the solid ones at no extra upload.
+    const arrowGhosts = new THREE.InstancedMesh(arrowGeometry, ghostMaterial(ROUTE_COLOUR), arrowCount)
+    arrowGhosts.instanceMatrix = arrows.instanceMatrix
+    arrowGhosts.frustumCulled = false
+    arrowGhosts.renderOrder = 2.5
+    decor.add(arrowGhosts)
     state.routeGroup.add(decor)
     if (stateRef.current) {
       stateRef.current.decorGroup = decor
@@ -2979,6 +3093,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       ring.rotation.x = -Math.PI / 2
       ring.position.copy(point)
       ring.position.y += 0.01
+      addGhost(ring, ROUTE_COLOUR)
       decor.add(ring)
     }
 
