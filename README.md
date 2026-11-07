@@ -159,5 +159,6 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 - `docs/video-script.md`: the shooting script for the demo video.
 - `docs/acceptance.md`: the checks the pipeline is held to.
 - `docs/brand/README.md`: the logo, colours and the assets for the deck and video.
+- `site/index.html`: the project homepage, a static page that can be hosted as it is.
 
 The code is MIT, see `LICENCE`.

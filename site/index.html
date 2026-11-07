@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#182C3A" />
+<title>PlantPilot: from scan to service</title>
+<meta name="description" content="PlantPilot turns a 3D Gaussian splat scan of a plant room into framed equipment, a collision-free route and a cited diagnosis, all offline." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="PlantPilot: from scan to service" />
+<meta property="og:description" content="A scan alone is blind. PlantPilot gives it objects, a route and a diagnosis, all offline." />
+<meta property="og:image" content="assets/open-graph-1200x630-dark.png" />
+<link rel="icon" href="assets/favicon.ico" sizes="any" />
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preload" href="assets/raleway-latin.woff2" as="font" type="font/woff2" crossorigin />
+<style>
+@font-face {
+  font-family: 'Raleway';
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('assets/raleway-latin.woff2') format('woff2');
+}
+:root {
+  --navy: #182c3a;
+  --navy-deep: #101f2a;
+  --navy-line: #2b4354;
+  --mint: #26d6bc;
+  --teal: #00a88f;
+  --paper: #f3f7f8;
+  --muted: #a4b7c2;
+  --route: #fbbf24;
+  --alert: #ff6b5e;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, Menlo, monospace;
+  --gutter: clamp(16px, 5vw, 64px);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--navy-deep); }
+body {
+  margin: 0;
+  background: var(--navy-deep);
+  color: var(--paper);
+  font: 500 17px/1.6 'Raleway', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: lining-nums;
+}
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--mint); outline-offset: 3px; border-radius: 4px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 var(--gutter); }
+code, .mono { font-family: var(--mono); font-size: .86em; }
+.eyebrow {
+  margin: 0 0 14px;
+  font: 600 13px/1.4 var(--mono);
+  letter-spacing: .04em;
+  color: var(--mint);
+}
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -.015em; line-height: 1.08; }
+h2 { font-size: clamp(32px, 4.4vw, 54px); max-width: 17em; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 40em; margin: 18px 0 0; font-size: 19px; }
+
+/* Header */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 14px; }
+.top img { display: block; height: 56px; width: auto; margin-left: -10px; }
+.top nav { display: flex; align-items: center; gap: 28px; font-size: 15px; font-weight: 600; }
+.top nav a { text-decoration: none; color: var(--muted); }
+.top nav a:hover { color: var(--paper); }
+.top nav a.code { color: var(--paper); border: 1px solid var(--navy-line); border-radius: 8px; padding: 8px 14px; }
+.top nav a.code:hover { border-color: var(--mint); }
+@media (max-width: 720px) { .top nav a:not(.code) { display: none; } }
+
+/* Hero */
+.hero { background: var(--navy); border-bottom: 1px solid var(--navy-line); }
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: center;
+  padding-block: clamp(24px, 4vw, 56px) clamp(40px, 5vw, 72px);
+}
+h1 { font-size: clamp(50px, 7vw, 92px); line-height: .98; letter-spacing: -.03em; font-weight: 800; }
+h1 span { display: block; color: var(--mint); }
+.hero p.sub { color: #d5e0e6; font-size: clamp(18px, 1.6vw, 21px); line-height: 1.5; margin: 24px 0 0; max-width: 28em; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.btn {
+  display: inline-block;
+  padding: 13px 20px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  text-decoration: none;
+  background: var(--mint);
+  color: var(--navy);
+}
+.btn:hover { background: #4be2cc; }
+.btn.ghost { background: none; color: var(--paper); box-shadow: inset 0 0 0 1px #47636f; }
+.btn.ghost:hover { box-shadow: inset 0 0 0 1px var(--mint); }
+@media (max-width: 960px) { .hero-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* The animated scene */
+.stage { background: var(--navy-deep); border: 1px solid var(--navy-line); border-radius: 14px; overflow: hidden; }
+.canvas-box { position: relative; aspect-ratio: 16 / 10; }
+canvas { display: block; width: 100%; height: 100%; }
+.note {
+  position: absolute; top: 12px; left: 14px; margin: 0;
+  font: 500 12px/1.3 var(--mono); color: #8ba2ae;
+}
+.pause {
+  position: absolute; top: 8px; right: 10px;
+  background: none; border: 1px solid var(--navy-line); border-radius: 6px;
+  color: var(--muted); font: 500 12px/1 var(--mono); padding: 7px 9px; cursor: pointer;
+}
+.pause:hover { color: var(--paper); border-color: #47636f; }
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--navy-line); }
+.steps button {
+  position: relative;
+  background: none; border: 0; border-left: 1px solid var(--navy-line);
+  color: var(--muted); font: 700 15px/1 'Raleway', system-ui, sans-serif;
+  padding: 15px 4px; cursor: pointer;
+}
+.steps button:first-child { border-left: 0; }
+.steps button:hover { color: var(--paper); }
+.steps button[aria-current='step'] { color: var(--mint); background: #16303d; }
+.steps i { position: absolute; left: 0; top: -1px; height: 2px; width: 0; background: var(--mint); }
+.readout { min-height: 118px; padding: 14px 18px 16px; border-top: 1px solid var(--navy-line); }
+.readout p { margin: 0; font-size: 16px; line-height: 1.5; color: #d5e0e6; }
+.readout .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.readout .tags span {
+  font: 600 12px/1 var(--mono); padding: 6px 8px; border-radius: 5px;
+  background: #1d3442; color: var(--paper);
+}
+.readout .tags .bad { color: #ffb4ad; background: #3d2529; }
+.readout .tags .syn { color: var(--route); background: #3a321a; }
+@media (max-width: 560px) { .readout { min-height: 186px; } .steps button { font-size: 14px; } }
+
+/* Numbers */
+.stats {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--navy-line);
+}
+.stat { padding: 30px 22px 30px 0; }
+.stat + .stat { border-left: 1px solid var(--navy-line); padding-left: 22px; }
+.stat b { display: block; font-size: clamp(30px, 3.6vw, 48px); font-weight: 700; line-height: 1.05; letter-spacing: -.02em; }
+.stat span { display: block; margin-top: 8px; color: var(--muted); font-size: 15px; line-height: 1.4; }
+@media (max-width: 760px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .stat { padding: 20px 14px 20px 0; }
+  .stat + .stat { padding-left: 0; border-left: 0; }
+  .stat:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--navy-line); }
+  .stat:nth-child(n + 3) { border-top: 1px solid var(--navy-line); }
+}
+
+section { padding-block: clamp(64px, 9vw, 120px); }
+
+/* Pipeline */
+.chain { list-style: none; margin: 56px 0 0; padding: 0; }
+.chain li {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) minmax(0, 300px);
+  gap: 12px 36px;
+  padding: 28px 0;
+  border-top: 1px solid var(--navy-line);
+}
+.chain li:last-child { border-bottom: 1px solid var(--navy-line); }
+.chain .out { font: 500 14px/1.5 var(--mono); color: var(--mint); margin: 3px 0 0; overflow-wrap: anywhere; }
+.chain h3 { font-size: 25px; }
+.chain p { margin: 0; color: #cbd8df; }
+.chain .fact { color: var(--muted); font-size: 15px; line-height: 1.5; }
+.chain .fact b { display: block; color: var(--paper); font-size: 25px; font-weight: 700; line-height: 1.2; margin-bottom: 3px; }
+@media (max-width: 900px) { .chain li { grid-template-columns: minmax(0, 1fr); } }
+
+/* Diagnosis */
+.why { background: var(--paper); color: var(--navy); }
+.why .eyebrow { color: #00745f; }
+.why .lede { color: #3d5563; }
+.why-grid {
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: clamp(32px, 6vw, 88px); align-items: start;
+}
+.verdicts { margin: 0; padding: 0; list-style: none; }
+.verdicts li { padding: 20px 0; border-top: 1px solid #c9d6db; }
+.verdicts li:last-child { border-bottom: 1px solid #c9d6db; }
+.verdicts b { display: block; font-size: 21px; font-weight: 700; line-height: 1.25; }
+.verdicts .tag { font: 700 12px/1 var(--mono); display: inline-block; padding: 5px 7px; border-radius: 4px; margin-bottom: 9px; }
+.verdicts .yes { background: var(--navy); color: var(--mint); }
+.verdicts .no { background: #dfe7ea; color: #3d5563; }
+.verdicts p { margin: 5px 0 0; font-size: 16px; color: #3d5563; }
+.feeds { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 28px; font-weight: 600; font-size: 15px; color: #3d5563; }
+.feeds b { color: var(--navy); font-size: 22px; font-weight: 700; margin-right: 3px; }
+@media (max-width: 900px) { .why-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Honesty table */
+.honest-table { width: 100%; border-collapse: collapse; margin-top: 48px; }
+.honest-table th, .honest-table td { text-align: left; vertical-align: top; padding: 18px 24px 18px 0; border-top: 1px solid var(--navy-line); }
+.honest-table thead th { border-top: 0; color: var(--muted); font: 600 13px/1.3 var(--mono); padding-block: 0 12px; }
+.honest-table tbody th { font-weight: 700; width: 24%; }
+.honest-table td { color: #cbd8df; }
+.honest-table td:nth-child(2) { width: 16%; font: 600 13px/1.6 var(--mono); }
+.honest-table td.real { color: var(--mint); }
+.honest-table td.synthetic { color: var(--route); }
+.honest-table td.proposed { color: #8fd0ff; }
+@media (max-width: 720px) {
+  .honest-table thead { display: none; }
+  .honest-table, .honest-table tbody, .honest-table tr, .honest-table th, .honest-table td { display: block; width: auto !important; }
+  .honest-table tr { border-top: 1px solid var(--navy-line); padding-block: 16px; }
+  .honest-table th, .honest-table td { border: 0; padding: 0; }
+  .honest-table td:nth-child(2) { margin: 2px 0 6px; }
+}
+
+/* Run it */
+.run { background: var(--navy); border-top: 1px solid var(--navy-line); }
+.run-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 72px); align-items: start; }
+pre {
+  margin: 0; padding: 22px; overflow-x: auto;
+  background: var(--navy-deep); border: 1px solid var(--navy-line); border-radius: 12px;
+  font: 500 15px/1.75 var(--mono); color: var(--paper);
+}
+pre .c { color: #8ba2ae; }
+.small { color: var(--muted); font-size: 15px; margin: 14px 0 0; }
+@media (max-width: 860px) { .run-grid { grid-template-columns: minmax(0, 1fr); } }
+
+footer { padding-block: 26px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; }
+
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="wrap">
+    <header class="top">
+      <a href="#top" aria-label="PlantPilot home"><img src="assets/plantpilot-horizontal-on-dark.svg" alt="PlantPilot" width="180" height="56" /></a>
+      <nav aria-label="Page">
+        <a href="#chain">How it works</a>
+        <a href="#why">Diagnosis</a>
+        <a href="#honest">What is real</a>
+        <a class="code" href="https://github.com/Theoabw/PlantPilot">View the code</a>
+      </nav>
+    </header>
+
+    <main id="top">
+    <div class="hero-grid">
+      <div>
+        <h1>From scan <span>to service.</span></h1>
+        <p class="sub">A 3D scan shows a plant room but knows nothing about it. PlantPilot finds the equipment, plans a robot's route to the faulty pump and opens a cited diagnosis on arrival. All of it runs offline.</p>
+        <div class="actions">
+          <a class="btn" href="#run">Run the demo</a>
+          <a class="btn ghost" href="#chain">See how it works</a>
+        </div>
+      </div>
+
+      <figure class="stage" style="margin:0" aria-label="Animated illustration of the four PlantPilot stages">
+        <div class="canvas-box">
+          <canvas id="scene" aria-hidden="true"></canvas>
+          <p class="note">Illustration, not the capture</p>
+          <button class="pause" id="pause" type="button">Pause</button>
+        </div>
+        <div class="steps" id="steps">
+          <button type="button" data-step="0">Scan<i></i></button>
+          <button type="button" data-step="1">Frame<i></i></button>
+          <button type="button" data-step="2">Route<i></i></button>
+          <button type="button" data-step="3">Diagnose<i></i></button>
+        </div>
+        <figcaption class="readout" id="readout" aria-live="polite"></figcaption>
+      </figure>
+    </div>
+    </main>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="stats" aria-label="Results on the complete Equipment Room capture">
+    <div class="stat"><b>1,676,481</b><span>gaussians read from the Equipment Room capture, none dropped</span></div>
+    <div class="stat"><b>150</b><span>equipment and structure objects framed in 3D, from 272 clusters</span></div>
+    <div class="stat"><b>30 of 30</b><span>builder-pack records proposed onto distinct objects</span></div>
+    <div class="stat"><b>0</b><span>network calls and no model at runtime</span></div>
+  </div>
+</div>
+
+<section id="chain">
+  <div class="wrap">
+    <p class="eyebrow">One chain, one file at a time</p>
+    <h2>Every stage writes something you can open and check.</h2>
+    <p class="lede">The pipeline is plain geometry and joins, so a result can be traced to the file and the rule that produced it.</p>
+    <ol class="chain">
+      <li>
+        <p class="out">scene.npz</p>
+        <div><h3>Read the capture</h3><p>Validates the PLY, keeps the readable gaussians and works out which way is up from the room itself. The first delivered file was truncated, so this stage keeps only the part that can be trusted.</p></div>
+        <p class="fact"><b>502,483 of 1,506,136</b>rows readable in the truncated file, reported rather than guessed</p>
+      </li>
+      <li>
+        <p class="out">objects.json</p>
+        <div><h3>Find the objects</h3><p>Removes the floor, ceiling and walls, then clusters what is left and fits a 3D box to each object. A gate on horizontal planes stops a floor plane slicing a machine in half.</p></div>
+        <p class="fact"><b>100 to 14 percent</b>removed from a machine's cross-section once the gate is on, with the floor still removed at 90 percent</p>
+      </li>
+      <li>
+        <p class="out">mapped.json</p>
+        <div><h3>Propose what they are</h3><p>Assigns the 30 workbook records one-to-one using class and size, behind two hard gates. Every record says <code>proposed</code> or <code>unresolved</code>, and a label the geometry cannot support becomes plain <code>object</code>.</p></div>
+        <p class="fact"><b>25 labels</b>changed to <code>object</code> because no pipework or support backed them up</p>
+      </li>
+      <li>
+        <p class="out">route.json</p>
+        <div><h3>Plan the route</h3><p>Builds a 10 cm occupancy grid from four layers: observed floor, walls, object footprints and overhead structure. A* then plans to a stand-off point beside P-005, so the robot cannot leave the room it actually saw.</p></div>
+        <p class="fact"><b>1.91 m, 0.32 m clear</b>the planned route on the complete capture and its tightest clearance</p>
+      </li>
+      <li>
+        <p class="out">diagnosis.json</p>
+        <div><h3>Explain the fault</h3><p>Joins P-005's state, telemetry, alarms, data-quality cases and documents. Every claim cites an evidence id, and the card ends with the next safe check and the document behind it.</p></div>
+        <p class="fact"><b>5 claims, 3 causes</b>each claim cited, each alternative cause given a verdict from a named threshold</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="why" id="why">
+  <div class="wrap why-grid">
+    <div>
+      <p class="eyebrow">Grounded, not generated</p>
+      <h2>It says why, and what it ruled out.</h2>
+      <p class="lede">The reasoning comes from computed changes in the telemetry and fixed thresholds, not a model. The same pack gives the same answer every time.</p>
+      <div class="feeds" aria-label="Evidence feeding the diagnosis">
+        <span><b>144</b>telemetry rows</span>
+        <span><b>34</b>alarms</span>
+        <span><b>9</b>data-quality cases</span>
+        <span><b>2</b>documents</span>
+      </div>
+    </div>
+    <ul class="verdicts">
+      <li>
+        <span class="tag yes">THE READING</span>
+        <b>Fouling on P-005</b>
+        <p>Health 44 at high urgency. Next safe check: <code>inspect hydraulic path</code>, from <code>DOC-FIELD-SAFETY</code>.</p>
+      </li>
+      <li>
+        <span class="tag no">RULED OUT</span>
+        <b>Suction restriction</b>
+        <p>Weighed as an alternative cause and given a verdict on the card.</p>
+      </li>
+      <li>
+        <span class="tag no">RULED OUT</span>
+        <b>A drifting flow sensor</b>
+        <p>Weighed against the motor current, because a sensor that drifts does not load the motor.</p>
+      </li>
+      <li style="border-bottom:0;padding-bottom:0">
+        <p style="margin:0;font-size:14px">P-005's records are synthetic data from the supplied Valmet builder pack, not measurements of a physical machine.</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section id="honest">
+  <div class="wrap">
+    <p class="eyebrow">The honest part</p>
+    <h2>What is real, what is proposed and what is synthetic.</h2>
+    <p class="lede">The viewer keeps these apart on screen too, so a pack condition never reads as a measurement of the machine it was assigned to.</p>
+    <table class="honest-table">
+      <thead><tr><th scope="col">Part</th><th scope="col">Status</th><th scope="col">What that means</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">The capture</th><td class="real">Real</td><td>A supplied scan. Units are treated as metres, and no door-height scale check was done.</td></tr>
+        <tr><th scope="row">3D frames and route</th><td class="real">Real</td><td>Computed from the capture. 122 smaller clusters fall outside the 150-object cap, which is why the route also uses the floor, wall and overhead layers.</td></tr>
+        <tr><th scope="row">Equipment mapping</th><td class="proposed">Proposed</td><td>A match score, not a calibrated probability. The pack has no measured positions, so P-005 on OBJ-037 is a proposal, not an identification.</td></tr>
+        <tr><th scope="row">Class labels</th><td class="proposed">Proposed</td><td>Geometric proposals. 8 objects are named by multi-view fusion, and SAM 3 text prompts were tried and not used for placing assets.</td></tr>
+        <tr><th scope="row">Telemetry and alarms</th><td class="synthetic">Synthetic</td><td>Supplied synthetic Valmet data, labelled as a scenario in the viewer.</td></tr>
+        <tr><th scope="row">The robot</th><td class="synthetic">Simulated</td><td>A viewer marker following the planned path at 0.5 m/s, not a physics simulation.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="run" id="run">
+  <div class="wrap run-grid">
+    <div>
+      <p class="eyebrow">Run it</p>
+      <h2>One command, on one machine.</h2>
+      <p class="lede">The captures and workbook are supplied separately, so put them in <code>data/supplied/</code> first. The room view needs a browser with WebGL2.</p>
+      <p class="small">Python 3.12+ with uv, Node 20+ with pnpm. Built with three.js, Spark, React and FastAPI.</p>
+    </div>
+    <pre tabindex="0" aria-label="Commands to run the demo"><code><span class="c"># from a fresh clone</span>
+uv sync
+cd app/web &amp;&amp; pnpm install &amp;&amp; cd ../..
+
+<span class="c"># build the artifacts and serve the room view</span>
+make demo
+
+<span class="c"># open http://127.0.0.1:8000</span></code></pre>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>PlantPilot. Built for the Valmet challenge. Numbers are from single runs on the supplied captures.</span>
+    <a href="https://github.com/Theoabw/PlantPilot">Source on GitHub</a>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var canvas = document.getElementById('scene');
+  var ctx = canvas.getContext('2d');
+  var stepsEl = document.getElementById('steps');
+  var buttons = Array.prototype.slice.call(stepsEl.querySelectorAll('button'));
+  var readout = document.getElementById('readout');
+  var pauseBtn = document.getElementById('pause');
+  var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var MINT = '#26d6bc', ROUTE = '#fbbf24', ALERT = '#ff6b5e';
+  var STEP_MS = [4200, 4200, 6000, 6000];
+
+  var STEPS = [
+    { text: 'The capture arrives as a cloud of 1,676,481 gaussians. It looks like a room, but nothing in it has a name, and there is no floor to walk on yet.', tags: [] },
+    { text: 'Planes come out first, then what is left is clustered and boxed. The result is 150 framed objects, each with a class proposal and the reason behind it.', tags: ['150 objects', '272 clusters', '22.0 s'] },
+    { text: 'A 10 cm occupancy grid gives A* the observed floor to plan on. The robot drives to a stand-off point beside P-005, and assets within 2.5 m light up as it passes.', tags: ['4 obstacle layers', '1.91 m route', '0.32 m clearance'] },
+    { text: 'On arrival the card opens with the finding, the evidence behind it and the next safe check.', tags: [{ t: 'FOULING', c: 'bad' }, { t: 'health 44', c: 'bad' }, 'inspect hydraulic path', 'DOC-FIELD-SAFETY', { t: 'synthetic pack data', c: 'syn' }] }
+  ];
+
+  // The scene is drawn for the page. It is not a capture and holds no real data.
+  var BOXES = [
+    { x: 1.0, z: 1.0, w: 2.0, d: 1.6, h: 2.2 },
+    { x: 3.8, z: 0.8, w: 1.4, d: 1.2, h: 1.4 },
+    { x: 5.5, z: 1.0, w: 0.7, d: 0.7, h: 0.7 },
+    { x: 7.2, z: 1.4, w: 1.0, d: 1.0, h: 0.9, target: true },
+    { x: 8.4, z: 3.6, w: 1.0, d: 1.6, h: 1.6 },
+    { x: 3.6, z: 4.2, w: 1.6, d: 1.2, h: 1.1 },
+    { x: 0.8, z: 4.4, w: 1.1, d: 1.0, h: 0.8 },
+    { x: 6.2, z: 5.6, w: 1.4, d: 1.0, h: 1.2 }
+  ];
+  var ROUTE_PTS = [[2.6, 7.5], [2.6, 3.2], [7.7, 3.2], [7.7, 2.75]];
+  var ROOM = { w: 10, d: 8, h: 3 };
+
+  var seed = 20261107;
+  function rnd() {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  }
+
+  var floorPts = [], wallPts = [], objPts = [];
+  function add(list, x, y, z) {
+    list.push({ x: x, y: y, z: z, r: (x + z) / 18 + rnd() * 0.12, s: 0.7 + rnd() * 1.1 });
+  }
+  var i;
+  for (i = 0; i < 4200; i++) add(floorPts, rnd() * ROOM.w, rnd() * 0.03, rnd() * ROOM.d);
+  for (i = 0; i < 1500; i++) add(wallPts, rnd() * ROOM.w, rnd() * ROOM.h, 0);
+  for (i = 0; i < 1100; i++) add(wallPts, 0, rnd() * ROOM.h, rnd() * ROOM.d);
+  for (i = 0; i < 260; i++) add(objPts, 1 + rnd() * 8, 2.45 + rnd() * 0.08, 0.5 + rnd() * 0.08);
+  BOXES.forEach(function (b) {
+    var area = b.w * b.d + 2 * b.h * (b.w + b.d);
+    var n = Math.round(area * 75);
+    for (var k = 0; k < n; k++) {
+      var face = rnd() * area, u = rnd(), v = rnd();
+      if (face < b.w * b.d) add(objPts, b.x + u * b.w, b.h, b.z + v * b.d);
+      else if (face < b.w * b.d + 2 * b.h * b.w) add(objPts, b.x + u * b.w, v * b.h, b.z + (rnd() < 0.5 ? 0 : b.d));
+      else add(objPts, b.x + (rnd() < 0.5 ? 0 : b.w), v * b.h, b.z + u * b.d);
+    }
+  });
+
+  var routeLen = 0, segs = [];
+  for (i = 1; i < ROUTE_PTS.length; i++) {
+    var a = ROUTE_PTS[i - 1], c = ROUTE_PTS[i];
+    var l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    segs.push({ a: a, c: c, l: l, from: routeLen });
+    routeLen += l;
+  }
+  function along(t) {
+    var at = t * routeLen;
+    for (var s = 0; s < segs.length; s++) {
+      if (at <= segs[s].from + segs[s].l || s === segs.length - 1) {
+        var q = (at - segs[s].from) / segs[s].l;
+        return [segs[s].a[0] + (segs[s].c[0] - segs[s].a[0]) * q, segs[s].a[1] + (segs[s].c[1] - segs[s].a[1]) * q];
+      }
+    }
+  }
+
+  var W = 0, H = 0, scale = 1, cx = 0, cy = 0, yaw = 0, cosY = 1, sinY = 0;
+  function resize() {
+    var box = canvas.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = box.width; H = box.height;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    scale = Math.min(W / 13.4, H / 8.6);
+    cx = W / 2;
+    cy = H * 0.5;
+  }
+  function px(x, y, z) {
+    var X = x - ROOM.w / 2, Z = z - ROOM.d / 2;
+    var rx = X * cosY - Z * sinY;
+    var rz = X * sinY + Z * cosY;
+    return [cx + rx * scale, cy + (rz * 0.52 - y * 0.82 + 0.9) * scale];
+  }
+
+  function drawPoints(list, colour, alpha, reveal) {
+    ctx.fillStyle = colour;
+    ctx.globalAlpha = alpha;
+    for (var n = 0; n < list.length; n++) {
+      var p = list[n];
+      if (p.r > reveal) continue;
+      var v = px(p.x, p.y, p.z);
+      ctx.fillRect(v[0], v[1], p.s, p.s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  var EDGES = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+  function drawBox(b, colour, amount, width, fill) {
+    var c = [
+      px(b.x, 0, b.z), px(b.x + b.w, 0, b.z), px(b.x + b.w, 0, b.z + b.d), px(b.x, 0, b.z + b.d),
+      px(b.x, b.h, b.z), px(b.x + b.w, b.h, b.z), px(b.x + b.w, b.h, b.z + b.d), px(b.x, b.h, b.z + b.d)
+    ];
+    if (fill) {
+      ctx.globalAlpha = fill;
+      ctx.fillStyle = colour;
+      ctx.beginPath();
+      ctx.moveTo(c[4][0], c[4][1]); ctx.lineTo(c[5][0], c[5][1]); ctx.lineTo(c[6][0], c[6][1]); ctx.lineTo(c[7][0], c[7][1]);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    var shown = Math.ceil(amount * EDGES.length);
+    for (var e = 0; e < shown; e++) {
+      var from = c[EDGES[e][0]], to = c[EDGES[e][1]];
+      var part = Math.min(1, amount * EDGES.length - e);
+      ctx.moveTo(from[0], from[1]);
+      ctx.lineTo(from[0] + (to[0] - from[0]) * part, from[1] + (to[1] - from[1]) * part);
+    }
+    ctx.stroke();
+  }
+
+  function drawGrid(alpha) {
+    ctx.strokeStyle = '#3f5f70';
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    var g, a1, a2;
+    for (g = 0; g <= ROOM.w; g += 0.5) { a1 = px(g, 0, 0); a2 = px(g, 0, ROOM.d); ctx.moveTo(a1[0], a1[1]); ctx.lineTo(a2[0], a2[1]); }
+    for (g = 0; g <= ROOM.d; g += 0.5) { a1 = px(0, 0, g); a2 = px(ROOM.w, 0, g); ctx.moveTo(a1[0], a1[1]); ctx.lineTo(a2[0], a2[1]); }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRoute(t) {
+    ctx.strokeStyle = ROUTE;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    var s0 = px(ROUTE_PTS[0][0], 0.02, ROUTE_PTS[0][1]);
+    ctx.moveTo(s0[0], s0[1]);
+    var at = t * routeLen;
+    for (var s = 0; s < segs.length; s++) {
+      if (at >= segs[s].from + segs[s].l) {
+        var e = px(segs[s].c[0], 0.02, segs[s].c[1]);
+        ctx.lineTo(e[0], e[1]);
+      } else {
+        var h = along(t), hv = px(h[0], 0.02, h[1]);
+        ctx.lineTo(hv[0], hv[1]);
+        break;
+      }
+    }
+    ctx.stroke();
+  }
+
+  function drawRobot(p, pulse) {
+    var v = px(p[0], 0.02, p[1]);
+    ctx.fillStyle = ROUTE;
+    ctx.beginPath(); ctx.ellipse(v[0], v[1], scale * 0.2, scale * 0.11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#101f2a';
+    ctx.beginPath(); ctx.ellipse(v[0], v[1], scale * 0.08, scale * 0.045, 0, 0, Math.PI * 2); ctx.fill();
+    if (pulse) {
+      ctx.strokeStyle = ROUTE;
+      ctx.globalAlpha = 1 - pulse;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(v[0], v[1], scale * (0.2 + pulse * 0.6), scale * (0.11 + pulse * 0.33), 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function label(b, text) {
+    var v = px(b.x + b.w / 2, b.h, b.z + b.d / 2);
+    ctx.font = '700 ' + Math.max(12, scale * 0.3) + 'px ui-monospace, Consolas, Menlo, monospace';
+    var w = ctx.measureText(text).width + 12, h = Math.max(20, scale * 0.46);
+    var x = v[0] - w / 2, y = v[1] - h - 8;
+    ctx.fillStyle = ALERT;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill();
+    ctx.fillStyle = '#101f2a';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, v[0], y + h / 2 + 1);
+  }
+
+  function draw(step, p, now) {
+    ctx.clearRect(0, 0, W, H);
+    yaw = calm ? -0.22 : -0.22 + Math.sin(now / 5200) * 0.1;
+    cosY = Math.cos(yaw); sinY = Math.sin(yaw);
+
+    var planes = step === 0 ? 0.75 : Math.max(0.16, 0.75 - (step === 1 ? p * 2 : 1) * 0.59);
+    var reveal = step === 0 ? p * 1.35 : 2;
+    if (step >= 2) drawGrid(step === 2 ? Math.min(0.55, p * 3) : 0.55);
+    drawPoints(wallPts, '#7f9cac', planes * 0.75, reveal);
+    drawPoints(floorPts, '#7f9cac', planes * 0.8, reveal);
+    drawPoints(objPts, '#dbe6ea', step === 0 ? 0.85 : 0.5, reveal);
+
+    if (step >= 1) {
+      var amount = step === 1 ? Math.min(1, p * 1.5) : 1;
+      var robot = step === 2 ? along(Math.min(1, p / 0.85)) : step === 3 ? ROUTE_PTS[ROUTE_PTS.length - 1] : null;
+      BOXES.forEach(function (b) {
+        var near = false;
+        if (robot) near = Math.hypot(b.x + b.w / 2 - robot[0], b.z + b.d / 2 - robot[1]) < 2.5;
+        if (b.target && step >= 2) drawBox(b, ALERT, 1, 2.2, near ? 0.32 : 0.14);
+        else drawBox(b, MINT, amount, near ? 2.2 : 1.2, near ? 0.26 : 0);
+      });
+      if (step >= 2) {
+        drawRoute(step === 2 ? Math.min(1, p / 0.85) : 1);
+        drawRobot(robot, step === 3 && !calm ? (now % 1800) / 1800 : 0);
+        label(BOXES[3], 'P-005');
+      }
+    }
+  }
+
+  function setReadout(step) {
+    var s = STEPS[step];
+    var html = '<p>' + s.text + '</p>';
+    if (s.tags.length) {
+      html += '<div class="tags">' + s.tags.map(function (t) {
+        return typeof t === 'string' ? '<span>' + t + '</span>' : '<span class="' + t.c + '">' + t.t + '</span>';
+      }).join('') + '</div>';
+    }
+    readout.innerHTML = html;
+    buttons.forEach(function (b, n) {
+      if (n === step) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+      b.querySelector('i').style.width = '0';
+    });
+  }
+
+  var step = 0, started = 0, running = !calm, visible = true, frame = 0, heldP = 1;
+  function tick(now) {
+    frame = 0;
+    if (!started) started = now;
+    var p = heldP;
+    if (running) {
+      p = (now - started) / STEP_MS[step];
+      if (p >= 1) {
+        step = (step + 1) % STEPS.length;
+        started = now;
+        p = 0;
+        setReadout(step);
+      }
+      buttons[step].querySelector('i').style.width = (p * 100) + '%';
+      heldP = p;
+    }
+    draw(step, p, now);
+    schedule();
+  }
+  function schedule() {
+    if (frame || !visible || document.hidden || calm) return;
+    frame = requestAnimationFrame(tick);
+  }
+  function setRunning(next) {
+    running = next;
+    pauseBtn.textContent = next ? 'Pause' : 'Play';
+    if (next) started = performance.now() - heldP * STEP_MS[step];
+  }
+
+  buttons.forEach(function (b, n) {
+    b.addEventListener('click', function () {
+      step = n;
+      heldP = 1;
+      if (running) setRunning(false);
+      setReadout(step);
+      draw(step, heldP, performance.now());
+      schedule();
+    });
+  });
+  pauseBtn.addEventListener('click', function () {
+    if (running) { setRunning(false); return; }
+    if (heldP >= 1) heldP = 0;
+    setRunning(true);
+    schedule();
+  });
+  if (calm) {
+    pauseBtn.hidden = true;
+    step = 3;
+  }
+
+  window.addEventListener('resize', function () { resize(); draw(step, heldP, performance.now()); });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) { if (running) started = performance.now() - heldP * STEP_MS[step]; schedule(); }
+  });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+      if (visible) { if (running) started = performance.now() - heldP * STEP_MS[step]; schedule(); }
+    }).observe(canvas);
+  }
+
+  resize();
+  setReadout(step);
+  draw(step, calm ? 1 : 0, 0);
+  schedule();
+})();
+</script>
+</body>
+</html>

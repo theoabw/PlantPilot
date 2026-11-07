@@ -159,6 +159,7 @@ explanation in its message: what was wrong, why, and how the test catches it.
 | `scripts/` | the demo builds (splat asset, route, anchors, object splats, meshes, filter channels) and the submission check |
 | `fixtures/` | committed and small: the reviewed scene anchors |
 | `docs/` | plan, roadmap, features, acceptance, video script, submission copy |
+| `site/` | the static project homepage, one page with no build step and no external requests |
 | `.github/workflows/ci.yml` | the checks a pull request must pass |
 
 ## When in doubt
