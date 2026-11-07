@@ -131,6 +131,9 @@ export default function RoomLab() {
   const [boxedSplatsOnly, setBoxedSplatsOnly] = useState(false)
   const [showMappedFrames, setShowMappedFrames] = useState(false)
   const [showOccupancy, setShowOccupancy] = useState(false)
+  // The depth pass redraws half the splats each frame, the price of hiding the
+  // robot and route behind the room. ?occlusion=off starts without it.
+  const [occlusion, setOcclusion] = useState(() => new URLSearchParams(window.location.search).get('occlusion') !== 'off')
   const [devMode, setDevMode] = useState(false)
   const [showRawDetections, setShowRawDetections] = useState(false)
   const [layersOpen, setLayersOpen] = useState(false)
@@ -885,6 +888,7 @@ export default function RoomLab() {
             filterBoxes={reviewed}
             objectMode={view === 'objects'}
             hideSplat={view === 'objects'}
+            occlusion={occlusion}
             explode={explode}
             objectAssets={objectAssets}
             mappedFrames={mappedFrames}
@@ -1110,6 +1114,15 @@ export default function RoomLab() {
                 >
                   Reset view
                 </button>
+                <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+                  Realistic occlusion (slower)
+                  <input
+                    type="checkbox"
+                    checked={occlusion}
+                    onChange={(event) => setOcclusion(event.target.checked)}
+                    className="accent-brand-mint"
+                  />
+                </label>
                 <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800">
                   Developer mode
                   <input

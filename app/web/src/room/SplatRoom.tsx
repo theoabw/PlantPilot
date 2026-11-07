@@ -6,6 +6,7 @@ import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { stableHalfDepthShader } from './depthSplatShader'
+import { nextRenderScale } from './renderScale'
 import { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, visiblePick } from './pickObject'
 import { heightSplatFilter } from './heightSplatFilter'
 import { topDownPose } from './topDownPose'
@@ -78,6 +79,7 @@ type Props = {
   filterBoxes: RoomObject[]
   objectMode: boolean
   hideSplat: boolean
+  occlusion: boolean
   explode: number
   objectAssets: { id: string; label: string; url: string; kind: 'splat' | 'mesh' }[]
   mappedFrames: { id: string; tag: string; state: string; centre: [number, number, number]; axes: [number, number, number][]; extents: [number, number, number] }[]
@@ -605,7 +607,12 @@ function buildRobotBody(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+// The view counts as still once nothing has drawn for this long, and the frame
+// time is averaged over this window before the moving resolution changes.
+const SHARPEN_AFTER_MS = 400
+const SCALE_WINDOW_MS = 400
+
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -753,10 +760,14 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     // The splat pass is fill bound, and a 2x ratio on a large canvas is four
     // times the fragments of 1x. Cap it by canvas area rather than globally.
+    // While the view moves, a slow GPU draws fewer pixels (see nextRenderScale);
+    // the still image always goes back to the full ratio.
+    let movingScale = 1
+    let drawnSharp = true
     const clampPixelRatio = () => {
       const pixels = host.clientWidth * host.clientHeight * window.devicePixelRatio ** 2
       const cap = pixels > 3_000_000 ? 1.25 : 1.75
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap))
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap) * (drawnSharp ? 1 : movingScale))
     }
     clampPixelRatio()
     renderer.setSize(host.clientWidth, host.clientHeight)
@@ -768,6 +779,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     camera.position.set(4, 1.6, 4)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
+    // The default tail sends tiny changes for seconds after a drag, and each one
+    // redraws every splat and delays the sharp still image.
+    controls.dampingFactor = 0.15
     controls.minDistance = 0.4
     controls.maxDistance = 80
     controls.maxPolarAngle = ORBIT_MAX_POLAR_RAD
@@ -803,11 +817,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         renderer,
         // Performance knobs. The defaults grow splats to a 512 px radius and
         // re-sort every frame; the capture's metre-wide gaussians are the main
-        // source of overdraw, and 20 sorts a second still reads as smooth.
+        // source of overdraw. Each sort makes the main thread wait for the GPU to
+        // read distances back, and 6 sorts a second still reads as smooth.
         maxStdDev: Math.sqrt(4),
         maxPixelRadius: 192,
         minAlpha: 0.01,
-        minSortIntervalMs: 50,
+        minSortIntervalMs: 150,
         // The colour pass is unchanged painter's order: no depth test, no depth
         // write, so the splat image is exactly the one this viewer drew before.
         // Depth for occlusion comes from a second, colourless draw below.
@@ -1628,6 +1643,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     let lastNearby = 0
     let lastNearbyKey = ''
     let lastRenderMs = 0
+    let lastDrawAt = 0
+    let scaleFrames = 0
+    let scaleWindowStart = 0
     let lastPerf = performance.now()
     let frames = 0
     const loop = () => {
@@ -1799,8 +1817,35 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
             }
           }
         }
-        if (needsRender || stateRef.current?.motion.active || now < warmupUntil) {
+        const drawing = needsRender || stateRef.current?.motion.active || now < warmupUntil
+        if (!drawing && !drawnSharp && now - lastDrawAt > SHARPEN_AFTER_MS) {
+          drawnSharp = true
+          needsRender = true
+          clampPixelRatio()
+        }
+        if (drawing || needsRender) {
           needsRender = false
+          // A draw soon after the last one means the view is moving.
+          if (drawing && now - lastDrawAt < SHARPEN_AFTER_MS) {
+            scaleFrames += 1
+            if (drawnSharp) {
+              drawnSharp = false
+              clampPixelRatio()
+            }
+            if (scaleFrames >= 2 && now - scaleWindowStart >= SCALE_WINDOW_MS) {
+              const scale = nextRenderScale(movingScale, (now - scaleWindowStart) / scaleFrames)
+              if (scale !== movingScale) {
+                movingScale = scale
+                clampPixelRatio()
+              }
+              scaleFrames = 0
+              scaleWindowStart = now
+            }
+          } else {
+            scaleFrames = 0
+            scaleWindowStart = now
+          }
+          lastDrawAt = now
           const start = perfEnabled ? performance.now() : 0
           renderer.render(scene, camera)
           if (perfEnabled) {
@@ -2267,10 +2312,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       state.splat.visible = !hideSplat
     }
     if (state.depthSplats) {
-      state.depthSplats.visible = !hideSplat
+      state.depthSplats.visible = !hideSplat && occlusion
     }
     renderRef.current()
-  }, [hideSplat, filterUrl])
+  }, [hideSplat, filterUrl, occlusion])
 
   // The area the planner understands: every blocked cell of the occupancy grid,
   // drawn as a faint tile on the floor.
