@@ -170,6 +170,7 @@ export default function RoomLab() {
   const [resetToken, setResetToken] = useState(0)
   const [characterResetToken, setCharacterResetToken] = useState(0)
   const [arrivalDismissed, setArrivalDismissed] = useState(false)
+  const [robotDeployed, setRobotDeployed] = useState(false)
   const robotPositionRef = useRef<[number, number] | null>(null)
   const motionPausedRef = useRef(false)
   const planRequestRef = useRef(0)
@@ -245,6 +246,14 @@ export default function RoomLab() {
       alive = false
     }
   }, [trip.mode, diagnosis, destinationTag, mapped])
+
+  // A replan reports an idle trip, and that must not take away a robot that has
+  // already driven: it is standing in the room until someone resets it.
+  useEffect(() => {
+    if (trip.mode === 'moving') {
+      setRobotDeployed(true)
+    }
+  }, [trip.mode])
 
   // A camera pose in the URL pins the view, for comparing two builds from the
   // same viewpoint. Coordinates are in the capture's own frame, like the object
@@ -847,7 +856,7 @@ export default function RoomLab() {
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}
-            showRobot={manualControl || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
+            showRobot={manualControl || robotDeployed || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
             crouchSpans={crouchSpans}
             focusTarget={focusTarget}
             focusToken={focusToken}
@@ -1652,6 +1661,7 @@ export default function RoomLab() {
             onClick={() => {
               setResetToken((value) => value + 1)
               setCharacterResetToken((value) => value + 1)
+              setRobotDeployed(false)
               setTrip({ mode: 'idle', travelled: 0, total: 0 })
               setFollow(false)
               setCameraMove(false)
