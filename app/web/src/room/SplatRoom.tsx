@@ -1270,22 +1270,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         && nearestStructure(desired) > 0.25
         && (state.followOffsetFromUser || hasSight(focus, desired))
       ) {
-        const previous = state.followOffsetFromUser || !state.stickyCamera
-          ? null
-          : focus.clone().add(state.stickyCamera)
-        if (
-          previous
-          && previous.distanceTo(desired) > 0.3
-          && previous.y <= maxY + 0.01
-          && cameraFree(previous, 0.1)
-          && hasSight(focus, previous)
-        ) {
-          const previousScore = nearestStructure(previous)
-          const desiredScore = nearestStructure(desired)
-          if (previousScore >= desiredScore - 0.2) {
-            return previous
-          }
-        }
         state.stickyCamera = desired.clone().sub(focus)
         return desired
       }
@@ -3316,6 +3300,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         stateRef.current.smoothedCamera = null
         stateRef.current.followOffset = null
         stateRef.current.followOffsetFromUser = false
+        stateRef.current.stickyCamera = null
         stateRef.current.orbitPointerActive = false
       }
     }
