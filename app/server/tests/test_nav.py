@@ -170,6 +170,19 @@ def test_compute_path_proximity_samples():
     assert first_nearby != last_nearby
 
 
+def test_compute_path_proximity_accepts_zero_length_path():
+    samples = nav.compute_path_proximity(
+        [[1.0, 0.05, 1.0]],
+        [{"id": "OBJ-001", "center": [1.2, 0.5, 1.2], "class_proposal": "pump"}],
+        radius_m=2.5,
+        step_m=1.0,
+    )
+
+    assert len(samples) == 1
+    assert samples[0]["distance_along_path_m"] == 0.0
+    assert samples[0]["nearby_objects"][0]["object_id"] == "OBJ-001"
+
+
 def test_build_route_contract(tmp_path):
     out_file = tmp_path / "route.json"
     route = nav.build_route(output_path=out_file)
