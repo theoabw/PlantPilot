@@ -142,7 +142,15 @@ the `scene lab` button.
   layer, `GET /api/scene/objects` serves the raw extraction and
   `GET /api/scene/mapped` serves the mapping when `make map` has run. Everything
   is local, so the demo makes no network calls.
-- The room view is a contextual product shell: a minimal header, a mission card
+- The robot is not tied to one destination. Selecting any reviewed equipment and
+pressing Send robot here plans a new route from where the robot is standing to a
+walkable waypoint beside that machine, and the arrival card keeps the robot in
+place, ready for the next leg. The mapped fault target still gets the diagnosis
+card; an arbitrary visit gets a plain arrival card and an invitation to choose
+the next machine. The follow camera keeps its framing at arrival instead of
+cutting to a new view.
+
+The room view is a contextual product shell: a minimal header, a mission card
   with one primary action, an equipment browser on demand, an object card on
   selection, a layers menu for the derived channels, and a developer drawer for
   raw detections, confidence, occupancy and builder diagnostics. Only the

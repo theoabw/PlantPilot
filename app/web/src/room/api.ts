@@ -91,6 +91,8 @@ export type RoomRoute = {
   floor_height_m: number
   up_axis: string
   active_blockers?: number[][]
+  planned_height_m?: number
+  crouch_spans_m?: [number, number][]
   camera_grid?: {
     x0: number
     z0: number
@@ -382,11 +384,19 @@ export async function fetchReroute(
   start: [number, number] | null,
   agentRadiusM = 0.2,
   agentHeightM = 0.55,
+  options: { target?: [number, number] | null; standingHeightM?: number | null } = {},
 ): Promise<RoomRoute> {
   const response = await fetch('/api/scene/reroute', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ blockers, start, agent_radius_m: agentRadiusM, agent_height_m: agentHeightM }),
+    body: JSON.stringify({
+      blockers,
+      start,
+      agent_radius_m: agentRadiusM,
+      agent_height_m: agentHeightM,
+      target: options.target ?? null,
+      standing_height_m: options.standingHeightM ?? null,
+    }),
   })
   if (!response.ok) {
     throw new Error(`/api/scene/reroute answered ${response.status}`)

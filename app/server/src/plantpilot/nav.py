@@ -824,6 +824,8 @@ def build_route(
     agent_height_m: float = ROBOT_HEIGHT_M,
     blockers: list[list[float]] | None = None,
     start_override: tuple[float, float] | None = None,
+    goal_override: tuple[float, float] | None = None,
+    standing_height_m: float | None = None,
 ) -> dict[str, Any]:
     """End-to-end execution for Seat B: produces route.json matching Acceptance Checks 4 & 5.
 
@@ -995,6 +997,14 @@ def build_route(
                 f"{agent_radius_m:g} m clearance"
             )
 
+    if goal_override is not None:
+        # A destination is an object centre, so it usually lands inside that
+        # object's inflated footprint. Snap outward up to 2.5 m to the nearest
+        # free cell, which becomes the inspection waypoint for the visit.
+        goal_2d = _nearest_free(
+            grid, (float(goal_override[0]), float(goal_override[1])), radius_cells=25
+        )
+
     # Compute A* path
     plan_result = astar(grid, start_2d, goal_2d)
     if start_problem:
@@ -1020,6 +1030,90 @@ def build_route(
         step_m=PROXIMITY_STEP_M,
     )
 
+    # When the route was planned crouched, work out which stretches actually
+    # need it. A second grid at standing height is built and the path is checked
+    # against it, so the viewer can crouch only under the low structure instead
+    # of walking folded for the whole route.
+    crouch_spans: list[list[float]] = []
+    if (
+        standing_height_m is not None
+        and float(standing_height_m) > float(agent_height_m) + 0.01
+        and len(path_3d) >= 2
+    ):
+        standing_grid = Grid.from_cloud(
+            points=points,
+            floor_y=floor_y,
+            up_axis=up_axis,
+            up_axis_sign=up_axis_sign,
+            agent_radius_m=agent_radius_m,
+            objects=objects,
+            walkable_height_max_m=max(
+                OBSTACLE_MIN_HEIGHT_M,
+                min(float(standing_height_m), float(walkable_ceiling_m)),
+            ),
+            safety_margin_m=ROUTE_SAFETY_MARGIN_M,
+        )
+        if blockers:
+            standing_grid = standing_grid.with_blockers(blockers)
+        distances = [0.0]
+        for index in range(1, len(path_3d)):
+            previous = path_3d[index - 1]
+            current = path_3d[index]
+            distances.append(
+                distances[-1]
+                + float(np.hypot(current[0] - previous[0], current[2] - previous[2]))
+            )
+        # Route vertices are metres apart, so sampling only the vertices misses
+        # the obstacle between them. Walk every segment at 10 cm.
+        needed: list[tuple[float, float]] = []
+        open_start: float | None = None
+        travelled = 0.0
+        for index in range(1, len(path_3d)):
+            previous = path_3d[index - 1]
+            current = path_3d[index]
+            segment = max(
+                0.001,
+                float(
+                    np.hypot(current[0] - previous[0], current[2] - previous[2])
+                    if up_axis == 1
+                    else np.hypot(current[0] - previous[0], current[1] - previous[1])
+                ),
+            )
+            steps = max(1, int(np.ceil(segment / 0.1)))
+            for step in range(steps + (1 if index == len(path_3d) - 1 else 0)):
+                ratio = min(1.0, step / steps)
+                at = travelled + segment * ratio
+                if up_axis == 1:
+                    cell = standing_grid.to_cell(
+                        (
+                            float(previous[0]) + (float(current[0]) - float(previous[0])) * ratio,
+                            float(previous[2]) + (float(current[2]) - float(previous[2])) * ratio,
+                        )
+                    )
+                else:
+                    cell = standing_grid.to_cell(
+                        (
+                            float(previous[0]) + (float(current[0]) - float(previous[0])) * ratio,
+                            float(previous[1]) + (float(current[1]) - float(previous[1])) * ratio,
+                        )
+                    )
+                blocked_here = not standing_grid.walkable(*cell)
+                if blocked_here and open_start is None:
+                    open_start = max(0.0, at - 0.2)
+                elif not blocked_here and open_start is not None:
+                    needed.append((open_start, at))
+                    open_start = None
+            travelled += segment
+        if open_start is not None:
+            needed.append((open_start, travelled))
+        merged: list[list[float]] = []
+        for start_m, end_m in needed:
+            if merged and start_m - merged[-1][1] < 0.6:
+                merged[-1][1] = end_m
+            else:
+                merged.append([round(start_m, 2), round(end_m, 2)])
+        crouch_spans = merged
+
     free_count = int(np.sum(grid.free == 1))
     blocked_count = int(np.sum(grid.blocked == 1))
     total_cells = max(1, grid.rows * grid.cols)
@@ -1032,6 +1126,8 @@ def build_route(
         "target_asset_id": target_asset_id,
         "target_object_id": target_box.get("id") if target_box else None,
         "target_waypoint": [round(goal_2d[0], 3), y_render, round(goal_2d[1], 3)],
+        "planned_height_m": round(float(agent_height_m), 3),
+        "crouch_spans_m": crouch_spans,
         "reachable": plan_result["reachable"],
         "reason": plan_result.get("reason"),
         "distance_m": plan_result.get("distance_m", 0.0),

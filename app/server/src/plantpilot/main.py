@@ -384,6 +384,8 @@ class RerouteRequest(BaseModel):
     start: list[float] | None = None
     agent_radius_m: float = 0.20
     agent_height_m: float = 0.55
+    standing_height_m: float | None = None
+    target: list[float] | None = None
 
 
 @app.post("/api/scene/reroute", responses=_ARTIFACT_RESPONSES)
@@ -404,6 +406,14 @@ def scene_reroute(payload: RerouteRequest) -> dict:
         start_override=start,
         agent_radius_m=float(payload.agent_radius_m),
         agent_height_m=float(payload.agent_height_m),
+        standing_height_m=(
+            float(payload.standing_height_m) if payload.standing_height_m is not None else None
+        ),
+        goal_override=(
+            (float(payload.target[0]), float(payload.target[1]))
+            if payload.target and len(payload.target) >= 2
+            else None
+        ),
     )
 
 
