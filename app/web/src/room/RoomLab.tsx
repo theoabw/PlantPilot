@@ -1373,7 +1373,9 @@ export default function RoomLab() {
             <button
               type="button"
               onClick={() => setFocusToken((value) => value + 1)}
-              className="flex-1 rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-200 hover:border-slate-400"
+              disabled={firstPerson}
+              title={firstPerson ? 'Switch to third person to focus the camera' : undefined}
+              className="flex-1 rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-200 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Focus
             </button>

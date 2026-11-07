@@ -1040,6 +1040,7 @@ export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syn
     }
     const onPointerDown = (event: PointerEvent) => {
       const current = stateRef.current
+      pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, dragged: false }
       if (current?.manualControl && current.firstPerson) {
         current.pointerLookActive = true
         current.lastPointerX = event.clientX
@@ -1048,7 +1049,6 @@ export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syn
         event.preventDefault()
         return
       }
-      pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, dragged: false }
     }
     const onPointerCancel = () => {
       pressed = null
@@ -2540,7 +2540,7 @@ export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syn
   // Focus tween: ease the camera to a selected object in the loop.
   useEffect(() => {
     const state = stateRef.current
-    if (!state || !focusTarget || state.follow) {
+    if (!state || !focusTarget || state.follow || firstPerson) {
       return
     }
     const centre = new THREE.Vector3(...focusTarget.centre).applyQuaternion(state.world.quaternion)
@@ -3370,6 +3370,9 @@ export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syn
     state.manualControl = manualControl
     state.firstPerson = firstPerson
     state.pointerLookActive = false
+    if (firstPerson) {
+      state.focusTween = null
+    }
     state.movementKeys.clear()
     if (manualControl) {
       state.motion.active = false
