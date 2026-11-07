@@ -375,8 +375,24 @@ Each anchor: `id` (`AN-` plus the proposal id suffix), `asset_id`, `class`,
 `label`, `reviewed`, `verdict` (A or B from the audit), `note`, `centre`,
 `axes`, `extents`, `points` and the `source_object_ids` it came from. Labels are
 deliberately generic where the geometry cannot prove a machine class
-(`equipment`, `red painted equipment`), because the audit found the shape rules
-were being used as class rules.
+(`equipment`, `equipment cluster`), because the audit found the shape rules were
+being used as class rules.
+
+The seven anchors also separate observation from inference. Each carries
+`observed_type` (what the reviewed box visibly contains), `inferred_function`
+(what it is probably used for), `category`, `classification_confidence` and the
+`evidence` sentence behind the call. The Equipment card shows the observation
+first, then the likely use marked with its confidence, then the evidence. The
+builder pack record, where one exists, is shown separately as a pack record and
+its condition is labelled as the pack's condition rather than as the scene's.
+
+This is deliberately not an open-vocabulary naming pass. The red Reflex
+expansion vessels and the Grundfos pump station visible in the source video are
+not enclosed by reviewed anchors, and brand text on a tank is not proof that a
+particular reviewed box is that tank. Labels only claim what the box itself
+shows: a front-load drum appliance, a vertical vessel, a pump-and-motor body, a
+pipe run, a door or cabinet, and an unidentified floor cluster. Inferred
+functions stay unconfirmed in the UI.
 
 ## Object meshes
 
