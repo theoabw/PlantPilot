@@ -91,6 +91,16 @@ export type RoomRoute = {
   floor_height_m: number
   up_axis: string
   active_blockers?: number[][]
+  grid_stats?: {
+    cols?: number
+    rows?: number
+    resolution_m?: number
+    blocked_fraction?: number
+    blocked_cells?: number
+    structural_blocked_cells?: number
+    object_blocked_cells?: number
+    obstacles_from?: string
+  }
   grid?: {
     x0: number
     z0: number
