@@ -18,6 +18,11 @@ type Motion = {
   total: number
   points: THREE.Vector3[]
   cumulative: number[]
+  curve: THREE.CatmullRomCurve3 | null
+  heading: number | null
+  arrow: THREE.InstancedMesh | null
+  arrowOffset: number
+  arrowSpacing: number
   robot: THREE.Group | null
   reached: boolean
 }
@@ -130,6 +135,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     meshGroups: Map<string, { group: THREE.Group; index: number }>
     obstacleGroup: THREE.Group
     occupancy: THREE.InstancedMesh | null
+    placeRobotAt: ((dt: number) => void) | null
+    updateArrows: (() => void) | null
     boxGroup: THREE.Group
     pickGroup: THREE.Group
     boxes: BoxView[]
@@ -345,44 +352,80 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
 
     const up = new THREE.Vector3(0, 1, 0)
     const robotForward = new THREE.Vector3()
-    const placeRobot = () => {
+    const smoothFactor = (rate: number, dt: number) => 1 - Math.exp(-rate * dt)
+    const updateArrowTrail = () => {
       const motion = stateRef.current?.motion
-      if (!motion || !motion.robot || motion.points.length < 2) {
+      if (!motion?.curve || !motion.arrow) {
         return
       }
-      let travelled = motion.travelled
-      let index = 0
-      while (index < motion.points.length - 2 && travelled > motion.cumulative[index + 1] - motion.cumulative[index]) {
-        travelled -= motion.cumulative[index + 1] - motion.cumulative[index]
-        index += 1
+      const count = motion.arrow.count
+      const total = Math.max(0.01, motion.total)
+      const tangent = new THREE.Vector3()
+      const position = new THREE.Vector3()
+      const quaternion = new THREE.Quaternion()
+      const forward = new THREE.Vector3(0, 0, -1)
+      const matrix = new THREE.Matrix4()
+      const scale = new THREE.Vector3(0.62, 0.62, 0.62)
+      for (let index = 0; index < count; index += 1) {
+        const distance = (motion.arrowOffset + 0.3 + index * motion.arrowSpacing) % total
+        const t = Math.min(0.999, Math.max(0.001, distance / total))
+        motion.curve.getPointAt(t, position)
+        motion.curve.getTangentAt(t, tangent)
+        tangent.y = 0
+        if (tangent.lengthSq() < 1e-6) {
+          tangent.set(0, 0, -1)
+        }
+        tangent.normalize()
+        quaternion.setFromUnitVectors(forward, tangent)
+        position.y += 0.02
+        matrix.compose(position, quaternion, scale)
+        motion.arrow.setMatrixAt(index, matrix)
       }
-      const start = motion.points[index]
-      const end = motion.points[index + 1] ?? start
-      const length = Math.max(0.0001, start.distanceTo(end))
-      const ratio = Math.max(0, Math.min(1, travelled / length))
-      motion.robot.position.copy(start).lerp(end, ratio)
-      const direction = end.clone().sub(start)
-      if (direction.lengthSq() > 1e-6) {
-        motion.robot.rotation.y = Math.atan2(direction.x, direction.z)
-      }
+      motion.arrow.instanceMatrix.needsUpdate = true
     }
-    const updateFollow = () => {
+    const placeRobot = (dt: number) => {
+      const motion = stateRef.current?.motion
+      if (!motion || !motion.robot || !motion.curve) {
+        return
+      }
+      const t = Math.max(0, Math.min(1, motion.total > 0 ? motion.travelled / motion.total : 0))
+      const position = motion.curve.getPointAt(t)
+      const tangent = motion.curve.getTangentAt(t)
+      motion.robot.position.copy(position)
+      const targetHeading = Math.atan2(tangent.x, tangent.z)
+      if (motion.heading === null) {
+        motion.heading = targetHeading
+      } else {
+        let delta = targetHeading - motion.heading
+        while (delta > Math.PI) delta -= Math.PI * 2
+        while (delta < -Math.PI) delta += Math.PI * 2
+        motion.heading += delta * smoothFactor(9, Math.max(dt, 0.001))
+      }
+      motion.robot.rotation.y = motion.heading
+    }
+    const updateFollow = (dt: number) => {
       const robot = stateRef.current?.motion.robot
       if (!robot) {
         return
       }
-      robotForward.set(0, 0, 1).applyAxisAngle(up, robot.rotation.y)
-      camera.position.copy(robot.position).addScaledVector(robotForward, -2.6).add(new THREE.Vector3(0, 1.4, 0))
-      controls.target.copy(robot.position).add(new THREE.Vector3(0, 0.45, 0))
+      const heading = stateRef.current?.motion.heading ?? robot.rotation.y
+      robotForward.set(0, 0, 1).applyAxisAngle(up, heading)
+      const desiredPosition = robot.position.clone().addScaledVector(robotForward, -2.6).add(new THREE.Vector3(0, 1.4, 0))
+      const desiredTarget = robot.position.clone().add(new THREE.Vector3(0, 0.45, 0))
+      const factor = smoothFactor(6, Math.max(dt, 0.001))
+      camera.position.lerp(desiredPosition, factor)
+      controls.target.lerp(desiredTarget, factor)
     }
     const advanceMotion = (dt: number) => {
       const motion = stateRef.current?.motion
-      if (!motion || !motion.active || !motion.robot || motion.points.length < 2) {
+      if (!motion || !motion.active || !motion.robot || !motion.curve) {
         return
       }
       // slow enough to watch the proximity highlights change during the demo
       motion.travelled = Math.min(motion.total, motion.travelled + 0.5 * dt)
-      placeRobot()
+      motion.arrowOffset = (motion.arrowOffset + 0.9 * dt) % Math.max(0.01, motion.total)
+      updateArrowTrail()
+      placeRobot(dt)
       if (motion.travelled >= motion.total) {
         motion.active = false
         // the last placement has to be drawn even though the loop stops
@@ -428,7 +471,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         lastTime = now
         advanceMotion(dt)
         if (stateRef.current?.follow && stateRef.current.motion.robot) {
-          updateFollow()
+          updateFollow(dt)
         }
         const liveState = stateRef.current
         const liveObjects = objectsRef.current
@@ -592,6 +635,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       meshGroups: new Map(),
       obstacleGroup: new THREE.Group(),
       occupancy: null,
+      placeRobotAt: null,
+      updateArrows: null,
       boxGroup,
       pickGroup,
       boxes: [],
@@ -603,6 +648,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         total: 0,
         points: [],
         cumulative: [],
+        curve: null,
+        heading: null,
+        arrow: null,
+        arrowOffset: 0,
+        arrowSpacing: 0.55,
         robot: null,
         reached: false,
       },
@@ -610,6 +660,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       centre: new THREE.Vector3(0, 1, 0),
       radius: 5,
     }
+    stateRef.current.placeRobotAt = placeRobot
+    stateRef.current.updateArrows = updateArrowTrail
 
     return () => {
       cancelAnimationFrame(frame)
@@ -1512,16 +1564,35 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
 
     const points = route.path.map(toWorld)
+    const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5)
+    curve.arcLengthDivisions = 400
+    const totalLength = Math.max(0.01, curve.getLength())
     const cumulative = [0]
     for (let index = 1; index < points.length; index += 1) {
       cumulative.push(cumulative[index - 1] + points[index - 1].distanceTo(points[index]))
     }
 
-    const pathLine = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(points),
-      new THREE.LineBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 0.9 }),
-    )
-    state.routeGroup.add(pathLine)
+    // A moving arrow trail instead of a thin line: flat chevrons spaced along
+    // the smoothed path, scrolling in the direction of travel.
+    const arrowShape = new THREE.Shape()
+    arrowShape.moveTo(0, 0.17)
+    arrowShape.lineTo(-0.11, -0.08)
+    arrowShape.lineTo(0, -0.02)
+    arrowShape.lineTo(0.11, -0.08)
+    arrowShape.closePath()
+    const arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, { depth: 0.012, bevelEnabled: false })
+    arrowGeometry.rotateX(-Math.PI / 2)
+    const arrowMaterial = new THREE.MeshBasicMaterial({
+      color: ROUTE_COLOUR,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+    const arrowCount = Math.max(1, Math.min(300, Math.floor(totalLength / 0.4)))
+    const arrows = new THREE.InstancedMesh(arrowGeometry, arrowMaterial, arrowCount)
+    arrows.renderOrder = 3
+    state.routeGroup.add(arrows)
 
     for (const [point, inner] of [[points[0], 0.16], [points[points.length - 1], 0.22]] as [THREE.Vector3, number][]) {
       const ring = new THREE.Mesh(
@@ -1558,13 +1629,19 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     halo.rotation.x = -Math.PI / 2
     halo.position.y = 0.02
     robot.add(halo)
-    robot.position.copy(points[0])
-    state.routeGroup.add(robot)
-
     motion.points = points
     motion.cumulative = cumulative
-    motion.total = cumulative[cumulative.length - 1]
+    motion.curve = curve
+    motion.total = totalLength
+    motion.heading = null
+    motion.arrow = arrows
+    motion.arrowOffset = 0
+    motion.arrowSpacing = 0.4
+    robot.position.copy(points[0])
+    state.routeGroup.add(robot)
     motion.robot = robot
+    state.placeRobotAt?.(0.016)
+    state.updateArrows?.()
     tripRef.current({ mode: 'idle', travelled: 0, total: motion.total })
     renderRef.current()
   }, [route, floorHeight, upAxis])
@@ -1581,7 +1658,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.active = true
     motion.travelled = 0
     motion.reached = false
-    motion.robot.position.copy(motion.points[0])
+    motion.heading = null
+    motion.arrowOffset = 0
+    if (motion.curve) {
+      motion.robot.position.copy(motion.curve.getPointAt(0))
+    }
     tripRef.current({ mode: 'moving', travelled: 0, total: motion.total })
     renderRef.current()
   }, [tripToken])
