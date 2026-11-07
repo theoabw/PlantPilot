@@ -21,6 +21,11 @@ export type RoomObject = {
   source_object_ids?: string[]
   method?: string
   reviewed?: boolean
+  observed_type?: string
+  inferred_function?: string
+  category?: string
+  classification_confidence?: 'high' | 'medium' | 'low'
+  evidence?: string
 }
 
 export type RoomAnchor = {
@@ -37,6 +42,11 @@ export type RoomAnchor = {
   points: number
   mean_rgb?: number[] | null
   source_object_ids: string[]
+  observed_type?: string
+  inferred_function?: string
+  category?: string
+  classification_confidence?: 'high' | 'medium' | 'low'
+  evidence?: string
 }
 
 export type RoomAnchors = {

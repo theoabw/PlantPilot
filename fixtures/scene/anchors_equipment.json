@@ -3,7 +3,7 @@
   "version": 1,
   "capture": "Equipment Room.ply",
   "reviewed_by": "box audit 2026-11-07",
-  "note": "Seven boxes from the automatic proposal layer that survived a visual audit, with labels corrected to what the box actually contains.",
+  "note": "Seven boxes from the automatic proposal layer that survived a visual audit. Each entry separates the observed object type from an inferred function, with the evidence that supports the label and a confidence level.",
   "anchors": [
     {
       "id": "AN-0238fdab",
@@ -44,13 +44,18 @@
         "OBJ-063",
         "OBJ-066"
       ],
-      "rgb": null
+      "rgb": null,
+      "observed_type": "vertical pipe run",
+      "inferred_function": "process or heating pipework",
+      "category": "piping",
+      "classification_confidence": "high",
+      "evidence": "A long thin red-painted run with elbows stands inside the reviewed box."
     },
     {
       "id": "AN-7b2029e0",
       "asset_id": "AS-7b2029e0",
       "class": "equipment",
-      "label": "red-painted equipment",
+      "label": "red hose and cover on the floor",
       "reviewed": true,
       "verdict": "B",
       "note": "Box around red paint and hose on the floor with some floor included; label kept generic.",
@@ -82,13 +87,18 @@
         0.2927
       ],
       "source_object_ids": [],
-      "rgb": null
+      "rgb": null,
+      "observed_type": "red hose and flexible cover",
+      "inferred_function": "loose floor equipment, not a fixed machine",
+      "category": "other",
+      "classification_confidence": "medium",
+      "evidence": "The reviewed box holds a red coiled hose and cover lying on the floor next to a cart."
     },
     {
       "id": "AN-51c6f8ce",
       "asset_id": "AS-51c6f8ce",
       "class": "motor",
-      "label": "motor assembly",
+      "label": "pump and motor assembly",
       "reviewed": true,
       "verdict": "B",
       "note": "Box holds a motor-sized body with some surroundings; label plausible in the audit.",
@@ -122,13 +132,18 @@
       "source_object_ids": [
         "OBJ-070"
       ],
-      "rgb": null
+      "rgb": null,
+      "observed_type": "pump body with electric motor",
+      "inferred_function": "circulation pump, brand not confirmed",
+      "category": "mechanical",
+      "classification_confidence": "medium",
+      "evidence": "A cylindrical pump body, motor housing and connecting pipework sit inside the reviewed box."
     },
     {
       "id": "AN-b3544c88",
       "asset_id": "AS-b3544c88",
       "class": "cabinet",
-      "label": "red cabinet",
+      "label": "red door or cabinet",
       "reviewed": true,
       "verdict": "A",
       "note": "Tight box on one red rectangular body; the automatic pipework label was wrong.",
@@ -160,13 +175,18 @@
         0.357
       ],
       "source_object_ids": [],
-      "rgb": null
+      "rgb": null,
+      "observed_type": "red rectangular door or cabinet",
+      "inferred_function": "service cabinet or access door, not confirmed",
+      "category": "controls",
+      "classification_confidence": "medium",
+      "evidence": "A red rectangular panel with a hinge line and handle fills the reviewed box."
     },
     {
       "id": "AN-5dbcb330",
       "asset_id": "AS-5dbcb330",
       "class": "equipment",
-      "label": "blue painted equipment",
+      "label": "blue vertical vessel",
       "reviewed": true,
       "verdict": "A",
       "note": "Tight box on one blue body; the audit could not confirm tank versus enclosure.",
@@ -201,13 +221,18 @@
         "OBJ-031",
         "OBJ-034"
       ],
-      "rgb": null
+      "rgb": null,
+      "observed_type": "vertical cylindrical vessel",
+      "inferred_function": "expansion or process vessel, not confirmed",
+      "category": "mechanical",
+      "classification_confidence": "high",
+      "evidence": "A blue vertical cylinder with a domed top sits inside the reviewed box; no readable nameplate faces the capture."
     },
     {
       "id": "AN-2368abf6",
       "asset_id": "AS-2368abf6",
       "class": "equipment",
-      "label": "equipment",
+      "label": "floor-level equipment cluster",
       "reviewed": true,
       "verdict": "A",
       "note": "Tight box on one white machine body; the automatic motor label was wrong.",
@@ -241,13 +266,18 @@
       "source_object_ids": [
         "OBJ-019"
       ],
-      "rgb": null
+      "rgb": null,
+      "observed_type": "unidentified equipment cluster",
+      "inferred_function": "not confirmed",
+      "category": "mechanical",
+      "classification_confidence": "low",
+      "evidence": "The box covers a dense low object beside a red vessel; no single component can be named from the capture."
     },
     {
       "id": "AN-3f29eeb0",
       "asset_id": "AS-3f29eeb0",
       "class": "equipment",
-      "label": "equipment",
+      "label": "washing machine",
       "reviewed": true,
       "verdict": "A",
       "note": "Tight box on one dark machine body; the audit called the motor label unclear.",
@@ -281,7 +311,12 @@
       "source_object_ids": [
         "OBJ-069"
       ],
-      "rgb": null
+      "rgb": null,
+      "observed_type": "front-load drum appliance",
+      "inferred_function": "laundry washing",
+      "category": "appliance",
+      "classification_confidence": "high",
+      "evidence": "A round front-load door, control fascia and plinth are visible inside the reviewed box."
     }
   ]
 }

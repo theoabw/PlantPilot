@@ -233,6 +233,11 @@ export default function RoomLab({ onLeave }: Props) {
       source_object_ids: anchor.source_object_ids,
       method: 'reviewed_anchor',
       reviewed: true,
+      observed_type: anchor.observed_type,
+      inferred_function: anchor.inferred_function,
+      category: anchor.category,
+      classification_confidence: anchor.classification_confidence,
+      evidence: anchor.evidence,
     }))
   }, [anchors])
 
@@ -934,11 +939,10 @@ export default function RoomLab({ onLeave }: Props) {
               >
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-bold text-slate-100">
-                    {mapping?.tag ? `${mapping.tag} · ` : ''}
-                    {humanize(mapping?.class) || record.label || record.class}
+                    {record.label || humanize(record.class)}
                   </span>
                   <span className="block truncate text-[10px] font-semibold text-slate-500">
-                    {mapping ? severityText(mapping) : 'No mapped record'}
+                    {mapping ? `${mapping.tag} · ${severityText(mapping)}` : 'No mapped record'}
                   </span>
                 </span>
                 <span
@@ -963,23 +967,54 @@ export default function RoomLab({ onLeave }: Props) {
                 {selectedMapping?.tag ? `Asset ${selectedMapping.tag}` : 'Reviewed equipment'}
               </p>
               <h2 className="mt-0.5 text-base font-black leading-tight text-white">
-                {humanize(selectedMapping?.class) || selectedObject.label || humanize(selectedObject.class)}
+                {selectedObject.label || humanize(selectedObject.class)}
               </h2>
+              {selectedMapping?.tag ? (
+                <p className="mt-0.5 text-[10px] font-semibold text-slate-500">
+                  Pack record {selectedMapping.tag} · {humanize(selectedMapping.class)}
+                </p>
+              ) : null}
             </div>
             <button type="button" onClick={() => setSelectedId(null)} className="text-xs font-bold text-slate-400 hover:text-white">
               Close
             </button>
           </div>
           <p className="mt-2 text-xs font-semibold" style={{ color: selectedMapping ? STATE_COLOURS[selectedMapping.state] : '#94a3b8' }}>
-            {selectedMapping ? severityText(selectedMapping) : 'No condition data'}
+            {selectedMapping ? `Pack condition: ${severityText(selectedMapping)}` : 'No condition data'}
           </p>
-          <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-300">
-            {selectedObject.reviewed
-              ? selectedObject.class_reason
-              : selectedObject.method === 'mapping_target'
+          {selectedObject.reviewed && selectedObject.observed_type ? (
+            <div className="mt-2 space-y-1">
+              <p className="text-[11px] font-semibold leading-snug text-slate-300">
+                <span className="text-slate-500">Observed:</span> {selectedObject.observed_type}
+                {selectedObject.category ? (
+                  <span className="ml-1 rounded bg-slate-800 px-1 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-400">
+                    {selectedObject.category}
+                  </span>
+                ) : null}
+              </p>
+              {selectedObject.inferred_function ? (
+                <p className="text-[11px] font-semibold leading-snug text-amber-200">
+                  <span className="text-amber-400/70">Likely use:</span> {selectedObject.inferred_function}
+                  {selectedObject.classification_confidence ? (
+                    <span className="ml-1 text-[9px] font-black uppercase tracking-wide text-amber-400/70">
+                      {selectedObject.classification_confidence} confidence
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
+              {selectedObject.evidence ? (
+                <p className="text-[10px] font-semibold leading-snug text-slate-500">{selectedObject.evidence}</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-300">
+              {selectedObject.reviewed
                 ? selectedObject.class_reason
-                : 'Unreviewed proposal from the capture. Treat the frame as a suggestion, not a confirmed object.'}
-          </p>
+                : selectedObject.method === 'mapping_target'
+                  ? selectedObject.class_reason
+                  : 'Unreviewed proposal from the capture. Treat the frame as a suggestion, not a confirmed object.'}
+            </p>
+          )}
           <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
             <div>
               <dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Size</dt>

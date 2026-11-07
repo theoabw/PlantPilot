@@ -52,7 +52,7 @@ Equipment room: 1,676,481 sane and none dropped, `-y` up with the floor slab at 
 
 ## 9. Limits and what we would do next
 
-No scale check has passed: no door-like box was framed, so `units_are_metres` is false and distances are scene units; the 1.95 m clear height means the units are not exact metres. Identities are proposed, never confirmed; classes are geometric heuristics, not learned labels. Open-vocabulary vision models were tried on rendered views but did not reach label quality, so none is imported. The robot is a marker, not physics. No frame rate or browser benchmark was run. Next: a scale check, a labelled class sample, a visibility gate before any vision label enters an artifact, and a viewer benchmark.
+No scale check has passed: no door-like box was framed, so `units_are_metres` is false and distances are scene units; the 1.95 m clear height means the units are not exact metres. Identities are proposed, never confirmed; classes are geometric heuristics, not learned labels. The reviewed anchors add an observed type, an inferred function, a confidence and the evidence sentence behind each label, and the viewer shows them as observation versus likely use rather than as facts. Open-vocabulary vision models were tried on rendered views but did not reach label quality, so none is imported. The robot is a marker, not physics. No frame rate or browser benchmark was run. Next: a scale check, a labelled class sample, a visibility gate before any vision label enters an artifact, and a viewer benchmark.
 
 ## 10. Dependencies and how to run
 
