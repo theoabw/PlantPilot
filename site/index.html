@@ -241,6 +241,59 @@ pre .c { color: #6f8693; }
 .close strong span { color: var(--mint); font-weight: 500; }
 .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; margin-top: clamp(40px, 6vw, 72px); color: var(--muted); font-size: 14px; }
 
+/* Deep dives */
+section.alt { background: var(--ink-2); border-block: 1px solid var(--line); }
+.split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(40px, 6vw, 96px); align-items: center; }
+.split.flip { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+.split > .copy-col { min-width: 0; }
+.points { margin: 34px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.points li { padding: 16px 0; border-bottom: 1px solid var(--line); color: var(--soft); font-size: 16px; line-height: 1.5; }
+.points b { color: #fff; font-weight: 500; }
+@media (max-width: 980px) { .split, .split.flip { grid-template-columns: minmax(0, 1fr); } .split.flip > .copy-col { order: -1; } }
+
+.instances { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line-2); border-radius: 18px; overflow: hidden; background: rgba(255, 255, 255, .02); }
+.instances li { display: grid; grid-template-columns: minmax(0, 1fr) 64px 88px; gap: 12px; align-items: center; padding: 15px 22px; border-top: 1px solid var(--line); }
+.instances li:first-child { border-top: 0; }
+.instances li.head { padding-block: 12px; font: 500 12px/1.3 var(--mono); color: var(--muted); }
+.instances b { font-weight: 500; font-size: 17px; }
+.instances code { color: var(--muted); }
+.instances .views { display: flex; align-items: center; gap: 8px; font: 500 13px/1 var(--mono); color: var(--paper); }
+.instances .views i { display: block; height: 3px; border-radius: 2px; background: var(--mint); }
+.instance-note { margin: 14px 0 0; font-size: 14px; color: var(--muted); }
+@media (max-width: 520px) { .instances li { grid-template-columns: minmax(0, 1fr) 72px; } .instances code { display: none; } }
+
+.demo { border: 1px solid var(--line-2); border-radius: 18px; overflow: hidden; background: #081118; }
+.demo canvas { display: block; width: 100%; }
+#astar { aspect-ratio: 36 / 20; cursor: crosshair; touch-action: manipulation; }
+#occl { aspect-ratio: 16 / 9; }
+.demo-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.demo-read { margin: 0; font: 500 13px/1.5 var(--mono); color: var(--soft); }
+.demo-read .no { color: #ffb4ad; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button {
+  background: none; border: 1px solid var(--line-2); border-radius: 999px; padding: 8px 13px; cursor: pointer;
+  color: var(--soft); font: 500 12.5px/1 var(--mono); transition: color .2s, border-color .2s, background .2s;
+}
+.seg button:hover { color: #fff; border-color: #55707e; }
+.seg button[aria-pressed='true'] { color: #082019; background: var(--mint); border-color: var(--mint); }
+.demo-note { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+
+.proof { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 30px; }
+.proof div { padding: 18px 20px; border: 1px solid var(--line); border-radius: 14px; }
+.proof b { display: block; font-weight: 200; font-size: 38px; line-height: 1.05; letter-spacing: -.03em; }
+.proof span { display: block; margin-top: 8px; font-size: 14px; line-height: 1.4; color: var(--muted); }
+
+.compare { width: 100%; border-collapse: collapse; margin-top: 46px; font-size: 16px; }
+.compare caption { text-align: left; font-weight: 500; font-size: 20px; padding-bottom: 14px; }
+.compare th, .compare td { text-align: left; padding: 13px 18px 13px 0; border-top: 1px solid var(--line); font-weight: 400; }
+.compare thead th { border-top: 0; padding-top: 0; font: 500 12.5px/1.3 var(--mono); color: var(--muted); }
+.compare tbody th { color: var(--muted); }
+.compare td { font-variant-numeric: tabular-nums lining-nums; }
+.tables { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: clamp(32px, 6vw, 88px); align-items: start; }
+.limits { margin: clamp(36px, 5vw, 60px) 0 0; max-width: 54em; color: var(--muted); font-size: 16px; }
+.limits b { color: var(--paper); font-weight: 500; }
+@media (max-width: 900px) { .tables { grid-template-columns: minmax(0, 1fr); } .compare { margin-top: 28px; } }
+
 /* Entrance */
 .js .rise { opacity: 0; transform: translateY(22px); transition: opacity .9s var(--ease), transform .9s var(--ease); }
 .js .rise.in { opacity: 1; transform: none; }
@@ -258,6 +311,8 @@ pre .c { color: #6f8693; }
   <a href="#scan" aria-label="PlantPilot, back to the top"><img src="assets/plantpilot-horizontal-on-dark.svg" alt="PlantPilot" width="154" height="48" /></a>
   <nav aria-label="Page">
     <a href="#chain">How it works</a>
+    <a href="#astar-section">Pathfinding</a>
+    <a href="#occlusion">Occlusion</a>
     <a href="#why">Diagnosis</a>
     <a href="#honest">What is real</a>
     <a class="pill" href="https://github.com/Theoabw/PlantPilot">View the code</a>
@@ -365,6 +420,133 @@ pre .c { color: #6f8693; }
         <p class="fact"><b>5 claims, 3 causes</b> each claim cited, each cause given a verdict from a named threshold</p>
       </li>
     </ol>
+  </div>
+</section>
+
+<section class="block alt" id="extraction">
+  <div class="wrap split">
+    <div class="copy-col rise">
+      <h2>Geometry first. Names only when earned.</h2>
+      <p class="lede">Most of a capture is room, and a wall that stays in the cloud welds everything standing against it into one blob. So extraction starts by taking the room away.</p>
+      <ul class="points">
+        <li><b>Each gaussian knows its surface.</b> The thinnest axis of its ellipsoid is a normal. Removing walls whole cut the largest component from 24 to 3.8 percent of the capture.</li>
+        <li><b>Cuts follow evidence.</b> A cluster that is still too big is split at a measured gap, then at its thinnest neck, and only then by a counted quota.</li>
+        <li><b>A name has to pass a test.</b> A valve needs pipework within half a metre, and a pump needs something under it. Fail, and the label stays <code>object</code> with the reason attached.</li>
+        <li><b>Vision models stay offline.</b> SAM 3 masks from posed views are lifted into 3D through the splat's own depth and fused. A person reviews the result, and it ships as a fixture, so nothing runs at demo time.</li>
+      </ul>
+    </div>
+    <div class="rise">
+      <ul class="instances" aria-label="The eight reviewed objects from multi-view fusion">
+        <li class="head"><span>Reviewed object</span><span class="cls">Class</span><span>Views</span></li>
+        <li><b>Red-painted pipe run</b><code>pipe</code><span class="views">10<i style="width:40px"></i></span></li>
+        <li><b>Washing machine</b><code>machine</code><span class="views">10<i style="width:40px"></i></span></li>
+        <li><b>Blue vertical vessel</b><code>machine</code><span class="views">6<i style="width:24px"></i></span></li>
+        <li><b>Office chair</b><code>seat</code><span class="views">6<i style="width:24px"></i></span></li>
+        <li><b>Red hose and cover</b><code>machine</code><span class="views">4<i style="width:16px"></i></span></li>
+        <li><b>Red door or cabinet</b><code>cabinet</code><span class="views">4<i style="width:16px"></i></span></li>
+        <li><b>Pump and motor assembly</b><code>pump</code><span class="views">3<i style="width:12px"></i></span></li>
+        <li><b>Floor-level equipment cluster</b><code>machine</code><span class="views">2<i style="width:8px"></i></span></li>
+      </ul>
+      <p class="instance-note">From the Equipment Room capture. The fusion recovered the chair, which the box layer had labelled a valve.</p>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="astar-section">
+  <div class="wrap split flip">
+    <div class="rise">
+      <div class="demo">
+        <canvas id="astar" role="img" aria-label="A grid showing A star search spreading from the start to the goal and the route it finds"></canvas>
+        <div class="demo-bar">
+          <p class="demo-read" id="astar-read" aria-live="polite"></p>
+          <div class="seg">
+            <button type="button" id="astar-close">Close the aisle</button>
+            <button type="button" id="astar-reset">Reset</button>
+          </div>
+        </div>
+      </div>
+      <p class="demo-note">Runs in your browser on a made-up floor, with the cost rule from <code>nav.py</code>. Tap the grid to add an obstacle.</p>
+    </div>
+    <div class="copy-col rise">
+      <h2>A* that keeps to the middle of the aisle.</h2>
+      <p class="lede">Shortest is not the same as safest. Every step costs more as it nears an obstacle, so the route gives machines room without being told where the aisles are.</p>
+      <ul class="points">
+        <li><b>The grid comes from the scan.</b> 10 cm cells, with obstacles inflated by the robot's radius and a 2 cm margin. Ground nobody observed is not walkable.</li>
+        <li><b>The search is 8-connected.</b> A diagonal step between two obstacles is refused, so the path never clips a corner.</li>
+        <li><b>The result is honest.</b> A line-of-sight pass straightens the path. When nothing fits, the answer is <code>reachable: false</code> with a reason, and the robot stays put.</li>
+        <li><b>It replans live.</b> Drop an obstacle in the viewer and the route is recomputed from where the robot stands.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="block alt" id="occlusion">
+  <div class="wrap split">
+    <div class="copy-col rise">
+      <h2>The robot goes behind the machine, not over it.</h2>
+      <p class="lede">Splats are blended back to front and write no depth, so anything added to the scene would float on top of the room. PlantPilot draws the capture a second time to get depth from it.</p>
+      <ul class="points">
+        <li><b>A colourless pass goes first.</b> The robot, route and frames then depth-test against the capture like solid objects.</li>
+        <li><b>A high opacity cut keeps it clean.</b> Faint gaussians are not surfaces. Let them write depth and they punch invisible holes in whatever is behind them.</li>
+        <li><b>It costs half a fill.</b> The pass draws every second gaussian, because they overlap so heavily that half still leaves no gap.</li>
+      </ul>
+      <div class="proof">
+        <div><b>52 vs 0%</b><span>anchor silhouette pixels within one pixel: the splat's depth against TIPSv2 with a DPT head</span></div>
+        <div><b>0.137 vs 0.021</b><span>occlusion-boundary F1, same comparison, which is why no depth model was added</span></div>
+      </div>
+    </div>
+    <div class="rise">
+      <div class="demo">
+        <canvas id="occl" role="img" aria-label="A robot passing behind a machine and through a faint haze, drawn three ways"></canvas>
+        <div class="demo-bar">
+          <div class="seg" id="occl-modes">
+            <button type="button" data-mode="0">No depth</button>
+            <button type="button" data-mode="1">Every gaussian</button>
+            <button type="button" data-mode="2" aria-pressed="true">Opacity cut</button>
+          </div>
+          <div class="seg"><button type="button" id="occl-pause">Pause</button></div>
+        </div>
+        <div class="demo-bar" style="border-top:0;padding-top:0"><p class="demo-read" id="occl-read" aria-live="polite"></p></div>
+      </div>
+      <p class="demo-note">Illustration of the three behaviours, not the viewer.</p>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="agnostic">
+  <div class="wrap">
+    <div class="rise">
+      <h2>The room is an input, not a constant.</h2>
+      <p class="lede">Up axis, floor height and voxel size are measured from each capture. The robot is a parameter too, so the same rules give each body its own route, clearance and reachable floor.</p>
+    </div>
+    <div class="tables">
+      <div class="rise" style="overflow-x:auto">
+        <table class="compare">
+          <caption>Two captures, the same pipeline</caption>
+          <thead><tr><th scope="col"></th><th scope="col">Equipment Room</th><th scope="col">Boiler Room</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Gaussians read</th><td>1,676,481</td><td>502,483</td></tr>
+            <tr><th scope="row">Floor found at</th><td>y +1.167</td><td>y +1.069</td></tr>
+            <tr><th scope="row">Objects framed</th><td>150</td><td>122</td></tr>
+            <tr><th scope="row">Records proposed</th><td>30 of 30</td><td>28 of 30</td></tr>
+            <tr><th scope="row">Route</th><td>1.91 m</td><td>1.39 m</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="rise" style="overflow-x:auto">
+        <table class="compare">
+          <caption>Three robots, one planner</caption>
+          <thead><tr><th scope="col"></th><th scope="col">Radius</th><th scope="col">Height</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Compact AMR</th><td>0.20 m</td><td>0.55 m</td></tr>
+            <tr><th scope="row">Cargo AMR</th><td>0.45 m</td><td>0.90 m</td></tr>
+            <tr><th scope="row">Humanoid</th><td>0.18 m</td><td>1.35 m, 0.95 m crouched</td></tr>
+          </tbody>
+        </table>
+        <p class="demo-note">The humanoid crouches only on the stretches of route that need it.</p>
+      </div>
+    </div>
+    <p class="limits rise"><b>Where it stops.</b> Only these two captures are reported, and the boiler file is truncated, so its route ends on the nearest ground it could reach. Distance thresholds are tuned on them, and units are assumed to be metres. The Equipment Room also has its own reviewed boxes and doorway start, both optional. The workbook format belongs to the supplied pack, and the demo target is P-005.</p>
   </div>
 </section>
 
@@ -938,6 +1120,272 @@ make demo</code></pre>
   } else {
     rises.forEach(function (el) { el.classList.add('in'); });
   }
+
+  // ---- A* demo: the cost rule from nav.py on a small, made-up floor ----
+  (function () {
+    var cv = document.getElementById('astar'), c = cv.getContext('2d');
+    var read = document.getElementById('astar-read');
+    var COLS = 36, ROWS = 20, CELL_M = 0.1;
+    var MACHINES = [[4, 2, 6, 5], [14, 1, 4, 4], [22, 2, 5, 4], [30, 6, 4, 7], [13, 10, 7, 4], [3, 11, 4, 4], [23, 14, 6, 3]];
+    var AISLE = [[21, 7, 1, 13]];
+    var START = [2, 18], GOAL = [27, 9];
+    var extra = [], result = null, shown = 0, anim = 0, visible = false, started = false;
+    function key(x, y) { return y * COLS + x; }
+    function build() {
+      var solid = new Uint8Array(COLS * ROWS), blocked = new Uint8Array(COLS * ROWS), x, y;
+      MACHINES.concat(extra).forEach(function (r) {
+        for (y = r[1]; y < r[1] + r[3]; y++) for (x = r[0]; x < r[0] + r[2]; x++) if (x >= 0 && y >= 0 && x < COLS && y < ROWS) solid[key(x, y)] = 1;
+      });
+      for (y = 0; y < ROWS; y++) for (x = 0; x < COLS; x++) {
+        if (!solid[key(x, y)]) continue;
+        for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+          var nx = x + dx, ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < COLS && ny < ROWS) blocked[key(nx, ny)] = 1;
+        }
+      }
+      return { solid: solid, blocked: blocked };
+    }
+    function clearances(blocked) {
+      var out = new Float32Array(COLS * ROWS), walls = [], x, y, i;
+      for (i = 0; i < blocked.length; i++) if (blocked[i]) walls.push([i % COLS, Math.floor(i / COLS)]);
+      for (y = 0; y < ROWS; y++) for (x = 0; x < COLS; x++) {
+        var best = Math.min(x + 1, y + 1, COLS - x, ROWS - y);
+        for (i = 0; i < walls.length; i++) best = Math.min(best, Math.hypot(walls[i][0] - x, walls[i][1] - y));
+        out[key(x, y)] = best * CELL_M;
+      }
+      return out;
+    }
+    function solve() {
+      var map = build(), clear = clearances(map.blocked);
+      var s = key(START[0], START[1]), g = key(GOAL[0], GOAL[1]);
+      var cost = {}, came = {}, seen = {}, open = [{ k: s, f: 0 }], order = [], found = false;
+      cost[s] = 0;
+      if (map.blocked[s] || map.blocked[g]) return { map: map, order: [], path: null };
+      var STEPS = [[-1, 0, 1], [1, 0, 1], [0, -1, 1], [0, 1, 1], [-1, -1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [1, 1, Math.SQRT2]];
+      while (open.length) {
+        var bi = 0;
+        for (var i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
+        var cur = open.splice(bi, 1)[0].k;
+        if (seen[cur]) continue;
+        seen[cur] = 1;
+        order.push(cur);
+        if (cur === g) { found = true; break; }
+        var cx = cur % COLS, cy = Math.floor(cur / COLS);
+        STEPS.forEach(function (st) {
+          var nx = cx + st[0], ny = cy + st[1];
+          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || map.blocked[key(nx, ny)]) return;
+          if (st[0] && st[1] && (map.blocked[key(cx + st[0], cy)] || map.blocked[key(cx, cy + st[1])])) return;
+          var n = key(nx, ny);
+          var next = cost[cur] + st[2] * (1 + 1 / Math.max(clear[n], 0.15));
+          if (cost[n] === undefined || next < cost[n]) {
+            cost[n] = next;
+            came[n] = cur;
+            open.push({ k: n, f: next + Math.hypot(nx - GOAL[0], ny - GOAL[1]) });
+          }
+        });
+      }
+      var path = null;
+      if (found) {
+        path = [g];
+        while (path[path.length - 1] !== s) path.push(came[path[path.length - 1]]);
+        path.reverse();
+      }
+      return { map: map, order: order, path: path };
+    }
+    function size() {
+      var box = cv.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = Math.round(box.width * d); cv.height = Math.round(box.height * d);
+      c.setTransform(d, 0, 0, d, 0, 0);
+      return box;
+    }
+    var box = null;
+    function paint() {
+      if (!result || !box || !box.width) return;
+      var w = box.width / COLS, h = box.height / ROWS, i, k, x, y;
+      c.clearRect(0, 0, box.width, box.height);
+      c.strokeStyle = 'rgba(190,220,230,.05)'; c.lineWidth = 1; c.beginPath();
+      for (x = 1; x < COLS; x++) { c.moveTo(x * w, 0); c.lineTo(x * w, box.height); }
+      for (y = 1; y < ROWS; y++) { c.moveTo(0, y * h); c.lineTo(box.width, y * h); }
+      c.stroke();
+      for (k = 0; k < result.map.blocked.length; k++) {
+        if (!result.map.blocked[k]) continue;
+        c.fillStyle = result.map.solid[k] ? 'rgba(160,190,205,.34)' : 'rgba(160,190,205,.1)';
+        c.fillRect((k % COLS) * w, Math.floor(k / COLS) * h, w, h);
+      }
+      for (i = 0; i < shown && i < result.order.length; i++) {
+        k = result.order[i];
+        c.fillStyle = 'rgba(38,214,188,' + (0.1 + 0.16 * i / result.order.length) + ')';
+        c.fillRect((k % COLS) * w + 0.5, Math.floor(k / COLS) * h + 0.5, w - 1, h - 1);
+      }
+      var done = shown >= result.order.length;
+      if (done && result.path) {
+        c.save();
+        c.strokeStyle = 'rgb(251,191,36)'; c.lineWidth = 2.5; c.lineJoin = 'round';
+        c.shadowColor = 'rgba(251,191,36,.7)'; c.shadowBlur = 10;
+        c.beginPath();
+        result.path.forEach(function (n, j) {
+          var px = (n % COLS + 0.5) * w, py = (Math.floor(n / COLS) + 0.5) * h;
+          if (j) c.lineTo(px, py); else c.moveTo(px, py);
+        });
+        c.stroke();
+        c.restore();
+      }
+      [[START, 'rgb(251,191,36)'], [GOAL, 'rgb(255,107,94)']].forEach(function (m) {
+        c.fillStyle = m[1];
+        c.beginPath(); c.arc((m[0][0] + 0.5) * w, (m[0][1] + 0.5) * h, Math.max(4, w * 0.42), 0, 6.2832); c.fill();
+      });
+      if (done) {
+        if (result.path) {
+          var len = 0;
+          for (i = 1; i < result.path.length; i++) {
+            var a = result.path[i - 1], b = result.path[i];
+            len += Math.hypot(a % COLS - b % COLS, Math.floor(a / COLS) - Math.floor(b / COLS)) * CELL_M;
+          }
+          read.textContent = result.order.length + ' cells searched, ' + len.toFixed(2) + ' m route';
+        } else {
+          read.innerHTML = '<span class="no">reachable: false, no walkable route</span>';
+        }
+      } else {
+        read.textContent = 'Searching: ' + shown + ' cells';
+      }
+    }
+    function play() {
+      result = solve();
+      cancelAnimationFrame(anim);
+      if (calm || !visible) { shown = result.order.length; paint(); return; }
+      shown = 0;
+      var per = Math.max(1, Math.ceil(result.order.length / 70));
+      (function step() {
+        shown = Math.min(result.order.length, shown + per);
+        paint();
+        if (shown < result.order.length) anim = requestAnimationFrame(step);
+      })();
+    }
+    cv.addEventListener('click', function (e) {
+      var r = cv.getBoundingClientRect();
+      var x = Math.floor((e.clientX - r.left) / r.width * COLS), y = Math.floor((e.clientY - r.top) / r.height * ROWS);
+      if (Math.abs(x - START[0]) + Math.abs(y - START[1]) < 3 || Math.abs(x - GOAL[0]) + Math.abs(y - GOAL[1]) < 3) return;
+      extra.push([x, y, 1, 1]);
+      play();
+    });
+    document.getElementById('astar-close').addEventListener('click', function () { extra = extra.concat(AISLE); play(); });
+    document.getElementById('astar-reset').addEventListener('click', function () { extra = []; play(); });
+    window.addEventListener('resize', function () { box = size(); paint(); });
+    box = size();
+    result = solve();
+    shown = result.order.length;
+    paint();
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (e) {
+        visible = e[0].isIntersecting;
+        if (visible && !started) { started = true; box = size(); play(); }
+      }, { threshold: 0.35 }).observe(cv);
+    }
+  })();
+
+  // ---- Occlusion demo: three ways of treating depth, drawn for this page ----
+  (function () {
+    var cv = document.getElementById('occl'), c = cv.getContext('2d');
+    var layer = document.createElement('canvas'), l = layer.getContext('2d');
+    var read = document.getElementById('occl-read');
+    var modeBtns = Array.prototype.slice.call(document.querySelectorAll('#occl-modes button'));
+    var pauseBtn = document.getElementById('occl-pause');
+    var TEXT = [
+      'Without depth, the robot floats over the machine.',
+      'Every gaussian writes depth, so the faint haze cuts a hole in the robot.',
+      'With a high opacity cut, only real surfaces hide the robot.'
+    ];
+    var mode = 2, moving = !calm, visible = false, raf = 0, W = 0, H = 0, d = 1, held = 0.5;
+    var machine = [], haze = [], floor = [], i;
+    for (i = 0; i < 1500; i++) machine.push([0.56 + rnd() * 0.25, 0.2 + rnd() * 0.5, 0.65 + rnd() * 0.75, 0.5 + rnd() * 0.9]);
+    for (i = 0; i < 120; i++) {
+      var ang = rnd() * 6.2832, rad = Math.sqrt(rnd());
+      haze.push([0.27 + Math.cos(ang) * rad * 0.13, 0.5 + Math.sin(ang) * rad * 0.24, 7 + rnd() * 11]);
+    }
+    for (i = 0; i < 700; i++) floor.push([rnd(), 0.7 + rnd() * 0.3, rnd()]);
+    function size() {
+      var r = cv.getBoundingClientRect();
+      d = Math.min(window.devicePixelRatio || 1, 2);
+      W = r.width; H = r.height;
+      cv.width = layer.width = Math.round(W * d);
+      cv.height = layer.height = Math.round(H * d);
+      c.setTransform(d, 0, 0, d, 0, 0);
+      l.setTransform(d, 0, 0, d, 0, 0);
+    }
+    function robot(ctx, u) {
+      var x = (0.06 + u * 0.86) * W, base = 0.72 * H, bw = W * 0.1, bh = H * 0.24;
+      ctx.fillStyle = 'rgb(251,191,36)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x - bw / 2, base - bh, bw, bh, 6); else ctx.rect(x - bw / 2, base - bh, bw, bh);
+      ctx.fill();
+      ctx.fillStyle = '#0a141b';
+      ctx.fillRect(x - bw * 0.3, base - bh * 0.8, bw * 0.6, bh * 0.16);
+      ctx.fillStyle = 'rgb(38,214,188)';
+      ctx.fillRect(x - bw / 2, base - bh * 0.42, bw, bh * 0.07);
+      ctx.fillStyle = '#20313c';
+      ctx.fillRect(x - bw * 0.42, base - 3, bw * 0.84, 7);
+    }
+    function draw(now) {
+      if (!W || !H) return;
+      var u = moving ? 0.5 + 0.5 * Math.sin(now / 2400) : held;
+      held = u;
+      c.clearRect(0, 0, W, H);
+      c.fillStyle = 'rgba(150,180,195,.5)';
+      floor.forEach(function (p) { c.fillRect(p[0] * W, p[1] * H, 1.4, 1.4); });
+      c.strokeStyle = 'rgba(251,191,36,.45)'; c.lineWidth = 1.5; c.setLineDash([5, 6]);
+      c.beginPath(); c.moveTo(0.02 * W, 0.72 * H); c.lineTo(0.98 * W, 0.72 * H); c.stroke(); c.setLineDash([]);
+
+      l.clearRect(0, 0, W, H);
+      robot(l, u);
+      if (mode > 0) {
+        l.globalCompositeOperation = 'destination-out';
+        l.fillStyle = '#000';
+        l.fillRect(0.56 * W, 0.2 * H, 0.25 * W, 0.5 * H);
+        if (mode === 1) { l.beginPath(); l.ellipse(0.27 * W, 0.5 * H, 0.13 * W, 0.24 * H, 0, 0, 6.2832); l.fill(); }
+        l.globalCompositeOperation = 'source-over';
+      }
+      var machineFirst = mode === 0;
+      function paintMachine() {
+        c.fillStyle = '#0d1a23';
+        c.fillRect(0.56 * W, 0.2 * H, 0.25 * W, 0.5 * H);
+        machine.forEach(function (p) {
+          c.fillStyle = 'rgba(' + Math.round(110 * p[3] + 40) + ',' + Math.round(165 * p[3] + 30) + ',' + Math.round(200 * p[3] + 30) + ',' + (p[2] * 0.7) + ')';
+          c.fillRect(p[0] * W, p[1] * H, 2, 2);
+        });
+      }
+      if (machineFirst) paintMachine();
+      c.drawImage(layer, 0, 0, W, H);
+      if (!machineFirst) paintMachine();
+      haze.forEach(function (p) {
+        c.fillStyle = 'rgba(190,220,235,.035)';
+        c.beginPath(); c.arc(p[0] * W, p[1] * H, p[2] * W / 420, 0, 6.2832); c.fill();
+      });
+    }
+    function loop(now) {
+      draw(now);
+      raf = visible && moving ? requestAnimationFrame(loop) : 0;
+    }
+    function kickOccl() { if (!raf && visible && moving) raf = requestAnimationFrame(loop); else if (!moving) draw(performance.now()); }
+    function setMode(n) {
+      mode = n;
+      modeBtns.forEach(function (b, k) { b.setAttribute('aria-pressed', k === n ? 'true' : 'false'); });
+      read.textContent = TEXT[n];
+      draw(performance.now());
+    }
+    modeBtns.forEach(function (b, k) { b.addEventListener('click', function () { setMode(k); }); });
+    if (calm) { pauseBtn.parentNode.hidden = true; held = 0.68; }
+    pauseBtn.addEventListener('click', function () {
+      moving = !moving;
+      pauseBtn.textContent = moving ? 'Pause' : 'Play';
+      kickOccl();
+    });
+    window.addEventListener('resize', function () { size(); draw(performance.now()); });
+    size();
+    setMode(2);
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (e) { visible = e[0].isIntersecting; if (visible) size(); kickOccl(); }).observe(cv);
+    }
+  })();
 
   // ---- Copy ----
   var copy = document.getElementById('copy');
