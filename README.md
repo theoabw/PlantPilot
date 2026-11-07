@@ -5,13 +5,29 @@
 
 # PlantPilot
 
-**From scan to service.**
+PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival.
 
-PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival. The demo runs on the complete capture the organisers re-uploaded after the first delivery was found truncated; the capture the brief names is also processed, with its numbers reported. There is no network at demo time.
+## Run it
 
-## Problem
+Requirements: Python 3.12+ with `uv`, Node 20+ with `pnpm`.
 
-Industrial field-service teams and inspection robots work in plants where the physical space, the machine data and the maintenance documents are separate systems. A scan alone is blind: it has no walkable floor, no equipment instances and no identity. The Valmet brief asks for a demonstrator that closes that gap on a supplied Gaussian splat capture, and this repository answers that brief.
+1. Clone the repository
+
+2. The captures and workbook are supplied separately, not committed. Create `data/supplied/` and put them there:
+
+```
+data/supplied/Equipment Room.ply               the complete capture, the demo default
+data/supplied/Industrial Boiler Room (1).ply   the named capture, as delivered
+data/supplied/builder_pack.xlsx                the supplied Valmet builder workbook
+```
+
+3. Build and serve the complete capture:
+
+```bash
+make demo
+```
+
+Open <http://127.0.0.1:8000>. The browser opens the boiler room scene. That target builds everything the demo path needs. The object atlas and explode view stay empty until `make object-splats` or `make object-meshes` has run for the capture; the rest of the room view works without them. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
 
 ## Demo path
 
@@ -20,41 +36,6 @@ Industrial field-service teams and inspection robots work in plants where the ph
 3. Open Mission and press Send robot. The robot follows the planned route; nearby assets within 2.5 m brighten while the trip panel shows progress.
 4. On arrival the diagnosis card opens with the finding, its evidence counts, the next safe check and the document it is grounded in.
 5. `?perf=1` on the URL adds a draw and render-time overlay for performance checks.
-
-## Run it
-
-Requirements: Python 3.12+ with `uv`, Node 20+ with `pnpm`.
-
-From a fresh clone:
-
-```bash
-uv sync
-cd app/web && pnpm install && cd ../..
-```
-
-The captures and workbook are supplied separately, not committed. Create `data/supplied/` and put them there:
-
-```
-data/supplied/Equipment Room.ply               the complete capture, the demo default
-data/supplied/Industrial Boiler Room (1).ply   the named capture, as delivered
-data/supplied/builder_pack.xlsx                the supplied Valmet builder workbook
-```
-
-Build and serve the complete capture:
-
-```bash
-make demo
-```
-
-Open <http://127.0.0.1:8000>. The browser opens the room view. That target builds everything the demo path needs. The object atlas and explode view stay empty until `make object-splats` or `make object-meshes` has run for the capture; the rest of the room view works without them. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
-
-The first delivery declares 1,506,136 gaussians in the file the brief names and only 502,483 rows hold data; the rest is unreadable, so the loader keeps the contiguous sane prefix and that scene covers part of the room. The complete capture was re-uploaded by the organisers and is the demo default. Build and serve the named capture instead:
-
-```bash
-make demo CAPTURE=boiler
-```
-
-The demo video uses the complete capture. The deck names the capture on every slide that quotes a number; the numbers below cover both captures.
 
 ## What it does
 
@@ -67,7 +48,83 @@ The six requirements in the brief:
 - **Real, grounded in the pack.** Arrival opens P-005's diagnosis: health 44, `FOULING` at high urgency, two findings with evidence ids, and a cited next safe check.
 - **Real.** It serves the room view from FastAPI on 127.0.0.1:8000 with no network calls.
 
-## How it works
+## How it works (tldr)
+
+### Pipeline
+
+
+```
+capture PLY --> ingest --> segment and frame --> objects
+                                              |
+builder workbook --> pack ------------------- + --> mapping --> route
+                                              |
+                                              + --> diagnosis
+
+objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
+```
+
+1. Scene preparation
+  - Determines directions, units, axes
+  - artifact: scene.npz, used for later steps (Scene)
+2. Object extraction
+  - Voxelize the scene in order to create bounding boxes for objects
+  - artifacts: objects.json
+3. Incorporation of object anchors
+  - Use optionally manually reviewed object anchors to map out objects more accurately
+4. Compile assets from builder pack excel file
+  - Turn excel into csv and use this for further processing
+5. Map builder pack assets to segmented objects
+  - Make a best-effort mapping between builder pack assets and objects detected during step 2/3
+6. Diagnose
+  - Aggregate data from the builder pack sheets and produce a textual diagnosis for all objects
+7. Route computing: compute collission-free pathing to targets using rules for proximity to objects
+  - Uses scene geometry, mapped assets, and other objects
+  - Produces a list of rectangles along the floor, indicating geometry that cannot be traversed
+8. Stripped Scene asset creation
+  - Strip the input .ply data to make a smaller file that can be provided to the three.js client app
+
+### Backend
+
+- Directory: `app/server/`
+
+`main.py` serves the built React app and the room endpoints (`/api/scene/objects`, `/api/scene/mapped`, `/api/scene/route`, `/api/splat`).
+
+`api/diagnosis` provides diagnostics data for assets
+
+### Demo frontend
+
+- Directory: `app/web/`
+
+The room view draws the capture with Spark inside three.js, takes the up axis from the artifact, draws the reviewed anchors, the mapped proposal frames and the route, and moves the robot along the planned segments at 0.5 m/s with an obstacle-aware follow camera.
+
+Can perform depth occlusion to hide objects covered other objects from the viewers perspective.
+
+On arrival it fetches `/api/diagnosis`, shows the pack evidence references and a citation, and opens the service panel.
+
+## Tech notes
+
+- **Pipeline**: Python 3.12 or newer with uv; numpy, OpenCV for geometry and clustering, FastAPI and uvicorn for the local service. The workbook reader uses the standard library.
+- **Viewer**: React 18, Vite 5, TypeScript 5, Tailwind CSS, three.js 0.180 and `@sparkjsdev/spark` 2.4 for the splat renderer. Pre-existing open source, not written for this submission.
+- **Data**: supplied Gaussian splat capture and the supplied synthetic Valmet builder pack (assets, telemetry, alarms, work orders, documents).
+- **AI and models**: none at runtime. Extraction and classification are geometric heuristics with a class-and-size prior. Depth models were evaluated separately and not integrated: Google's ARCore Depth API is a device runtime with no offline path for a trained capture, and the closest downloadable Google model, TIPSv2-B/14 with a DPT depth head. The splat is already the multi-view reconstruction, so the work went into using its depth, not into estimating depth again.
+- **Verification**: pytest with httpx for the API, TypeScript type checking and a Vite production build for the viewer.
+- **Build**: `uv sync`, `pnpm install`, and the `make` targets in this repository.
+
+### Tech not used in final demo
+
+- Open-vocabulary vision models (Grounding DINO, SAM 2.1, SAM 3) were tried on rendered views during the event.
+- SAM 3 text prompts do not identify pumps and valves reliably enough to place assets, so no vision label is produced at runtime. 
+
+## Docs
+
+- `docs/scene-artifacts.md`: the artifact and API contract.
+- `docs/technical-note.md`: the technical note for the submission.
+- `docs/slides.md`: the six-slide deck content and speaker notes.
+- `docs/video-script.md`: the shooting script for the demo video.
+- `docs/acceptance.md`: the checks the pipeline is held to.
+- `docs/brand/README.md`: the logo, colours and the assets for the deck and video.
+
+## How it works (long)
 
 The pipeline is in `app/server/src/plantpilot/`; the room view is in `app/web/src/room/`.
 
@@ -142,22 +199,6 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 - The robot is a viewer marker, not a physical simulation: it follows the planned segments at 0.5 m/s.
 - The diagnosis is grounded and cited, but it is deterministic retrieval and templates over the pack, not a model at runtime. The reasoning sentences are generated from the computed deltas at build time, not by a model either.
 
-## Technology
-
-- **Pipeline**: Python 3.12 or newer with uv; numpy, OpenCV for geometry and clustering, FastAPI and uvicorn for the local service, pydantic for the API models. The workbook reader uses the standard library.
-- **Viewer**: React 18, Vite 5, TypeScript 5, Tailwind CSS, three.js 0.180 and `@sparkjsdev/spark` 2.4 for the splat renderer. Pre-existing open source, not written for this submission.
-- **Data**: two supplied Gaussian splat captures and the supplied synthetic Valmet builder pack (assets, telemetry, alarms, work orders, documents). No public dataset and no network call at demo time.
-- **AI and models**: none at runtime. Extraction and classification are geometric heuristics with a class-and-size prior, which the brief allows. Open-vocabulary vision models (Grounding DINO, SAM 2.1, SAM 3) were tried on rendered views during the event. SAM 3 text prompts do not identify pumps and valves reliably enough to place assets, so no vision label is produced at runtime. Instance fusion does reach the artifact: masks from sixteen posed views, plus three close-ups for a corner object, are lifted into 3D through the splat's own depth and fused by containment, which gives all seven of the original anchors a fused instance and recovered the office chair that the box layer had labelled a valve, so the reviewed layer has eight objects. Where the fused box disagreed with the box the visual review accepted, both are kept in the fixture. Depth models were evaluated separately and not integrated: Google's ARCore Depth API is a device runtime with no offline path for a trained capture, and the closest downloadable Google model, TIPSv2-B/14 with a DPT depth head, loses to the splat's own depth at every boundary measure tested (0 percent of anchor silhouette pixels within one pixel against 52 percent, occlusion-boundary F1 0.021 against 0.137, Spearman 0.14 median). The splat is already the multi-view reconstruction, so the work went into using its depth, not into estimating depth again.
-- **Verification**: pytest with httpx for the API, TypeScript type checking and a Vite production build for the viewer.
-- **Build**: `uv sync`, `pnpm install`, and the `make` targets in this repository.
-
-## Docs
-
-- `docs/scene-artifacts.md`: the artifact and API contract.
-- `docs/technical-note.md`: the technical note for the submission.
-- `docs/slides.md`: the six-slide deck content and speaker notes.
-- `docs/video-script.md`: the shooting script for the demo video.
-- `docs/acceptance.md`: the checks the pipeline is held to.
-- `docs/brand/README.md`: the logo, colours and the assets for the deck and video.
+## License
 
 The code is MIT, see `LICENCE`.
