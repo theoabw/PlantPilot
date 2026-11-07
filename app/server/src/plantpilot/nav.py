@@ -1118,6 +1118,24 @@ def _has_line_of_sight(grid: Grid, p0: tuple[float, float], p1: tuple[float, flo
     return True
 
 
+def _distance_to_box(point: list[float], obj: dict) -> float:
+    """Distance from a scene point to an object's oriented box, zero inside it.
+
+    This is the rule the viewer highlights by. An object without a box counts as
+    the point at its centre.
+    """
+    # objects.json uses "centre"; fall back to "center" then "pos".
+    centre = np.asarray(
+        obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0]), dtype=np.float64
+    )
+    extents = np.asarray(obj.get("extents") or obj.get("size") or [0.0, 0.0, 0.0], dtype=np.float64)
+    axes = np.asarray(obj.get("axes", np.eye(3)), dtype=np.float64)
+    if axes.shape != (3, 3) or extents.shape != (3,):
+        axes, extents = np.eye(3), np.zeros(3)
+    local = axes @ (np.asarray(point, dtype=np.float64) - centre)
+    return float(np.linalg.norm(np.maximum(np.abs(local) - extents / 2.0, 0.0)))
+
+
 def compute_path_proximity(
     path_3d: list[list[float]],
     objects: list[dict],
@@ -1178,9 +1196,7 @@ def compute_path_proximity(
         nearby: list[dict[str, Any]] = []
         for obj in objects:
             obj_id = str(obj.get("id", ""))
-            # objects.json uses "centre"; fall back to "center" then "pos".
-            center = obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
-            dist_to_obj = math.dist(sample_pos, [float(c) for c in center])
+            dist_to_obj = _distance_to_box(sample_pos, obj)
             if dist_to_obj <= radius_m:
                 mapped = map_by_obj.get(obj_id, {})
                 tag = mapped.get("tag") or mapped.get("asset_id") or obj.get("tag") or obj_id

@@ -685,6 +685,19 @@ def test_the_service_waypoint_reads_the_box_through_its_own_frame():
     assert math.hypot(gap_x, gap_z) == pytest.approx(nav.DEFAULT_CLEARANCE_TARGET_M, abs=0.15)
 
 
+def test_nearby_objects_are_measured_to_the_box_like_the_viewer():
+    # A 6 m long skid: its centre is 3.2 m away but its end is 0.2 m away.
+    skid = {
+        "id": "OBJ-LONG",
+        "centre": [3.2, 0.0, 0.0],
+        "axes": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        "extents": [6.0, 1.0, 1.0],
+    }
+    samples = nav.compute_path_proximity([[0.0, 0.0, 0.0]], [skid], radius_m=2.5, step_m=1.0)
+    assert samples[0]["nearby_objects"][0]["object_id"] == "OBJ-LONG"
+    assert samples[0]["nearby_objects"][0]["distance_m"] == pytest.approx(0.2)
+
+
 def test_a_tall_robot_is_not_cut_short_by_a_plane_below_its_height(tmp_path):
     # Horizontal plane records used to cap the body band at 1.5 m on any capture,
     # because their offset is a plane constant and not a height above the floor.
