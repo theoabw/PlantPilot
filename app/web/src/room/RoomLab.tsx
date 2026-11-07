@@ -36,6 +36,7 @@ import type {
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
 import { destinationTarget, prefersCrouched, routeStatusText, shouldTryCrouched, transitionDestinationPlan, type DestinationPlanState } from './routeMotion'
+import CharacterSelector, { type CharacterOption } from '../components/CharacterSelector'
 
 type MissionTarget = {
   tag: string
@@ -86,15 +87,7 @@ const VERDICT_CLASSES: Record<ReasoningDifferential['verdict'], string> = {
   'cannot separate': 'border-amber-400/60 bg-amber-500/20 text-amber-200',
 }
 
-type RobotOption = {
-  id: 'humanoid' | 'amr' | 'cargo'
-  label: string
-  radius: number
-  height: number
-  crouchHeight?: number
-}
-
-const ROBOTS: RobotOption[] = [
+const ROBOTS: CharacterOption[] = [
   { id: 'humanoid', label: 'Humanoid', radius: 0.18, height: 1.35, crouchHeight: 0.95 },
   { id: 'amr', label: 'Compact AMR', radius: 0.2, height: 0.55 },
   { id: 'cargo', label: 'Cargo AMR', radius: 0.45, height: 0.9 },
@@ -142,6 +135,7 @@ export default function RoomLab() {
   const [showRawDetections, setShowRawDetections] = useState(false)
   const [layersOpen, setLayersOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [characterOpen, setCharacterOpen] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
   const [browserQuery, setBrowserQuery] = useState('')
   const [browserFilter, setBrowserFilter] = useState<'all' | 'attention' | 'reviewed'>('all')
@@ -149,7 +143,8 @@ export default function RoomLab() {
   const [obstacles, setObstacles] = useState<[number, number][]>([])
   const [rerouteNote, setRerouteNote] = useState<string | null>(null)
   const [explode, setExplode] = useState(0)
-  const [robotId, setRobotId] = useState<RobotOption['id']>('amr')
+  const [robotId, setRobotId] = useState<CharacterOption['id']>('amr')
+  const [planning, setPlanning] = useState(false)
   const [crouchSpans, setCrouchSpans] = useState<[number, number][]>([])
   const [destinationScene, setDestinationScene] = useState<[number, number, number] | null>(null)
   const [destinationLabel, setDestinationLabel] = useState<string | null>(null)
@@ -170,6 +165,7 @@ export default function RoomLab() {
   const resumeAfterPlanRef = useRef(false)
   const initialStartRef = useRef<[number, number] | null>(null)
   const destinationPlanRef = useRef<DestinationPlanState>({ committed: { target: null }, pending: null })
+  const initialPositionRef = useRef<[number, number, number] | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -191,16 +187,19 @@ export default function RoomLab() {
       .then((value) => {
         if (alive) {
           setRoute(value)
-          if (value?.path?.length) {
+          if (value?.start) {
             const axes = value.grid?.horizontal_axes ?? [0, 2]
-            initialStartRef.current = [value.path[0][axes[0]], value.path[0][axes[1]]]
+            const start = value.path[0] ?? value.start
+            initialStartRef.current = [start[axes[0]], start[axes[1]]]
+            initialPositionRef.current = [start[0], start[1], start[2]]
           }
           if (value?.target_waypoint) {
             const waypoint = value.target_waypoint
             setDestinationScene([waypoint[0], waypoint[1], waypoint[2]])
+            const axes = value.grid?.horizontal_axes ?? [0, 2]
             destinationPlanRef.current = {
               ...destinationPlanRef.current,
-              committed: { ...destinationPlanRef.current.committed, target: [waypoint[0], waypoint[2]] },
+              committed: { ...destinationPlanRef.current.committed, target: [waypoint[axes[0]], waypoint[axes[1]]] },
             }
           }
         }
@@ -567,7 +566,7 @@ export default function RoomLab() {
   const planRoute = (
     blockers: number[][],
     radius: number,
-    profile: RobotOption,
+    profile: CharacterOption,
     note?: string,
     options: {
       target?: [number, number] | null
@@ -576,24 +575,29 @@ export default function RoomLab() {
       tag?: string | null
       condition?: string | null
       objectId?: string | null
+      start?: [number, number] | null
+      resumeMoving?: boolean
     } = {},
   ) => {
-    const start = robotPositionRef.current ?? initialStartRef.current
-    const target = options.target ?? destinationTarget(destinationPlanRef.current)
+    const { start: requestedStart, resumeMoving, ...intentOptions } = options
+    setPlanning(true)
+    setRerouteNote(null)
+    const start = requestedStart ?? robotPositionRef.current ?? initialStartRef.current
+    const target = intentOptions.target ?? destinationTarget(destinationPlanRef.current)
     // A replacement inherits the pending intent without changing the destination
     // of the route still in use. Cancellation discards only that pending intent.
-    const planning = transitionDestinationPlan(destinationPlanRef.current, {
+    const planState = transitionDestinationPlan(destinationPlanRef.current, {
       type: 'begin',
-      intent: { ...options, target },
+      intent: { ...intentOptions, target },
     })
-    destinationPlanRef.current = planning
-    const intent = planning.pending!
+    destinationPlanRef.current = planState
+    const intent = planState.pending!
     // The robot holds still while a replan is out, across both requests of a
     // crouch fallback, so the route it gets starts where it actually stands.
     // Only the latest request counts: an older answer is from an older position.
     const request = planRequestRef.current + 1
     planRequestRef.current = request
-    if (driving) {
+    if (driving && resumeMoving !== false) {
       motionPausedRef.current = true
       resumeAfterPlanRef.current = true
     }
@@ -609,6 +613,7 @@ export default function RoomLab() {
       const resume = resumeAfterPlanRef.current
       resumeAfterPlanRef.current = false
       motionPausedRef.current = false
+      setPlanning(false)
       setRoute(result)
       const waypoint = result.target_waypoint
       let waypointXZ: [number, number] | null = null
@@ -629,7 +634,7 @@ export default function RoomLab() {
       setDestinationCondition(destination.condition ?? null)
       setDestinationObjectId(destination.objectId ?? null)
       if (!result.reachable) {
-        setRerouteNote(note ?? `No safe route for this robot at ${radius.toFixed(2)} m clearance`)
+        setRerouteNote(routeMessage(result))
         return
       }
       setRerouteNote(
@@ -672,6 +677,7 @@ export default function RoomLab() {
         resumeAfterPlanRef.current = false
         motionPausedRef.current = false
         destinationPlanRef.current = transitionDestinationPlan(destinationPlanRef.current, { type: 'cancel' })
+        setPlanning(false)
         setRerouteNote('Route replan failed')
       })
   }
@@ -683,6 +689,7 @@ export default function RoomLab() {
     resumeAfterPlanRef.current = false
     motionPausedRef.current = false
     destinationPlanRef.current = transitionDestinationPlan(destinationPlanRef.current, { type: 'cancel' })
+    setPlanning(false)
   }
 
   const obstacleBlockers = () =>
@@ -697,22 +704,30 @@ export default function RoomLab() {
     planRoute(obstacleBlockers(), radius, robot, note, { target: destinationTarget(destinationPlanRef.current) })
   }
 
-  const changeRobot = (id: RobotOption['id'], radius?: number) => {
+  const changeRobot = (id: CharacterOption['id']) => {
+    setCharacterOpen(false)
+    if (id === robotId) return
+    cancelPlan()
+    setRobotDeployed(false)
     setRobotId(id)
-    setCustomRadius(radius ?? null)
+    setCustomRadius(null)
     const option = ROBOTS.find((candidate) => candidate.id === id) ?? ROBOTS[1]
+    robotPositionRef.current = initialStartRef.current
+    setCharacterResetToken((value) => value + 1)
+    setTrip({ mode: 'idle', travelled: 0, total: 0 })
+    setCrouchSpans([])
+    setManualControl(false)
     setCameraMove(false)
-    if (!manualControl) {
-      setFirstPerson(false)
-      setFollow(false)
-    }
-    const chosenRadius = radius ?? option.radius
+    setFirstPerson(false)
+    setFollow(false)
+    setArrivalDismissed(true)
+    setRoute(null)
     planRoute(
       obstacleBlockers(),
-      chosenRadius,
+      option.radius,
       option,
-      `${chosenRadius.toFixed(2)} m clearance for the ${option.label.toLowerCase()}`,
-      { target: destinationTarget(destinationPlanRef.current) },
+      `${option.radius.toFixed(2)} m clearance for the ${option.label.toLowerCase()}`,
+      { start: initialStartRef.current, target: destinationTarget(destinationPlanRef.current), resumeMoving: false },
     )
   }
 
@@ -751,7 +766,7 @@ export default function RoomLab() {
   }, [selectedObject])
 
   const startMission = () => {
-    if (!routeReady && !destinationTarget(destinationPlanRef.current)) {
+    if (planning || (!routeReady && !destinationTarget(destinationPlanRef.current))) {
       return
     }
     setBrowserOpen(false)
@@ -771,7 +786,7 @@ export default function RoomLab() {
   }
 
   const sendToEquipment = () => {
-    if (!selectedObject) {
+    if (!selectedObject || planning) {
       return
     }
     setManualControl(false)
@@ -853,6 +868,7 @@ export default function RoomLab() {
             topDownToken={topDownToken}
             heightCutoff={topDown ? cutHeight : null}
             characterResetToken={characterResetToken}
+            characterStart={initialPositionRef.current}
             selectedId={selectedId}
             mappedIds={mappedIds}
             targetId={displayTargetId}
@@ -881,7 +897,7 @@ export default function RoomLab() {
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}
-            showRobot={manualControl || robotDeployed || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
+            showRobot={initialStartRef.current !== null || manualControl || robotDeployed || trip.mode !== 'idle'}
             crouchSpans={crouchSpans}
             focusTarget={topDown ? null : focusTarget}
             focusToken={focusToken}
@@ -900,6 +916,7 @@ export default function RoomLab() {
               setBrowserOpen(false)
               setLayersOpen(false)
               setSettingsOpen(false)
+              setCharacterOpen(false)
             }}
           />
         ) : (
@@ -915,9 +932,14 @@ export default function RoomLab() {
           {error}
         </div>
       ) : null}
+      {rerouteNote === 'Route replan failed' ? (
+        <div role="alert" className="absolute inset-x-0 top-16 z-30 mx-auto max-w-md rounded-lg border border-red-500/40 bg-slate-950/90 px-4 py-3 text-sm text-slate-200">
+          Route replan failed. Try sending the character again.
+        </div>
+      ) : null}
 
       {/* Header */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-3 px-4 py-3">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-40 flex flex-wrap items-start justify-between gap-3 px-4 py-3">
         <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-white/5 bg-brand-navy/85 py-1 pl-1 pr-3 backdrop-blur">
           <img src="/brand/plantpilot-horizontal-on-dark.svg" alt="PlantPilot" className="h-10 w-auto" />
           <span className="hidden h-4 w-px bg-slate-700 sm:block" />
@@ -930,18 +952,32 @@ export default function RoomLab() {
             Synthetic scenario
           </span>
         </div>
-        <div className="pointer-events-auto flex items-center gap-2">
+        <div className="pointer-events-auto flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:gap-2">
           <button
             type="button"
             onClick={() => {
               setBrowserOpen((value) => !value)
               setLayersOpen(false)
               setSettingsOpen(false)
+              setCharacterOpen(false)
             }}
-            className="rounded-lg border border-white/5 bg-slate-950/55 px-3 py-2 text-xs font-bold text-slate-200 backdrop-blur hover:border-slate-500"
+            className="rounded-lg border border-white/5 bg-slate-950/55 px-2 py-2 text-[10px] font-bold text-slate-200 backdrop-blur hover:border-slate-500 sm:px-3 sm:text-xs"
           >
             Equipment <span className="text-brand-mint">{reviewed.length}</span>
           </button>
+          <CharacterSelector
+            options={ROBOTS}
+            selected={robotId}
+            open={characterOpen}
+            ready={initialStartRef.current !== null}
+            onToggle={() => {
+              setCharacterOpen((value) => !value)
+              setBrowserOpen(false)
+              setLayersOpen(false)
+              setSettingsOpen(false)
+            }}
+            onSelect={changeRobot}
+          />
           <div className="relative">
             <button
               type="button"
@@ -949,8 +985,9 @@ export default function RoomLab() {
                 setLayersOpen((value) => !value)
                 setBrowserOpen(false)
                 setSettingsOpen(false)
+                setCharacterOpen(false)
               }}
-              className="rounded-lg border border-white/5 bg-slate-950/55 px-3 py-2 text-xs font-bold text-slate-200 backdrop-blur hover:border-slate-500"
+              className="rounded-lg border border-white/5 bg-slate-950/55 px-2 py-2 text-[10px] font-bold text-slate-200 backdrop-blur hover:border-slate-500 sm:px-3 sm:text-xs"
             >
               Layers
             </button>
@@ -1052,9 +1089,10 @@ export default function RoomLab() {
                 setSettingsOpen((value) => !value)
                 setLayersOpen(false)
                 setBrowserOpen(false)
+                setCharacterOpen(false)
               }}
               aria-label="Settings"
-              className="rounded-lg border border-white/5 bg-slate-950/55 px-3 py-2 text-xs font-bold text-slate-200 backdrop-blur hover:border-slate-500"
+              className="rounded-lg border border-white/5 bg-slate-950/55 px-2 py-2 text-[10px] font-bold text-slate-200 backdrop-blur hover:border-slate-500 sm:px-3 sm:text-xs"
             >
               Settings
             </button>
@@ -1089,7 +1127,7 @@ export default function RoomLab() {
 
       {/* Equipment browser */}
       {browserOpen ? (
-        <section className="absolute left-4 top-20 z-30 flex max-h-[62vh] w-80 max-w-[calc(100vw-2rem)] flex-col rounded-xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur">
+        <section className="absolute left-4 top-32 z-30 flex max-h-[62vh] w-80 max-w-[calc(100vw-2rem)] flex-col rounded-xl border border-slate-700 bg-slate-950/95 shadow-2xl backdrop-blur sm:top-20">
           <div className="flex items-center justify-between px-3 pt-3">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Equipment</p>
             <button type="button" onClick={() => setBrowserOpen(false)} className="text-xs font-bold text-slate-400 hover:text-white">
@@ -1197,7 +1235,7 @@ export default function RoomLab() {
 
       {/* Equipment detail card */}
       {selectedObject && !devMode ? (
-        <aside className="absolute right-4 top-20 z-30 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700 bg-slate-950/95 p-4 shadow-2xl backdrop-blur">
+        <aside className="absolute right-4 top-32 z-30 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700 bg-slate-950/95 p-4 shadow-2xl backdrop-blur sm:top-20">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -1302,7 +1340,8 @@ export default function RoomLab() {
             <button
               type="button"
               onClick={sendToEquipment}
-              className="flex-1 rounded-lg bg-brand-mint px-3 py-2 text-xs font-black text-brand-navy hover:bg-brand-teal"
+              disabled={planning}
+              className="flex-1 rounded-lg bg-brand-mint px-3 py-2 text-xs font-black text-brand-navy hover:bg-brand-teal disabled:cursor-not-allowed disabled:opacity-50"
             >
               Send robot here
             </button>
@@ -1341,10 +1380,11 @@ export default function RoomLab() {
             {mission?.condition}
           </p>
           <p className="mt-2 text-[11px] font-semibold text-slate-400">
-            {routeReady
+            {planning ? 'Planning route...' : routeReady
               ? `${(route?.distance_m ?? 0).toFixed(1)} m route · ${(route?.clearance_m ?? 0).toFixed(2)} m clearance`
               : routeMessage(route)}
           </p>
+          {rerouteNote ? <p className="mt-1 text-[10px] font-semibold text-amber-200">{rerouteNote}</p> : null}
           <p className="mt-1 text-[9px] font-semibold leading-snug text-amber-300/80">
             Synthetic builder-pack scenario. Target placement is procedural, not a confirmed fault in this room.
           </p>
@@ -1353,32 +1393,14 @@ export default function RoomLab() {
               Ducks under low pipework for {crouchSpans.reduce((total, [from, to]) => total + Math.max(0, to - from), 0).toFixed(1)} m of this route
             </p>
           ) : null}
-          <div className="mt-3">
-            <div className="flex rounded-lg border border-slate-700 bg-slate-900/60 p-0.5">
-              {ROBOTS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => changeRobot(option.id)}
-                  className={`flex-1 rounded-md px-1 py-1 text-[9px] font-black uppercase tracking-wide ${
-                    robotId === option.id && customRadius === null
-                      ? 'bg-brand-mint/20 text-brand-mint'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              Clearance radius {clearanceRadius.toFixed(2)} m
-            </p>
-          </div>
+          <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            {robot.label} · Clearance radius {clearanceRadius.toFixed(2)} m
+          </p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
               onClick={startMission}
-              disabled={!mission}
+              disabled={!mission || planning}
               className="flex-1 rounded-lg bg-brand-mint px-3 py-2.5 text-sm font-black text-brand-navy hover:bg-brand-teal disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
               Send robot
@@ -1645,6 +1667,7 @@ export default function RoomLab() {
           <button
             type="button"
             aria-pressed={manualControl}
+            disabled={!route}
             onClick={() => {
               cancelPlan()
               const next = !manualControl
@@ -1658,7 +1681,7 @@ export default function RoomLab() {
                 setArrivalDismissed(true)
               }
             }}
-            className={`px-3 py-1.5 hover:bg-slate-800 ${manualControl ? 'text-brand-mint' : ''}`}
+            className={`px-3 py-1.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 ${manualControl ? 'text-brand-mint' : ''}`}
           >
             {manualControl ? 'Manual control · WASD / arrows' : 'Manual control'}
           </button>
@@ -1724,18 +1747,28 @@ export default function RoomLab() {
           ) : null}
           <button
             type="button"
+            disabled={initialStartRef.current === null}
             onClick={() => {
               cancelPlan()
               setTopDown(false)
               setResetToken((value) => value + 1)
               setCharacterResetToken((value) => value + 1)
               setRobotDeployed(false)
+              robotPositionRef.current = initialStartRef.current
               setTrip({ mode: 'idle', travelled: 0, total: 0 })
               setFollow(false)
               setCameraMove(false)
               setFirstPerson(false)
+              setManualControl(false)
+              setArrivalDismissed(true)
+              setRoute(null)
+              planRoute(obstacleBlockers(), clearanceRadius, robot, undefined, {
+                start: initialStartRef.current,
+                target: destinationTarget(destinationPlanRef.current),
+                resumeMoving: false,
+              })
             }}
-            className="px-3 py-1.5 hover:bg-slate-800"
+            className="px-3 py-1.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Reset
           </button>
@@ -1787,7 +1820,7 @@ export default function RoomLab() {
               <span className="w-12 text-right text-[10px] font-black text-slate-200">{(customRadius ?? robot.radius).toFixed(2)} m</span>
               <button
                 type="button"
-                onClick={() => changeRobot(robotId, customRadius ?? robot.radius)}
+                onClick={() => replanForRobot(customRadius ?? robot.radius)}
                 className="rounded border border-amber-500/60 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-amber-200"
               >
                 Apply
