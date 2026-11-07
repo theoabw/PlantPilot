@@ -1040,18 +1040,24 @@ def build_route(
         and float(standing_height_m) > float(agent_height_m) + 0.01
         and len(path_3d) >= 2
     ):
+        # The crouch span is a question about the body column, not about
+        # navigation clearance: the route already keeps the body radius away
+        # from obstacles. A 0.12 m column approximates a humanoid turning
+        # sideways to slip past structure, which is how a person would pass
+        # pipework beside the path. Testing the full navigation inflation made
+        # the model duck for obstacles it could simply walk past.
         standing_grid = Grid.from_cloud(
             points=points,
             floor_y=floor_y,
             up_axis=up_axis,
             up_axis_sign=up_axis_sign,
-            agent_radius_m=agent_radius_m,
+            agent_radius_m=0.12,
             objects=objects,
             walkable_height_max_m=max(
                 OBSTACLE_MIN_HEIGHT_M,
                 min(float(standing_height_m), float(walkable_ceiling_m)),
             ),
-            safety_margin_m=ROUTE_SAFETY_MARGIN_M,
+            safety_margin_m=0.0,
         )
         if blockers:
             standing_grid = standing_grid.with_blockers(blockers)
@@ -1099,7 +1105,7 @@ def build_route(
                     )
                 blocked_here = not standing_grid.walkable(*cell)
                 if blocked_here and open_start is None:
-                    open_start = max(0.0, at - 0.2)
+                    open_start = max(0.0, at - 0.1)
                 elif not blocked_here and open_start is not None:
                     needed.append((open_start, at))
                     open_start = None

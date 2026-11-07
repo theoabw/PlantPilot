@@ -282,10 +282,10 @@ function buildRobot(profile: RobotProfile): THREE.Group {
 
     group.userData.animate = (_time: number, travelled: number, moving: boolean) => {
       const withinSpan = robotCrouchSpans.some(
-        ([from, to]) => travelled >= from - 0.35 && travelled <= to + 0.35,
+        ([from, to]) => travelled >= from - 0.12 && travelled <= to + 0.12,
       )
       const wantCrouch = withinSpan ? 1 : 0
-      crouch += (wantCrouch - crouch) * 0.18
+      crouch += (wantCrouch - crouch) * 0.22
       const phase = travelled * 3.9
       const swing = moving ? 0.55 : 0
       legPivots[0].rotation.x = Math.sin(phase) * swing + crouch * 0.35
