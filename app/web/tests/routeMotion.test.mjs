@@ -143,3 +143,9 @@ test('crouching wins only for a refusal or a meaningfully closer stop', () => {
   assert.equal(motion.prefersCrouched({ reachable: false }, { reachable: false }), false)
   assert.equal(motion.prefersCrouched({ reachable: true }, { reachable: true, goal_snap_m: 0 }), false)
 })
+
+test('a refusal only blames an obstacle when the planner names one', () => {
+  assert.equal(motion.routeFailureText('no walkable route with this obstruction'), 'No safe path with the current obstacle.')
+  assert.equal(motion.routeFailureText('no walkable route from this position'), 'No safe path from this position.')
+  assert.equal(motion.routeFailureText(''), 'No safe route for this robot.')
+})

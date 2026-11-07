@@ -35,7 +35,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
-import { nextDestination, prefersCrouched, shouldTryCrouched } from './routeMotion'
+import { nextDestination, prefersCrouched, routeFailureText, shouldTryCrouched } from './routeMotion'
 
 type MissionTarget = {
   tag: string
@@ -100,19 +100,7 @@ const ROBOTS: RobotOption[] = [
   { id: 'cargo', label: 'Cargo AMR', radius: 0.45, height: 0.9 },
 ]
 
-const routeMessage = (route: RoomRoute | null): string => {
-  const reason = route?.reason ?? ''
-  if (reason.includes('inspection point is blocked')) {
-    return 'This robot cannot reach the pump: the inspection point is too tight.'
-  }
-  if (reason.includes('does not fit at its current position')) {
-    return 'This robot does not fit at its current position.'
-  }
-  if (reason.includes('no walkable route')) {
-    return 'No safe path with the current obstacle.'
-  }
-  return 'No safe route for this robot.'
-}
+const routeMessage = (route: RoomRoute | null): string => routeFailureText(route?.reason ?? '')
 
 const severityText = (mapping: MappedAsset | null): string => {
   if (!mapping) {

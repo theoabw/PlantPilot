@@ -286,3 +286,25 @@ export function prefersCrouched(standing: PlannedStop, crouched: PlannedStop): b
   }
   return standingSnap - crouchedSnap > CROUCH_STOP_GAIN_M
 }
+
+/**
+ * What to tell the user about a route the planner refused.
+ *
+ * The planner only names an obstruction when one was placed, so an obstacle is
+ * not blamed for a position that has no route to begin with.
+ */
+export function routeFailureText(reason: string): string {
+  if (reason.includes('inspection point is blocked')) {
+    return 'This robot cannot reach the pump: the inspection point is too tight.'
+  }
+  if (reason.includes('does not fit at its current position')) {
+    return 'This robot does not fit at its current position.'
+  }
+  if (reason.includes('with this obstruction')) {
+    return 'No safe path with the current obstacle.'
+  }
+  if (reason.includes('no walkable route')) {
+    return 'No safe path from this position.'
+  }
+  return 'No safe route for this robot.'
+}
