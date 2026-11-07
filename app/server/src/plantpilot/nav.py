@@ -689,6 +689,9 @@ class Grid:
         self.blocked[r0:r1, c0:c1] = 1
 
     def _inflate(self) -> None:
+        # Before the dilation: what the capture and the blockers really occupy,
+        # which is what a measured clearance has to be measured against.
+        self.occupied = self.blocked.copy()
         margin = getattr(self, "safety_margin_m", SAFETY_MARGIN_M)
         radius_cells = (self.agent_radius_m + margin) / CELL_M
         k = max(1, int(math.ceil(radius_cells)))
@@ -964,27 +967,48 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
 
     path_2d = [grid.to_world(*c) for c in cells]
     length = sum(math.dist(a, b) for a, b in zip(path_2d, path_2d[1:]))
-    # clearance_m is already the distance from cell centre to nearest inflated
-    # obstacle edge. Do not add the inflation radius again; that would
-    # double-count it and report a falsely large clearance.
-    # Exclude the docking zone (last 1 m / ~10 cells): those steps are the
-    # final approach onto the inspection waypoint, which sits beside the machine.
-    # The corridor clearance is what matters for traversal.
-    docking_cells = max(1, int(round(DEFAULT_CLEARANCE_TARGET_M / CELL_M)))
-    corridor_cells = cells[:-docking_cells] if len(cells) > docking_cells else cells[:1]
-    # grid.clearance_m is the distance to the inflated obstacle boundary, so the
-    # inflation radius is added back to report the distance to the object itself.
-    inflation = float(grid.agent_radius_m) + float(getattr(grid, "safety_margin_m", SAFETY_MARGIN_M))
-    clearance = min(float(grid.clearance_m[r, c]) for r, c in corridor_cells) + inflation
 
     return {
         "reachable": True,
         "path": [[round(x, 3), round(z, 3)] for x, z in path_2d],
         "distance_m": round(length, 2),
-        "clearance_m": round(clearance, 2),
+        "clearance_m": round(path_clearance_m(grid, path_2d), 2),
         "astar_ms": elapsed_ms,
         "cells": len(cells),
     }
+
+
+def path_clearance_m(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) -> float:
+    """Smallest distance from a driven polyline to what the grid marks occupied.
+
+    Measured at 5 cm steps to the edges of the uninflated cells and to the grid's
+    boundary, for the whole path. A cell is occupied as soon as the capture puts
+    a surface anywhere in it, so this errs on the side of the smaller number.
+    """
+    if not path_2d:
+        return 0.0
+    points = [(float(p[0]), float(p[1])) for p in path_2d]
+    samples = [points[0]]
+    for a, b in zip(points, points[1:]):
+        steps = max(1, int(math.ceil(math.dist(a, b) / 0.05)))
+        samples.extend(
+            (a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps)
+            for i in range(1, steps + 1)
+        )
+    at = np.asarray(samples, dtype=np.float64)
+    x1 = grid.x0 + grid.cols * CELL_M
+    z1 = grid.z0 + grid.rows * CELL_M
+    best = float(
+        np.min(np.minimum.reduce([at[:, 0] - grid.x0, x1 - at[:, 0], at[:, 1] - grid.z0, z1 - at[:, 1]]))
+    )
+    rows, columns = np.nonzero(grid.occupied)
+    if rows.size:
+        low_x, low_z = grid.x0 + columns * CELL_M, grid.z0 + rows * CELL_M
+        for x, z in at:
+            gap_x = np.maximum(low_x - x, x - (low_x + CELL_M)).clip(min=0.0)
+            gap_z = np.maximum(low_z - z, z - (low_z + CELL_M)).clip(min=0.0)
+            best = min(best, float(np.min(np.hypot(gap_x, gap_z))))
+    return max(0.0, best)
 
 
 def reachable_cells(grid: Grid, start: tuple[float, float]) -> np.ndarray:
@@ -1041,7 +1065,13 @@ def nearest_reachable_ground(
 
 
 def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) -> list[tuple[float, float]]:
-    """Simplify grid path using line-of-sight shortcutting without sacrificing clearance."""
+    """Shortcut a grid path where the straight line keeps the stretch's clearance.
+
+    A* pays to stay away from obstacles. A line-of-sight test alone undoes that,
+    because a shortcut that skims the inflated edge still has line of sight, so a
+    shortcut is taken only when its tightest point is no tighter than the tightest
+    point of the stretch it replaces.
+    """
     if len(path_2d) <= 2:
         return [(float(p[0]), float(p[1])) for p in path_2d]
 
@@ -1053,7 +1083,9 @@ def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) ->
         next_idx = len(pts) - 1
         found = False
         while next_idx > curr_idx + 1:
-            if _has_line_of_sight(grid, pts[curr_idx], pts[next_idx]):
+            if _has_line_of_sight(grid, pts[curr_idx], pts[next_idx]) and _keeps_clearance(
+                grid, pts[curr_idx : next_idx + 1]
+            ):
                 smoothed.append(pts[next_idx])
                 curr_idx = next_idx
                 found = True
@@ -1064,6 +1096,19 @@ def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) ->
             smoothed.append(pts[curr_idx])
 
     return smoothed
+
+
+def _keeps_clearance(grid: Grid, stretch: list[tuple[float, float]]) -> bool:
+    """True when the chord of a stretch is no tighter than the stretch itself."""
+    tightest = min(float(grid.clearance_m[grid.to_cell(p)]) for p in stretch)
+    a, b = stretch[0], stretch[-1]
+    samples = max(2, int(math.ceil(math.dist(a, b) / (CELL_M * 0.5))))
+    for i in range(samples + 1):
+        t = i / float(samples)
+        cell = grid.to_cell((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
+        if float(grid.clearance_m[cell]) < tightest:
+            return False
+    return True
 
 
 def _has_line_of_sight(grid: Grid, p0: tuple[float, float], p1: tuple[float, float]) -> bool:
@@ -1459,6 +1504,11 @@ def build_route(
         raw_path = plan_result["path"]
         smoothed_2d = smooth_path(grid, raw_path)
         path_3d = [[round(x, 3), y_render, round(z, 3)] for x, z in smoothed_2d]
+        # The robot drives the smoothed line, so that is what gets reported.
+        plan_result["distance_m"] = round(
+            sum(math.dist(a, b) for a, b in zip(smoothed_2d, smoothed_2d[1:])), 2
+        )
+        plan_result["clearance_m"] = round(path_clearance_m(grid, smoothed_2d), 2)
     else:
         path_3d = []
 

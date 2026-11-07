@@ -608,3 +608,58 @@ def test_a_start_with_nothing_free_near_it_is_refused_not_passed_through(tmp_pat
     )
     assert route["reachable"] is False
     assert "does not fit" in route["reason"]
+
+
+def test_clearance_is_measured_on_the_driven_line_to_the_uninflated_cells():
+    blocked = np.zeros((40, 40), dtype=np.uint8)
+    blocked[20:22, 10:30] = 1
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 4.0, "z1": 4.0},
+        blocked_mask=blocked,
+        agent_radius_m=0.2,
+        safety_margin_m=0.0,
+    )
+    # A line 0.5 m clear of the bar's near edge at z = 2.0, inside the grid's 4 m.
+    assert nav.path_clearance_m(grid, [(0.5, 1.5), (3.5, 1.5)]) == pytest.approx(0.5)
+    # A blocker is occupied too, and its inflation does not count as occupied.
+    with_blocker = grid.with_blockers([[1.9, 0.9, 2.1, 1.1]])
+    assert nav.path_clearance_m(with_blocker, [(0.5, 1.5), (3.5, 1.5)]) == pytest.approx(0.4)
+
+
+def test_a_route_reports_the_length_and_clearance_of_its_smoothed_line(tmp_path):
+    route = nav.build_route(
+        scene_path=_pocket_scene(tmp_path),
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(0.8, 0.8),
+        goal_override=(2.2, 3.0),
+    )
+    assert route["reachable"] is True
+    drawn = [(p[0], p[2]) for p in route["path"]]
+    assert route["distance_m"] == pytest.approx(
+        sum(math.dist(a, b) for a, b in zip(drawn, drawn[1:])), abs=0.01
+    )
+
+
+def test_smoothing_keeps_the_detour_that_gave_a_stretch_its_clearance():
+    blocked = np.zeros((40, 60), dtype=np.uint8)
+    blocked[:12, 25:35] = 1
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 6.0, "z1": 4.0},
+        blocked_mask=blocked,
+        agent_radius_m=0.1,
+        safety_margin_m=0.0,
+    )
+    # A raw path that swings wide of the obstacle's corner on its way across.
+    raw = [(0.55, 1.55)] + [(0.55 + i * 0.1, 1.55 + min(i, 60 - i) * 0.03) for i in range(1, 49)]
+    raw.append((5.45, 1.55))
+    assert all(grid.walkable(*grid.to_cell(p)) for p in raw)
+    raw_clearance = min(float(grid.clearance_m[grid.to_cell(p)]) for p in raw)
+
+    smoothed = nav.smooth_path(grid, raw)
+
+    assert smoothed[0] == raw[0] and smoothed[-1] == raw[-1]
+    driven = nav.path_clearance_m(grid, smoothed)
+    # The straight chord would pass 0.35 m from the corner and still have sight.
+    assert driven > 0.35
+    assert raw_clearance > 0.0
