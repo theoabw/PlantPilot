@@ -32,7 +32,7 @@ Each of the 30 assets gets one record. Candidates score `0.7 x class + 0.3 x siz
 
 ## 5. Navigation
 
-`route.json` comes from an occupancy grid built once from the extracted boxes. A cell is blocked when an object overlaps floor + 0.08 m to floor + 0.55 m, the robot body, not a person. The 0.10 m grid is inflated once by 0.20 m agent radius plus 0.02 m margin. A* is 8-connected and penalises low clearance. Clearance is the distance transform to the inflated boundary plus the radius, minimised over the corridor excluding the 0.9 m docking approach, so it is measured to the object surface; the artifact records `obstacles_from: objects`, radius, margin. Before this, a saturated point grid fell back to empty and the route crossed equipment; `test_nav.py` keeps a regression.
+`route.json` comes from an occupancy grid built once from the extracted boxes and the residual capture. A cell is blocked when an object overlaps floor + 0.08 m to floor + 0.55 m, the robot body, not a person, and also when the capture's own points still fill that band, so walls and unboxed structure block too. The 0.10 m grid is inflated once by 0.20 m agent radius plus 0.02 m margin. A* is 8-connected and penalises low clearance. Clearance is the distance transform to the inflated boundary plus the radius, minimised over the corridor excluding the 0.9 m docking approach, so it is measured to the object surface; the artifact records `obstacles_from: objects+structure`, radius, margin. Before this, a saturated point grid fell back to empty and the route crossed equipment; `test_nav.py` keeps a regression.
 
 ## 6. Diagnosis
 
@@ -40,15 +40,15 @@ Each of the 30 assets gets one record. Candidates score `0.7 x class + 0.3 x siz
 
 ## 7. Viewer
 
-The room view is React and Vite in `app/web/src/room/`. One three.js scene with three.js 0.180 and `@sparkjsdev/spark` 2.4: `SparkRenderer` draws the `SplatMesh` from `/api/splat`. Boxes, route, robot and proximity colours are drawn in the same scene by the same camera. The robot is a 0.44 x 0.30 x 0.32 m marker at 1.15 m/s; the follow camera sits 2.6 m behind and 1.4 m above it. Every 500 ms the viewer highlights frames within 2.5 m. On arrival it fetches the diagnosis. It reads `/api/scene/objects`, `/api/scene/mapped`, `/api/scene/route`, `/api/splat` and `/api/diagnosis`, served by `main.py`; the panel calls the assignment a proposal, not a confirmed identification.
+The room view is React and Vite in `app/web/src/room/`. One three.js scene with three.js 0.180 and `@sparkjsdev/spark` 2.4: `SparkRenderer` draws the `SplatMesh` from `/api/splat`. Boxes, route, robot and proximity colours are drawn in the same scene by the same camera. The robot is a 0.44 x 0.30 x 0.32 m marker at 0.5 m/s; the follow camera sits 2.6 m behind and 1.4 m above it. Every 500 ms the viewer highlights frames within 2.5 m. On arrival it fetches the diagnosis. It reads `/api/scene/objects`, `/api/scene/mapped`, `/api/scene/route`, `/api/splat` and `/api/diagnosis`, served by `main.py`; the panel calls the assignment a proposal, not a confirmed identification.
 
 ## 8. Verification
 
 `make test` runs the offline pytest suite; `make web-build` runs `tsc --noEmit` and `vite build`; `make check` runs `scripts/sinceai_check.mjs`.
 
-Boiler room: 1,506,136 declared and 502,483 sane (33 percent), `-y` up with the floor slab at +1.069 (21.7 percent), 130 objects, largest 3.7 percent, median 431 points, 3.35 s, 26 proposed and 4 unresolved with P-005 to OBJ-113, route 5.19 m with 3 path points and 0.58 m clearance, A* 15.9 ms, viewer 502,483 gaussians and 28,139,499 B.
+Boiler room: 1,506,136 declared and 502,483 sane (33 percent), `-y` up with the floor slab at +1.069 (21.7 percent), 130 objects, largest 3.7 percent, median 431 points, 2.73 s, 26 proposed and 4 unresolved with P-005 to OBJ-113, route 5.19 m with 3 path points and 0.58 m clearance, A* 20.0 ms, viewer 428,991 gaussians and 24,023,947 B.
 
-Equipment room: 1,676,481 sane and none dropped, `-y` up with the floor slab at +1.167, 150 objects from 380 clusters, largest 1.2 percent, 10.2 s, 30 proposed and none unresolved with P-005 to OBJ-068, route 6.14 m with 6 path points and 0.32 m clearance, viewer 1,676,481 gaussians and about 94 MB.
+Equipment room: 1,676,481 sane and none dropped, `-y` up with the floor slab at +1.167, 150 objects from 380 clusters, largest 1.2 percent, 10.71 s, 30 proposed and none unresolved with P-005 to OBJ-068, route 6.38 m with 9 path points and 0.32 m clearance, A* 12.7 ms, viewer 1,386,351 gaussians and 77,636,108 B.
 
 ## 9. Limits and what we would do next
 
@@ -56,4 +56,4 @@ No scale check has passed: no door-like box was framed, so `units_are_metres` is
 
 ## 10. Dependencies and how to run
 
-Python 3.12 or newer with uv. The demo path uses numpy, OpenCV (`cv2`), FastAPI, uvicorn and pydantic; the workbook reader uses the standard library. The web build uses React 18, Vite 5, TypeScript 5, three.js 0.180 and `@sparkjsdev/spark` 2.4; tests use pytest. Nothing runs on the network at demo time. Put the capture and `builder_pack.xlsx` in `data/supplied/`. `make demo` defaults to `CAPTURE=boiler` (the named `Industrial Boiler Room (1).ply`), builds every artifact and the page, and serves both at `http://127.0.0.1:8000`; `make demo CAPTURE=equipment` runs the complete capture. `make test` and `make check` run the checks; `npm run build` also works; the Makefile uses pnpm.
+Python 3.12 or newer with uv. The demo path uses numpy, OpenCV (`cv2`), FastAPI, uvicorn and pydantic; the workbook reader uses the standard library. The web build uses React 18, Vite 5, TypeScript 5, three.js 0.180 and `@sparkjsdev/spark` 2.4; tests use pytest. Nothing runs on the network at demo time. Put the capture and `builder_pack.xlsx` in `data/supplied/`. `make demo` defaults to `CAPTURE=equipment` (the complete `Equipment Room.ply`), builds every artifact and the page, and serves both at `http://127.0.0.1:8000`; `make demo CAPTURE=boiler` runs the capture the brief names. `make test` and `make check` run the checks; `npm run build` also works; the Makefile uses pnpm.

@@ -125,7 +125,8 @@ explanation in its message: what was wrong, why, and how the test catches it.
   `node_modules/` and `.agents/`. Regenerate them with `make` instead of editing
   them by hand.
 - Numbers that appear in the README, the video script or the submission copy come
-  from `proof/metrics.json`. A claim with no number behind it does not ship.
+  from the generated artifacts in `data/<capture>/` or from a `make` target's
+  output. A claim with no number behind it does not ship.
 - The Valmet documents are copyright Valmet. The repository ships section ids,
   titles, pages and short quotes only, never the PDFs themselves.
 
@@ -155,12 +156,12 @@ explanation in its message: what was wrong, why, and how the test catches it.
 
 | Path | Contents |
 | --- | --- |
-| `app/server/src/plantpilot/` | FastAPI app: corpus, OCR, register, capture, navigation |
+| `app/server/src/plantpilot/` | demo path: splat, segment, pack, mapping, nav, diagnose, main. Off the demo path: ocr, corpus, register, capture |
 | `app/server/tests/` | pytest suite, offline |
 | `app/web/` | React, Vite and three.js viewer |
-| `scripts/` | corpus, register, plates, photo scan, proof summary, submission check |
+| `scripts/` | the demo builds (splat asset, route, anchors, OpenAPI) and the submission check; corpus, register, plates and photo scan are off the demo path |
 | `fixtures/` | committed and small: asset register, section and action samples |
-| `proof/` | timed trials and the metrics the README quotes |
+| `proof/` | timed trials, off the demo path; the README quotes the generated artifacts instead |
 | `docs/` | plan, roadmap, features, acceptance, video script, submission copy |
 | `.github/workflows/ci.yml` | the checks a pull request must pass |
 

@@ -1,6 +1,6 @@
 # Submission copy
 
-The vote card is read in about twenty seconds. This is the text that goes on it, drafted now so Sunday morning is editing rather than writing.
+The vote card is read in about twenty seconds. This is the text that goes on it. Status: the facts below were corrected against the shipped app; the story rewrite is still due.
 
 ## Tagline, up to 80 characters for the name field, one line for the card
 
@@ -15,15 +15,15 @@ Alternates, if the chosen one tests badly with the team:
 
 These are what a scanning voter reads before anything else.
 
-> A work order names a machine, not a place. PlantPilot turns a scan of the plant into a mission: it identifies the equipment, plans a route to the position where a person can inspect it, and cites the manual page that explains why the visit is due.
+> A work order names a machine, not a place. PlantPilot turns a 3D capture of the plant into a mission: it identifies the equipment, plans a route to the position where a person can inspect it, and cites the document that explains why the visit is due.
 
 ## About the project, outline under 5,000 characters
 
 1. **The problem** (300 chars): a work order names a machine; finding it and the reason for the visit is manual work, and a scan does not help on its own.
 2. **What it does** (600): meaning, identity, accessibility, context, in one flow.
-3. **How it works** (1,200): photos or a supplied scan become a point cloud; geometry becomes equipment; a printed tag confirms identity; the floor becomes an occupancy grid and A* plans to a waypoint beside the machine; the manual corpus supplies the citation.
+3. **How it works** (1,200): the capture is read once and the readable prefix is kept. The loader detects the up axis and the floor plane, removes the dominant planes, clusters what is left and fits an oriented 3D box to each cluster, with a geometric class proposal and a confidence. On the complete capture that is 150 boxes from 380 clusters. The supplied builder workbook becomes a pack of 30 asset records, and a class-and-size prior proposes each record onto a distinct box behind two hard gates, so class alone cannot carry a wrongly sized object. Every record is marked proposed or unresolved, and no box receives two tags. The floor becomes an occupancy grid at 0.10 m, blocked where a box or the capture's own points cross the robot body band, and inflated once for the robot radius. A* plans to a stand-off point beside the faulty target P-005. In the browser the robot follows the planned line, the nearby boxes light up with their mapped state, and on arrival the diagnosis card joins the pack's current state, telemetry, alarms, data-quality cases and documents for P-005, with evidence ids and a cited next check. No request leaves the machine.
 4. **What we measured** (400): points, route distance and clearance, the detour, the response time, the test count. Only numbers produced by a command.
-5. **What is simulated** (400): the reference plant, the asset register, the tags, the intervals. The room may be the venue, a supplied scan, or our own generated hall, and the screen says which.
+5. **What is simulated** (400): the capture is a real supplied scan, the metadata is not. The builder pack is Valmet's synthetic data, the mapping is a proposal rather than a confirmed identification, and the class labels are geometric propositions. No door-height scale check has run, so distances are the capture's own units treated as metres. The robot is a viewer marker, not a physics simulation. The diagnosis is retrieval and templates over the pack, not a model at runtime, so it cannot invent a cause.
 6. **What we would do next** (300): real scans, an evidence panel over the company's own documents, robot clearance profiles, multi-floor routing.
 
 ## Built with, in the order it should be read
@@ -33,15 +33,15 @@ The first five become chips on the vote card, so the order is deliberate.
 1. three.js
 2. FastAPI
 3. Python
-4. OpenCV
-5. Depth Anything V2
-6. React
-7. TypeScript
-8. ONNX Runtime
-9. SQLite FTS5
-10. Tesseract
-11. Vite
-12. Tailwind CSS
+4. React
+5. OpenCV
+6. TypeScript
+7. Vite
+8. Tailwind CSS
+9. Spark
+10. numpy
+11. pydantic
+12. pytest
 
 ## GenAI disclosure
 
@@ -56,7 +56,7 @@ The first five become chips on the vote card, so the order is deliberate.
 | Tagline | above, chosen line |
 | About | outline above, fill the numbers from the app on Sunday |
 | Built with | ordered list above |
-| Repository | the repository link, public before submission |
+| Repository | the repository link, hosted private; a source-code zip travels with the entry |
 | Demo video | YouTube unlisted link, recorded Saturday night |
 | Pitch deck | optional, one page, only if it earns its place |
 | MLH questions | technology feedback, GenAI tools, GenAI in the product |

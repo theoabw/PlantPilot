@@ -1,9 +1,10 @@
 # Proposal: static scene pipeline and Three.js client
 
-Status: not built. This page is a considered alternative for a post-event
-refactor, kept so the reasoning is not lost. The demonstration path today is the
-FastAPI service plus the Spark room view described in `README.md`, with the
-pipeline stages in `app/server/src/plantpilot/` and the commands in `Makefile`.
+Status: the no-HTTP variant was not built. This page is a considered
+alternative for a post-event refactor, kept so the reasoning is not lost. The
+demonstration path shipped: the FastAPI service plus the Spark room view
+described in `README.md`, with the pipeline stages in
+`app/server/src/plantpilot/` and the commands in `Makefile`.
 
 If built, this proposal would replace the FastAPI-based plan with an offline
 scene pipeline plus a Three.js client that loads generated scene geometry and
@@ -18,4 +19,4 @@ semantic data directly, with no HTTP service on the demo path.
 | Seat A extraction | `make scene` ingests the delivered file and `make objects` frames 130 objects: 1,506,136 declared, 502,483 sane, largest object 3.7 percent, extraction 2.7 s | measured Friday 21:10; artifact shape in [scene-artifacts.md](scene-artifacts.md) |
 | Second scene | `make generality` runs the same stages on the reference plant: 141,575 points, effective voxel 0.058 m from a measured 0.042 m spacing, 62 objects framed, 10 of 10 assets framed against ground truth, PASS | measured Friday 21:10; the plan's generality claim is now supported by a check, not only designed |
 | Off demo path | printed plates, OCR identity, register, photo capture, public PDF corpus, `fixtures/plant/plant.json` | the new rubric names none of them; the reference plant is kept only as the generality fixture |
-| Stale docs | `README.md`, `docs/submission-copy.md`, `docs/video-script.md` described the synthetic-plant product | rewritten on Saturday against the splat demo; see `README.md` |
+| Stale docs | `README.md`, `docs/video-script.md` and `docs/submission-copy.md` described the synthetic-plant product | the README and the video script were rewritten against the splat demo; `docs/submission-copy.md` still carries the pre-pivot story and is the next rewrite |

@@ -39,7 +39,7 @@ Build and serve the complete capture:
 make demo
 ```
 
-Open <http://127.0.0.1:8000>. The browser opens the room view. That target builds everything it serves.
+Open <http://127.0.0.1:8000>. The browser opens the room view. That target builds everything it serves. The room view needs a browser with WebGL2; without it the page says so instead of drawing the capture. If port 8000 is taken, serve elsewhere with `make demo PORT=8001`.
 
 The first delivery declares 1,506,136 gaussians in the file the brief names and only 502,483 rows hold data; the rest is unreadable, so the loader keeps the contiguous sane prefix and that scene covers part of the room. The complete capture was re-uploaded by the organisers and is the demo default. Build and serve the named capture instead:
 
@@ -47,7 +47,7 @@ The first delivery declares 1,506,136 gaussians in the file the brief names and 
 make demo CAPTURE=boiler
 ```
 
-The demo video and the deck use the complete capture; the numbers below cover both captures.
+The demo video uses the complete capture. The deck names the capture on every slide that quotes a number; the numbers below cover both captures.
 
 ## What it does
 
@@ -80,7 +80,7 @@ objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
 
 **Mapping.** `pack.py` converts the workbook into `pack.json`. `mapping.py` assigns the 30 records one-to-one to distinct objects with a class-and-size prior and two hard gates. Every record is `proposed` or `unresolved`, the score is a match score, not a calibrated probability, and no object gets two tags. P-005 maps to OBJ-113 in the boiler room and OBJ-068 in the complete room. The viewer draws all mapped records as faint proposal frames and lists them with their status under `Pack records` in the Equipment browser, so the full 30 of 30 mapping is visible beside the seven brighter reviewed anchors.
 
-**Route planning.** `nav.py` builds an occupancy grid on the detected floor, marks obstacles from the object boxes at the robot body height of 0.55 m, and inflates once with a 0.20 m agent radius and a 0.02 m margin. A* searches that grid to a stand-off waypoint beside the target, and the artifact records `obstacles_from: objects`. The boiler route is 5.19 m with 0.58 m clearance; the complete room route is 6.38 m with 0.32 m.
+**Route planning.** `nav.py` builds an occupancy grid on the detected floor. A cell is blocked when an object box crosses the robot body band from 0.08 m to 0.55 m above the floor, and also when the capture still has structure in that band, so walls and unboxed equipment block as well. The grid is inflated once with a 0.20 m agent radius and a 0.02 m margin. A* searches it to a stand-off waypoint beside the target, and the artifact records `obstacles_from: objects+structure`. The boiler route is 5.19 m with 0.58 m clearance; the complete room route is 6.38 m with 0.32 m.
 
 **Diagnosis.** `diagnose.py` joins P-005's current state, telemetry, alarms, data-quality cases and knowledge documents from the pack. It writes `diagnosis.json` with the condition `attention_required`, health 44, the `FOULING` issue at high urgency, two findings with evidence ids, a next safe check (`inspect hydraulic path`, document `DOC-FIELD-SAFETY`) and citations. The join is deterministic, not a model call: 144 telemetry rows, 34 alarms, 9 data-quality cases and 2 documents feed it.
 
@@ -96,10 +96,12 @@ Every number comes from a run on the two supplied captures in `data/supplied/`; 
 | Up axis and floor slab | `-y`, scene y +1.069 (21.7 percent of points) | `-y`, scene y +1.167 |
 | 3D-framed objects | 130 | 150 from 380 clusters |
 | Largest object share | 3.7 percent of points | 1.2 percent of points |
-| Extraction time | 3.35 s | 10.2 s |
+| Extraction time | 2.73 s | 10.71 s |
 | Builder-pack mapping | 26 proposed, 4 unresolved, P-005 to OBJ-113 | 30 proposed, 0 unresolved, P-005 to OBJ-068 |
 | Route | 5.19 m, 3 path points, 0.58 m minimum clearance | 6.38 m, 9 path points, 0.32 m minimum clearance |
-| Viewer asset | 502,483 gaussians, 28,139,499 B | 1,676,481 gaussians, about 94 MB |
+| Viewer asset | 428,991 gaussians, 24,023,947 B | 1,386,351 gaussians, 77,636,108 B |
+
+The viewer asset holds fewer gaussians than the sane count because `scripts/make_splat_asset.py` drops the fog gaussians before serving: 428,991 of the boiler capture's 502,483 and 1,386,351 of the complete capture's 1,676,481 reach the browser.
 
 ## What is real and what is synthetic
 
