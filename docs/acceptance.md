@@ -70,7 +70,7 @@ Each criterion is written so a person who did not build the feature can check it
 **when** the avatar arrives,
 **then** the panel shows the condition, the health, the issue, the telemetry evidence, the alarms, the cited documents, a confidence and a safe next check.
 
-**Pass:** every finding carries an evidence ID that exists in the pack, at least two documents are cited, the confidence drops when a data quality case touches the asset, and the next check matches the field safety document.
+**Pass:** every finding carries an evidence ID that exists in the pack, at least two documents are cited, the confidence drops when a data quality case touches the asset, and the next check matches the field safety document. The reasoning block explains the condition: every claim cites an evidence ID, every number in a claim is recomputed from the pack by the test suite, the three alternative causes each carry a verdict, and the guardrail reports zero unsupported claims.
 **Check:** `make diagnose`; compare the panel to `Current_State`, `Alarms_Events` and `Knowledge_Docs`.
 
 ### 7. The demo is one reliable take

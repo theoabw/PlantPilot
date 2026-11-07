@@ -82,7 +82,7 @@ objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
 
 **Route planning.** `nav.py` builds an occupancy grid on the detected floor. A cell is blocked when an object box crosses the robot body band from 0.08 m to 0.55 m above the floor, and also when the capture still has structure in that band, so walls and unboxed equipment block as well. The grid is inflated once with a 0.20 m agent radius and a 0.02 m margin. A* searches it to a stand-off waypoint beside the target, and the artifact records `obstacles_from: objects+structure`. The boiler route is 5.19 m with 0.58 m clearance; the complete room route is 6.38 m with 0.32 m.
 
-**Diagnosis.** `diagnose.py` joins P-005's current state, telemetry, alarms, data-quality cases and knowledge documents from the pack. It writes `diagnosis.json` with the condition `attention_required`, health 44, the `FOULING` issue at high urgency, two findings with evidence ids, a next safe check (`inspect hydraulic path`, document `DOC-FIELD-SAFETY`) and citations. The join is deterministic, not a model call: 144 telemetry rows, 34 alarms, 9 data-quality cases and 2 documents feed it.
+**Diagnosis.** `diagnose.py` joins P-005's current state, telemetry, alarms, data-quality cases and knowledge documents from the pack. It writes `diagnosis.json` with the condition `attention_required`, health 44, the `FOULING` issue at high urgency, two findings with evidence ids, a next safe check (`inspect hydraulic path`, document `DOC-FIELD-SAFETY`) and citations. The join is deterministic, not a model call: 144 telemetry rows, 34 alarms, 9 data-quality cases and 2 documents feed it. The same stage writes a `reasoning` block: the computed deltas behind the condition, five claims that each cite an evidence id, three alternative causes with a verdict, and a guardrail count. The card opens it on arrival, so it says why fouling is the reading and why a suction restriction or a drifting flow sensor is not.
 
 **Viewer.** `main.py` serves the built React app and the room endpoints (`/api/scene/objects`, `/api/scene/mapped`, `/api/scene/route`, `/api/splat`). The room view draws the capture with Spark inside three.js, takes the up axis from the artifact, draws the reviewed anchors, the mapped proposal frames and the route, and moves the robot along the curve at 0.5 m/s with an obstacle-aware follow camera. On arrival it fetches `/api/diagnosis`, shows the pack evidence references and a citation, and opens the service panel.
 
@@ -111,7 +111,7 @@ The viewer asset holds fewer gaussians than the sane count because `scripts/make
 - Class labels are geometric proposals, not identifications. The brief allows geometric heuristics, and no open-vocabulary model is in the demo path.
 - Units are scene units treated as metres. No door-height scale check has been performed, and the 1.95 m clear height means the units are not exact metres.
 - The robot is a viewer marker, not a physical simulation: it follows the planned curve at 0.5 m/s.
-- The diagnosis is grounded and cited, but it is deterministic retrieval and templates over the pack, not a model at runtime.
+- The diagnosis is grounded and cited, but it is deterministic retrieval and templates over the pack, not a model at runtime. The reasoning sentences are generated from the computed deltas at build time, not by a model either.
 
 ## Technology
 

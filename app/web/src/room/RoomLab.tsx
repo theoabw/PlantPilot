@@ -18,6 +18,7 @@ import {
 import type {
   Diagnosis,
   MappedAsset,
+  ReasoningDifferential,
   RoomAnchor,
   RoomAnchors,
   RoomAsset,
@@ -57,6 +58,15 @@ const CONDITION_TEXT: Record<string, string> = {
   watch: 'Watch',
   degraded: 'Degraded',
   attention_required: 'Needs attention',
+}
+
+// The verdict badge reuses the treatment already on this screen: emerald for
+// something the evidence supports, slate for a weaker reading, amber for a pair
+// the pack cannot separate.
+const VERDICT_CLASSES: Record<ReasoningDifferential['verdict'], string> = {
+  supported: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300',
+  'less likely': 'border-slate-600 bg-slate-800/70 text-slate-300',
+  'cannot separate': 'border-amber-400/60 bg-amber-500/20 text-amber-200',
 }
 
 type RobotOption = {
@@ -1243,6 +1253,84 @@ export default function RoomLab() {
                     {citation ? (
                       <p className="text-[10px] font-semibold leading-snug text-slate-500">
                         {citation.doc_id}: {citation.excerpt}
+                      </p>
+                    ) : null}
+                  </div>
+                )
+              })()}
+              {(() => {
+                const reasoning = diagnosis?.reasoning
+                if (!reasoning) {
+                  return null
+                }
+                const claims = Array.isArray(reasoning.claims) ? reasoning.claims : []
+                const differential = Array.isArray(reasoning.differential) ? reasoning.differential : []
+                if (claims.length === 0 && differential.length === 0) {
+                  return null
+                }
+                const guardrail = reasoning.guardrail
+                return (
+                  <div className="mt-2 border-t border-slate-800 pt-2">
+                    {claims.length > 0 ? (
+                      <>
+                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Why</p>
+                        <ul className="mt-1 space-y-1">
+                          {claims.map((claim) => {
+                            const refs = Array.isArray(claim.refs) ? claim.refs : []
+                            return (
+                              <li key={claim.claim_id}>
+                                <p className="line-clamp-3 text-[11px] font-semibold leading-snug text-slate-300" title={claim.text}>
+                                  {claim.text}
+                                </p>
+                                {refs.length > 0 ? (
+                                  <div className="mt-0.5 flex flex-wrap gap-1">
+                                    {refs.slice(0, 4).map((ref) => (
+                                      <span
+                                        key={ref}
+                                        className="rounded border border-slate-700 bg-slate-950/70 px-1 py-0.5 font-mono text-[10px] leading-none text-slate-400"
+                                      >
+                                        {ref}
+                                      </span>
+                                    ))}
+                                    {refs.length > 4 ? (
+                                      <span className="rounded border border-slate-700 bg-slate-950/70 px-1 py-0.5 font-mono text-[10px] leading-none text-slate-500">
+                                        +{refs.length - 4}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </>
+                    ) : null}
+                    {differential.length > 0 ? (
+                      <>
+                        <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Ruled out</p>
+                        <ul className="mt-1 space-y-1">
+                          {differential.map((entry) => (
+                            <li key={entry.hypothesis}>
+                              <p className="flex flex-wrap items-center gap-1 text-[11px] font-bold text-slate-200">
+                                <span>{entry.hypothesis}</span>
+                                <span
+                                  className={`rounded border px-1 py-0.5 text-[10px] font-black uppercase tracking-wide ${VERDICT_CLASSES[entry.verdict]}`}
+                                >
+                                  {entry.verdict}
+                                </span>
+                              </p>
+                              <p className="line-clamp-3 text-[10px] font-semibold leading-snug text-slate-400" title={entry.because}>
+                                {entry.because}
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                    {guardrail ? (
+                      <p className="mt-2 text-[10px] font-semibold leading-snug text-slate-400">
+                        {guardrail.claims} claims, {guardrail.cited} cited, {guardrail.unsupported} unsupported
+                        <span className="text-slate-500"> · {reasoning.generated_by}</span>
                       </p>
                     ) : null}
                   </div>
