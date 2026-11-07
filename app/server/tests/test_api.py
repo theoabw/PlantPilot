@@ -89,6 +89,24 @@ def test_the_reroute_endpoint_passes_blockers_start_and_robot_radius(monkeypatch
     assert captured["output_path"] is None
 
 
+def test_the_reroute_endpoint_reports_an_unreadable_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    (tmp_path / "scene.npz").write_bytes(b"not an archive")
+    objects = tmp_path / "objects.json"
+    objects.write_text("{}")
+    mapping = tmp_path / "mapped.json"
+    mapping.write_text("{}")
+    monkeypatch.setattr(main, "SCENE_DIR", tmp_path)
+    monkeypatch.setattr(main, "OBJECTS_FILE", objects)
+    monkeypatch.setattr(main, "MAPPED_FILE", mapping)
+
+    response = client.post("/api/scene/reroute", json={})
+
+    assert response.status_code == 500
+    assert "scene.npz" in response.json()["detail"]
+
+
 def test_the_object_splats_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 

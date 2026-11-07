@@ -45,6 +45,7 @@ import heapq
 import json
 import math
 import time
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -1191,6 +1192,90 @@ def _nearest_free(grid: Grid, point: tuple[float, float], radius_cells: int = 6)
     return point
 
 
+class RouteInputError(ValueError):
+    """An artifact the route depends on is missing or cannot be read."""
+
+
+def _read_json_artifact(path: Path, label: str) -> dict | list:
+    """Read a JSON artifact, naming the file and the fix when it cannot be used."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RouteInputError(f"cannot read the {label} artifact {path}: {exc}") from exc
+    if not isinstance(document, (dict, list)):
+        raise RouteInputError(f"the {label} artifact {path} is not a JSON object or list")
+    return document
+
+
+def _read_scene_frame(path: Path) -> tuple[int, int, str | None]:
+    """Return the up axis index, its sign and the capture name from a scene artifact."""
+    try:
+        with np.load(path, allow_pickle=False) as data:
+            meta = json.loads(str(data["meta"]))
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
+        raise RouteInputError(f"cannot read the scene artifact {path}: {exc}") from exc
+    frame = meta.get("frame", {})
+    source = meta.get("source", {})
+    source_file = source.get("file") if isinstance(source, dict) else None
+    return (
+        int(frame.get("up_axis_index", 1)),
+        int(frame.get("up_axis_sign", 1)),
+        source_file if isinstance(source_file, str) else None,
+    )
+
+
+def _walkable_ceiling(objects_doc: dict, up_axis: int, up_axis_sign: int) -> float:
+    """Height above the floor a body may use, from the lowest horizontal plane over it.
+
+    A low ceiling plane must not pull pipe trays and ducts into the obstacle band
+    and block the whole room. `floor.height` is signed along the up axis, so a
+    plane's `n . p + d = 0` is converted to the same measure before comparing.
+    """
+    floor_height = (objects_doc.get("floor") or {}).get("height")
+    planes = (objects_doc.get("planes") or {}).get("items") or []
+    if floor_height is None:
+        return WALKABLE_HEIGHT_MAX_M
+    clearances = []
+    for plane in planes:
+        normal = plane.get("normal")
+        if not plane.get("horizontal") or not normal:
+            continue
+        along_up = float(normal[up_axis]) * up_axis_sign
+        if abs(along_up) < 1e-6:
+            continue
+        clearance = -float(plane.get("offset", 0.0)) / along_up - float(floor_height)
+        if clearance > 0.5:
+            clearances.append(clearance)
+    if not clearances:
+        return WALKABLE_HEIGHT_MAX_M
+    # Keep 10 cm margin below the ceiling plane.
+    return max(1.5, round(min(clearances) - 0.10, 2))
+
+
+def _resolve_target(
+    target: str, mapped_records: list[dict], objects: list[dict]
+) -> tuple[dict | None, str | None]:
+    """Return the object mapped to `target`, or why there is none.
+
+    A route to some other object would be reported as a route to the target, so
+    there is deliberately no fallback here.
+    """
+    record = next(
+        (row for row in mapped_records if target in (row.get("asset_id"), row.get("tag"))),
+        None,
+    )
+    if record is None:
+        return None, f"{target} is not in the mapping"
+    object_id = record.get("object_id")
+    if not object_id:
+        detail = record.get("reason") or "no object cleared the match rule"
+        return None, f"{target} is unresolved in the mapping: {detail}"
+    target_box = next((obj for obj in objects if obj.get("id") == object_id), None)
+    if target_box is None:
+        return None, f"{target} is mapped to {object_id}, which is not in the objects artifact; run make map"
+    return target_box, None
+
+
 def build_route(
     scene_path: Path | None = None,
     objects_path: Path | None = None,
@@ -1213,98 +1298,32 @@ def build_route(
     viewer lets the judge place.  Passing an empty list or None leaves the grid
     unchanged.
     """
-    # Read up_axis from the scene artifact so this works for any capture.
-    # The boiler room is +y (index 1); the Equipment Room is -y (still index 1,
-    # sign -1). Default to 1 if the artifact is absent.
-    up_axis = 1
-    scene_meta: dict | None = None
-    capture_name: str | None = None
-    if scene_path and scene_path.exists():
-        try:
-            import json as _json
-            _data = np.load(scene_path, allow_pickle=False)
-            _meta_bytes = _data.get("meta") if hasattr(_data, "get") else None
-            if _meta_bytes is None:
-                # npz files expose keys as attributes via indexing
-                _meta_str = str(_data["meta"]) if "meta" in _data.files else None  # type: ignore[attr-defined]
-            else:
-                _meta_str = str(_meta_bytes)
-            if _meta_str:
-                scene_meta = _json.loads(_meta_str)
-                frame = scene_meta.get("frame", {})
-                up_axis = int(frame.get("up_axis_index", 1))
-                up_axis_sign = int(frame.get("up_axis_sign", 1))
-                source = scene_meta.get("source", {})
-                if isinstance(source, dict):
-                    source_file = source.get("file")
-                    capture_name = source_file if isinstance(source_file, str) else None
-        except Exception:
-            up_axis = 1
-            up_axis_sign = 1
-    else:
-        up_axis_sign = 1
+    # A path that was passed is an artifact the route depends on, so a missing or
+    # unreadable one stops the plan. Only a path left out means planning without
+    # that input.
+    up_axis, up_axis_sign, capture_name = 1, 1, None
+    if scene_path is not None:
+        up_axis, up_axis_sign, capture_name = _read_scene_frame(scene_path)
 
-    # Load objects if available
     objects: list[dict] = []
-    walkable_ceiling_m = WALKABLE_HEIGHT_MAX_M  # scene-relative override below
-    if objects_path and objects_path.exists():
-        try:
-            obj_data = json.loads(objects_path.read_text())
-            objects = obj_data if isinstance(obj_data, list) else obj_data.get("objects", [])
-            # Fix 4: derive walkable ceiling from the measured floor-to-next-plane
-            # distance stored in the objects artifact rather than using the hard-coded
-            # 2.0 m constant. The boiler room has only 1.95 m to the first horizontal
-            # plane; using 2.0 m would pull pipe-tray / duct points into the obstacle
-            # band and risk blocking the entire room.
-            # objects.json records this as planes[i].height for horizontal planes, or
-            # we use (next_horizontal_plane_height - floor_height) when available.
-            planes = obj_data.get("planes", {}).get("items", []) if isinstance(obj_data, dict) else []
-            floor_info = obj_data.get("floor", {}) if isinstance(obj_data, dict) else {}
-            floor_h = floor_info.get("height")
-            if floor_h is not None and planes:
-                # Find the lowest horizontal plane above the floor
-                above_floor = [
-                    p.get("offset", 0.0)
-                    for p in planes
-                    if p.get("horizontal") and p.get("offset", 0.0) > floor_h + 0.5
-                ]
-                if above_floor:
-                    clearance_to_ceil = min(above_floor) - floor_h
-                    # Keep 10 cm margin below the ceiling plane
-                    walkable_ceiling_m = max(1.5, round(clearance_to_ceil - 0.10, 2))
-        except Exception:
-            objects = []
+    walkable_ceiling_m = WALKABLE_HEIGHT_MAX_M
+    if objects_path is not None:
+        obj_data = _read_json_artifact(objects_path, "objects")
+        objects = obj_data if isinstance(obj_data, list) else obj_data.get("objects", [])
+        if isinstance(obj_data, dict):
+            walkable_ceiling_m = _walkable_ceiling(obj_data, up_axis, up_axis_sign)
 
-    # Load mapping if available
-    mapped_records: list[dict] = []
-    target_object_id: str | None = None
-    if mapped_path and mapped_path.exists():
-        try:
-            map_data = json.loads(mapped_path.read_text())
-            if isinstance(map_data, dict):
-                mapped_records = map_data.get("mappings", [])
-                target_object_id = map_data.get("target_object_id")
-            elif isinstance(map_data, list):
-                mapped_records = map_data
-        except Exception:
-            mapped_records = []
-
-    # Locate target object
     target_box: dict | None = None
-    if target_object_id:
-        target_box = next((o for o in objects if o.get("id") == target_object_id), None)
-    if not target_box and mapped_records:
-        for m in mapped_records:
-            if m.get("asset_id") == target_asset_id or m.get("tag") == target_asset_id:
-                obj_id = m.get("object_id")
-                target_box = next((o for o in objects if o.get("id") == obj_id), None)
-                break
-    if not target_box and objects:
-        # Fallback: find object with class pump or first object
-        target_box = next((o for o in objects if "pump" in str(o.get("class_proposal", "")).lower()), objects[0])
+    target_problem: str | None = None
+    if mapped_path is not None:
+        map_data = _read_json_artifact(mapped_path, "mapping")
+        mapped_records = map_data if isinstance(map_data, list) else map_data.get("mappings", [])
+        target_box, target_problem = _resolve_target(target_asset_id, mapped_records, objects)
+    else:
+        mapped_records = []
 
     # Build grid from scene point cloud or fallback
-    if scene_path and scene_path.exists():
+    if scene_path is not None:
         data = np.load(scene_path)
         points = data["xyz"] if "xyz" in data else data["points"]
         # The floor and wall rules read the gaussians' own shape, so the normals
@@ -1415,9 +1434,17 @@ def build_route(
             grid, (float(goal_override[0]), float(goal_override[1])), radius_cells=25
         )
         goal_from = "goal_override"
+    elif target_problem:
+        # The target has no object to drive to. An explicit destination above
+        # does not need one, so only this case refuses the plan.
+        goal_2d = start_2d
+        goal_from = "unresolved_target"
 
     # Compute A* path
-    plan_result = astar(grid, start_2d, goal_2d)
+    if goal_override is None and target_problem:
+        plan_result = {"reachable": False, "path": [], "reason": target_problem}
+    else:
+        plan_result = astar(grid, start_2d, goal_2d)
     if start_problem:
         plan_result = {"reachable": False, "path": [], "reason": start_problem}
 

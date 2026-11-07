@@ -10,9 +10,9 @@ It is deliberately not the product viewer: it is a numpy rasteriser that takes
 seconds per still, used for the preview PNGs, the deck and the videos. The
 product viewer draws the same artifact on the GPU.
 
-The scene's own up axis comes from its metadata, never from a constant here: the
-supplied boiler room is +y, the improved equipment room is -y, and a renderer
-that assumes one of those turns the other room upside down.
+The scene's own up axis comes from its metadata, never from a constant here: both
+supplied captures are -y up, and a renderer that assumes +y turns them upside
+down.
 """
 
 from __future__ import annotations
