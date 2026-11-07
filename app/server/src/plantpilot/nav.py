@@ -767,6 +767,31 @@ def path_height(floor_y: float, up_axis_sign: int) -> float:
     return round(float(up_axis_sign) * (float(floor_y) + 0.05), 3)
 
 
+def _nearest_free(grid: Grid, point: tuple[float, float], radius_cells: int = 6) -> tuple[float, float]:
+    """Snap a world point to the nearest free cell centre, searching outward."""
+    row, col = grid.to_cell(point)
+    for radius in range(radius_cells + 1):
+        best: tuple[int, int] | None = None
+        best_distance = float("inf")
+        for dr in range(-radius, radius + 1):
+            for dc in range(-radius, radius + 1):
+                if max(abs(dr), abs(dc)) != radius:
+                    continue
+                rr, cc = row + dr, col + dc
+                if 0 <= rr < grid.rows and 0 <= cc < grid.cols and grid.blocked[rr, cc] == 0:
+                    distance = dr * dr + dc * dc
+                    if distance < best_distance:
+                        best_distance = distance
+                        best = (rr, cc)
+        if best is not None:
+            col, row = best[1], best[0]
+            return (
+                grid.x0 + (col + 0.5) * CELL_M,
+                grid.z0 + (row + 0.5) * CELL_M,
+            )
+    return point
+
+
 def build_route(
     scene_path: Path | None = None,
     objects_path: Path | None = None,
@@ -776,6 +801,7 @@ def build_route(
     manual_floor_y: float | None = None,
     agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
     blockers: list[list[float]] | None = None,
+    start_override: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     """End-to-end execution for Seat B: produces route.json matching Acceptance Checks 4 & 5.
 
@@ -916,9 +942,15 @@ def build_route(
     else:
         goal_2d = (grid.x0 + grid.width_m * 0.7, grid.z0 + grid.depth_m * 0.7)
 
+    horizontal = [axis for axis in range(3) if axis != up_axis]
+
     # Apply transient blockers (parked forklift, closed aisle, etc.)
     if blockers:
         grid = grid.with_blockers(blockers)
+
+    # A live robot replans from where it stands, not from the artifact's start.
+    if start_override is not None:
+        start_2d = _nearest_free(grid, (float(start_override[0]), float(start_override[1])))
 
     # Compute A* path
     plan_result = astar(grid, start_2d, goal_2d)
@@ -963,6 +995,17 @@ def build_route(
         "path": path_3d,
         "path_samples": samples,
         "active_blockers": blockers or [],
+        "grid": {
+            "x0": round(grid.x0, 3),
+            "z0": round(grid.z0, 3),
+            "cell_m": CELL_M,
+            "rows": grid.rows,
+            "cols": grid.cols,
+            "horizontal_axes": [horizontal[0], horizontal[1]],
+            "blocked_packed": __import__("base64").b64encode(
+                np.packbits(grid.blocked.astype(np.uint8).ravel())
+            ).decode("ascii"),
+        },
         "grid_stats": {
             "cols": grid.cols,
             "rows": grid.rows,

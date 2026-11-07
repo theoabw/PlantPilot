@@ -1032,6 +1032,43 @@
         "title": "RegisterAsset",
         "type": "object"
       },
+      "RerouteRequest": {
+        "description": "Transient obstacles for a live replan, in scene plane coordinates.",
+        "properties": {
+          "agent_radius_m": {
+            "default": 0.2,
+            "title": "Agent Radius M",
+            "type": "number"
+          },
+          "blockers": {
+            "default": [],
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          }
+        },
+        "title": "RerouteRequest",
+        "type": "object"
+      },
       "RouteRequest": {
         "additionalProperties": true,
         "description": "Ask for a route to an asset id or a goal point, with optional blocked rectangles.",
@@ -2397,6 +2434,88 @@
           }
         },
         "summary": "Scene Objects"
+      }
+    },
+    "/api/scene/reroute": {
+      "post": {
+        "description": "Replan the route around transient obstacles from the robot's position.",
+        "operationId": "scene_reroute_api_scene_reroute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "artifact": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object"
+                    },
+                    "floor": {
+                      "type": "object"
+                    },
+                    "mappings": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objects": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "path": {
+                      "items": {
+                        "items": {
+                          "type": "number"
+                        },
+                        "type": "array"
+                      },
+                      "type": "array"
+                    },
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "object"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Scene Reroute Api Scene Reroute Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scene Reroute"
       }
     },
     "/api/scene/route": {

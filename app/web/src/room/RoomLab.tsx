@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CLASS_COLOURS,
   STATE_COLOURS,
   STATE_LABEL,
+  fetchReroute,
   fetchRoomAnchors,
   fetchRoomFilters,
   fetchRoomMeshes,
@@ -30,6 +31,12 @@ export default function RoomLab({ onLeave }: Props) {
   const [meshes, setMeshes] = useState<RoomMeshes | null>(null)
   const [objectSplats, setObjectSplats] = useState<RoomObjectSplats | null>(null)
   const [explode, setExplode] = useState(0)
+  const [obstacleMode, setObstacleMode] = useState(false)
+  const [obstacles, setObstacles] = useState<[number, number][]>([])
+  const [rerouteNote, setRerouteNote] = useState<string | null>(null)
+  const [showOccupancy, setShowOccupancy] = useState(false)
+  const [originalRoute, setOriginalRoute] = useState<RoomRoute | null>(null)
+  const robotPositionRef = useRef<[number, number] | null>(null)
   const [filterName, setFilterName] = useState(() => new URLSearchParams(window.location.search).get('filter') ?? 'photo')
   const [assets, setAssets] = useState<RoomAssets | null>(null)
   const [showRaw, setShowRaw] = useState(false)
@@ -63,7 +70,12 @@ export default function RoomLab({ onLeave }: Props) {
       .then((value) => alive && setMapped(value))
       .catch(() => undefined)
     fetchRoomRoute()
-      .then((value) => alive && setRoute(value))
+      .then((value) => {
+        if (alive) {
+          setRoute(value)
+          setOriginalRoute(value)
+        }
+      })
       .catch(() => undefined)
     // The reviewed anchors are the demo layer; the automatic proposal layer is
     // the fallback, and the raw extraction is the last resort.
@@ -289,6 +301,44 @@ export default function RoomLab({ onLeave }: Props) {
     return result
   }, [nearby, assetsActive, visibleAssets, mappedByObject])
 
+  const placeObstacle = (point: [number, number]) => {
+    const blocker: number[] = [
+      Math.round((point[0] - 0.18) * 100) / 100,
+      Math.round((point[1] - 0.18) * 100) / 100,
+      Math.round((point[0] + 0.18) * 100) / 100,
+      Math.round((point[1] + 0.18) * 100) / 100,
+    ]
+    const next = [...obstacles, point]
+    setObstacles(next)
+    setOriginalRoute((previous) => previous ?? route)
+    const start = robotPositionRef.current
+    fetchReroute([...obstacles.map((item) => [item[0] - 0.18, item[1] - 0.18, item[0] + 0.18, item[1] + 0.18]), blocker], start)
+      .then((result) => {
+        setRoute(result)
+        if (!result.reachable) {
+          setRerouteNote('Blocked: no alternative path from here')
+          return
+        }
+        setRerouteNote(
+          `Rerouted live: ${(result.distance_m ?? 0).toFixed(1)} m, ${(result.clearance_m ?? 0).toFixed(2)} m clear`,
+        )
+        if (trip.mode === 'moving') {
+          setTripToken((value) => value + 1)
+        }
+      })
+      .catch(() => setRerouteNote('Reroute failed'))
+  }
+
+  const clearObstacles = () => {
+    setObstacles([])
+    setObstacleMode(false)
+    setRerouteNote(null)
+    const restore = originalRoute ?? route
+    if (restore) {
+      setRoute(restore)
+    }
+  }
+
   const sendRobot = () => {
     if (!routeReady) {
       return
@@ -371,6 +421,11 @@ export default function RoomLab({ onLeave }: Props) {
                   hideSplat={filterName === 'objects'}
                   explode={explode}
                   objectAssets={objectAssets}
+                  obstacleMode={obstacleMode}
+                  obstacles={obstacles}
+                  robotPositionRef={robotPositionRef}
+                  onPlaceObstacle={placeObstacle}
+                  showOccupancy={showOccupancy}
                   route={route}
                   tripToken={tripToken}
                   follow={follow}
@@ -551,6 +606,42 @@ export default function RoomLab({ onLeave }: Props) {
                   <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                     mapping is a proposal, not a confirmed identification
                   </p>
+                  <div className="mt-2 flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setObstacleMode((value) => !value)}
+                      className={`flex-1 rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-wide ${
+                        obstacleMode
+                          ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+                          : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      {obstacleMode ? 'Click the floor' : 'Place obstacle'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowOccupancy((value) => !value)}
+                      className={`rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-wide ${
+                        showOccupancy
+                          ? 'border-cyan-400 bg-cyan-500/20 text-cyan-200'
+                          : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'
+                      }`}
+                    >
+                      Area
+                    </button>
+                    {obstacles.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={clearObstacles}
+                        className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-300 hover:border-slate-500"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  {rerouteNote ? (
+                    <p className="mt-1 text-[10px] font-semibold leading-snug text-amber-200">{rerouteNote}</p>
+                  ) : null}
                 </section>
 
                 <section className="order-4 mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
