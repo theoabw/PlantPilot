@@ -625,23 +625,21 @@ def _reasoning_claims(
     last_refs = _refs_at(telemetry_ids, -1)
 
     if conditions["flow_falls"] and conditions["speed_steady"]:
-        steadiness = "which is a steady speed next to the flow loss"
+        steadiness = "a steady speed next to the loss"
     elif conditions["flow_falls"]:
-        steadiness = "so speed did not hold next to the flow loss"
+        steadiness = "so speed did not hold"
     else:
-        steadiness = "so the series does not show the flow loss this check needs"
+        steadiness = "so the series does not show the needed flow loss"
     observation = (
-        f"Across {facts['samples']} samples over {_number(facts['window_hours'], 1)} hours the "
+        f"Over {_number(facts['window_hours'], 1)} hours the "
         f"{_movement('flow', flow['delta_pct'], 'percent')}, from {_number(flow['first'], 3)} "
         f"percent to {_number(flow['last'], 3)} percent, while the "
-        f"{_movement('speed', speed['delta_pct'], 'percent')}, from {_number(speed['first'], 3)} "
-        f"rpm to {_number(speed['last'], 3)} rpm, {steadiness}."
+        f"{_movement('speed', speed['delta_pct'], 'percent')}, {steadiness}."
     )
 
     if conditions["flow_falls"] and conditions["pressure_steady"]:
         head = (
-            "so the flow loss is not a collapse in head: a head collapse would show as "
-            "pressure falling with the flow"
+            "so the flow loss is not a head collapse: that would show pressure falling with flow"
         )
     elif conditions["flow_falls"]:
         head = (
@@ -678,48 +676,33 @@ def _reasoning_claims(
     vibration_up = vibration["delta_pct"] is not None and vibration["delta_pct"] > 0
     if temperature_up and not vibration_up:
         rotating = (
-            "which argues against a bearing or rotating-assembly fault: that pairing would "
-            "raise vibration together with the temperature"
+            "which argues against a bearing fault, since that would raise both"
         )
     elif temperature_up and vibration_up:
         rotating = (
-            "which is the pairing a bearing or rotating-assembly fault would produce, so this "
-            "series does not rule it out"
+            "which is what a bearing fault would produce, so it is not ruled out"
         )
     else:
         rotating = (
-            "so the two channels do not point the same way, and the data does not separate a "
-            "bearing fault from the load change"
+            "so the channels disagree and the data does not separate a bearing fault"
         )
     rotating_claim = (
-        f"The {_movement('bearing temperature', bearing['delta_pct'], 'percent')}, from "
-        f"{_number(bearing['first'], 3)} C to {_number(bearing['last'], 3)} C, and the "
-        f"{_movement('vibration', vibration['delta_pct'], 'percent')}, from "
-        f"{_number(vibration['first'], 3)} mm/s to {_number(vibration['last'], 3)} mm/s, "
-        f"{rotating}."
+        f"The {_movement('bearing temperature', bearing['delta_pct'], 'percent')} while the "
+        f"{_movement('vibration', vibration['delta_pct'], 'percent')}, {rotating}."
     )
 
-    safety = (
-        "local confirmation (site procedures, lockout/tagout, permits and qualified personnel) "
-        "before any maintenance work"
-    )
+    safety = "local sign-off (permits, lockout/tagout) first"
     if next_check:
-        action = (
-            f"The pack's next safe check is to {next_check}, and the field-safety document "
-            f"requires {safety}"
-        )
+        action = f"Next check: {next_check}. Field safety requires {safety}"
     else:
-        action = (
-            "The pack lists no next safe check for this asset, and the field-safety document "
-            f"requires {safety}"
-        )
+        action = f"No next safe check is listed for this asset. Field safety requires {safety}"
     if quality_ids:
         action_claim = (
-            f"{action}. The flagged data-quality cases reduce the reported confidence, so this "
-            "stays a next check rather than a work order."
+            f"{action}, and the flagged data-quality cases cut the confidence, so this stays a "
+            "check."
         )
     else:
-        action_claim = f"{action}, so this stays a next check rather than a work order."
+        action_claim = f"{action}, so this stays a check."
 
     return [
         {
@@ -785,8 +768,7 @@ def _reasoning_differential(
         fouling_verdict = "supported"
         fouling_because = (
             f"{flow_change.capitalize()} while {speed_change} and {pressure_change}: a flow "
-            "loss at a steady speed and a steady head is the hydraulic restriction signature "
-            "this check looks for."
+            "loss at a steady speed and a steady head is the restriction signature."
         )
     else:
         fouling_verdict = "cannot separate"
@@ -809,9 +791,8 @@ def _reasoning_differential(
         suction_verdict = "less likely"
         suction_because = (
             f"{pressure_change.capitalize()} while {flow_change}: a restricted suction line or "
-            "a partly closed valve would drop the head with the flow, and the head stayed "
-            f"inside {_number(FOULING_PRESSURE_STABLE_PCT, 2)} percent, so this is less likely "
-            "than a restriction in the hydraulic path."
+            "a closed valve would drop the head with the flow, and the head stayed inside "
+            f"{_number(FOULING_PRESSURE_STABLE_PCT, 2)} percent."
         )
     else:
         suction_verdict = "cannot separate"
@@ -824,10 +805,9 @@ def _reasoning_differential(
     if conditions["current_rises"] and conditions["flow_drops"]:
         drift_verdict = "less likely"
         drift_because = (
-            f"{current_change.capitalize()} while {flow_change}: a flow sensor that drifts "
-            "would not load the motor, so a load rise of at least "
-            f"{_number(SENSOR_DRIFT_CURRENT_RISE_PCT, 2)} percent argues against a sensor-only "
-            "explanation."
+            f"{current_change.capitalize()} while {flow_change}: a drifting sensor would not "
+            "load the motor, so a load rise of at least "
+            f"{_number(SENSOR_DRIFT_CURRENT_RISE_PCT, 2)} percent argues against it."
         )
     else:
         drift_verdict = "cannot separate"

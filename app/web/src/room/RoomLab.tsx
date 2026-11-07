@@ -1279,7 +1279,7 @@ export default function RoomLab() {
                             const refs = Array.isArray(claim.refs) ? claim.refs : []
                             return (
                               <li key={claim.claim_id}>
-                                <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-slate-300" title={claim.text}>
+                                <p className="line-clamp-3 text-[11px] font-semibold leading-snug text-slate-300" title={claim.text}>
                                   {claim.text}
                                 </p>
                                 {refs.length > 0 ? (
@@ -1319,7 +1319,7 @@ export default function RoomLab() {
                                   {entry.verdict}
                                 </span>
                               </p>
-                              <p className="line-clamp-2 text-[10px] font-semibold leading-snug text-slate-400" title={entry.because}>
+                              <p className="line-clamp-3 text-[10px] font-semibold leading-snug text-slate-400" title={entry.because}>
                                 {entry.because}
                               </p>
                             </li>
