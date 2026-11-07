@@ -1096,7 +1096,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       if (
         (!cameraMoveRef.current && !manualControlRef.current)
         || event.altKey
-        || event.ctrlKey
         || event.metaKey
       ) {
         return
@@ -1109,7 +1108,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         return
       }
       const key = movementKey(event.key)
-      if (!['w', 'a', 's', 'd'].includes(key)) {
+      // Allow w/a/s/d for horizontal movement, space/control for vertical in camera mode
+      const allowedKeys = cameraMoveRef.current
+        ? ['w', 'a', 's', 'd', ' ', 'control']
+        : ['w', 'a', 's', 'd']
+      if (!allowedKeys.includes(key)) {
         return
       }
       event.preventDefault()
@@ -1529,6 +1532,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       if (state.movementKeys.has('s')) direction.sub(forward)
       if (state.movementKeys.has('d')) direction.add(right)
       if (state.movementKeys.has('a')) direction.sub(right)
+      if (state.movementKeys.has(' ')) direction.add(up)
+      if (state.movementKeys.has('control')) direction.sub(up)
       if (direction.lengthSq() === 0) {
         return
       }
