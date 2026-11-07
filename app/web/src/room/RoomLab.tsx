@@ -119,6 +119,8 @@ export default function RoomLab() {
   const [nearby, setNearby] = useState<string[]>([])
   const [follow, setFollow] = useState(false)
   const [cameraMove, setCameraMove] = useState(false)
+  const [manualControl, setManualControl] = useState(false)
+  const [firstPerson, setFirstPerson] = useState(false)
   const [tripToken, setTripToken] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState('photo')
@@ -148,6 +150,7 @@ export default function RoomLab() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [resetToken, setResetToken] = useState(0)
+  const [characterResetToken, setCharacterResetToken] = useState(0)
   const [arrivalDismissed, setArrivalDismissed] = useState(false)
   const robotPositionRef = useRef<[number, number] | null>(null)
   const initialStartRef = useRef<[number, number] | null>(null)
@@ -591,6 +594,11 @@ export default function RoomLab() {
     setRobotId(id)
     setCustomRadius(radius ?? null)
     const option = ROBOTS.find((candidate) => candidate.id === id) ?? ROBOTS[1]
+    setCameraMove(false)
+    if (!manualControl) {
+      setFirstPerson(false)
+      setFollow(false)
+    }
     const chosenRadius = radius ?? option.radius
     planRoute(
       obstacleBlockers(),
@@ -640,6 +648,9 @@ export default function RoomLab() {
       return
     }
     setBrowserOpen(false)
+    setManualControl(false)
+    setFirstPerson(false)
+    setCameraMove(false)
     // Always plan from where the robot stands now, so it can walk from one
     // destination to the next without teleporting back to the dock.
     planRoute(obstacleBlockers(), robot.radius, robot, undefined, {
@@ -656,6 +667,9 @@ export default function RoomLab() {
     if (!selectedObject) {
       return
     }
+    setManualControl(false)
+    setFirstPerson(false)
+    setCameraMove(false)
     const axes = route?.grid?.horizontal_axes ?? [0, 2]
     const target: [number, number] = [
       selectedObject.centre[axes[0]],
@@ -729,6 +743,7 @@ export default function RoomLab() {
             upAxis={data.source.up_axis}
             floorHeight={data.floor.height}
             resetToken={resetToken}
+            characterResetToken={characterResetToken}
             selectedId={selectedId}
             mappedIds={mappedIds}
             targetId={displayTargetId}
@@ -754,11 +769,13 @@ export default function RoomLab() {
             onPlaceObstacle={placeObstacle}
             showOccupancy={showOccupancy}
             showRoute={driving}
-            showRobot={trip.mode !== 'idle' || Boolean(route && !route.reachable)}
+            showRobot={manualControl || trip.mode !== 'idle' || Boolean(route && !route.reachable)}
             crouchSpans={crouchSpans}
             focusTarget={focusTarget}
             focusToken={focusToken}
             robotProfile={robot.id}
+            manualControl={manualControl}
+            firstPerson={firstPerson}
             route={route}
             tripToken={tripToken}
             follow={follow}
@@ -1143,22 +1160,31 @@ export default function RoomLab() {
       {showMission && mission ? (
         <section className="absolute bottom-4 left-4 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700/80 bg-slate-950/90 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-300">Mission</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-300">
+              Mission
+            </p>
             <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-              {driving ? 'Driving' : 'Ready'}
+              {driving ? 'Driving' : manualControl ? 'Manual control' : 'Ready'}
             </span>
           </div>
           <h2 className="mt-1 text-lg font-black leading-tight text-white">
-            {mission.tag === mission.label ? (
-              mission.label
+            {mission?.tag === mission?.label ? (
+              mission?.label
             ) : (
               <>
-                {mission.tag} <span className="text-slate-400">·</span> {mission.label}
+                {mission?.tag} <span className="text-slate-400">·</span> {mission?.label}
               </>
             )}
           </h2>
-          <p className="mt-1 text-xs font-semibold" style={{ color: targetMapping ? STATE_COLOURS[targetMapping.state] : '#cbd5e1' }}>
-            {mission.condition}
+          <p
+            className="mt-1 text-xs font-semibold"
+            style={{
+              color: !targetMapping
+                ? '#cbd5e1'
+                : STATE_COLOURS[targetMapping.state],
+            }}
+          >
+            {mission?.condition}
           </p>
           <p className="mt-2 text-[11px] font-semibold text-slate-400">
             {routeReady
@@ -1180,7 +1206,7 @@ export default function RoomLab() {
                   key={option.id}
                   type="button"
                   onClick={() => changeRobot(option.id)}
-                  className={`flex-1 rounded-md px-1.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                  className={`flex-1 rounded-md px-1 py-1 text-[9px] font-black uppercase tracking-wide ${
                     robotId === option.id && customRadius === null
                       ? 'bg-cyan-500/20 text-cyan-200'
                       : 'text-slate-400 hover:text-slate-200'
@@ -1421,12 +1447,62 @@ export default function RoomLab() {
               setResetToken((value) => value + 1)
               setFollow(false)
               setCameraMove(false)
+              setFirstPerson(false)
             }}
             className="px-3 py-1.5 hover:bg-slate-800"
           >
             Overview
           </button>
-          {driving || arrived ? (
+          <button
+            type="button"
+            aria-pressed={manualControl}
+            onClick={() => {
+              const next = !manualControl
+              setManualControl(next)
+              setCameraMove(false)
+              setFirstPerson(false)
+              setFollow(next)
+              if (next) {
+                setTrip({ mode: 'idle', travelled: 0, total: 0 })
+                setArrivalDismissed(true)
+              }
+            }}
+            className={`px-3 py-1.5 hover:bg-slate-800 ${manualControl ? 'text-cyan-300' : ''}`}
+          >
+            {manualControl ? 'Manual control · WASD / arrows' : 'Manual control'}
+          </button>
+          {manualControl ? (
+            <div className="px-3 py-2 text-[10px] leading-relaxed text-slate-400">
+              WASD or arrow keys to move · drag to look in first person
+            </div>
+          ) : null}
+          {manualControl ? (
+            <>
+              <button
+                type="button"
+                aria-pressed={!firstPerson}
+                onClick={() => {
+                  setFirstPerson(false)
+                  setFollow(true)
+                }}
+                className={`px-3 py-1.5 hover:bg-slate-800 ${!firstPerson ? 'text-cyan-300' : ''}`}
+              >
+                Third person
+              </button>
+              <button
+                type="button"
+                aria-pressed={firstPerson}
+                onClick={() => {
+                  setFollow(false)
+                  setFirstPerson(true)
+                }}
+                className={`px-3 py-1.5 hover:bg-slate-800 ${firstPerson ? 'text-cyan-300' : ''}`}
+              >
+                First person
+              </button>
+            </>
+          ) : null}
+          {!manualControl && (driving || arrived) ? (
             <button
               type="button"
               onClick={() => {
@@ -1438,26 +1514,31 @@ export default function RoomLab() {
               {follow ? 'Following' : 'Follow'}
             </button>
           ) : null}
-          <button
-            type="button"
-            aria-pressed={cameraMove}
-            onClick={() => {
-              const next = !cameraMove
-              setCameraMove(next)
-              if (next) {
-                setFollow(false)
-              }
-            }}
-            className={`px-3 py-1.5 hover:bg-slate-800 ${cameraMove ? 'text-cyan-300' : ''}`}
-          >
-            {cameraMove ? 'Move camera · WASD' : 'Move camera'}
-          </button>
+          {!manualControl ? (
+            <button
+              type="button"
+              aria-pressed={cameraMove}
+              onClick={() => {
+                const next = !cameraMove
+                setCameraMove(next)
+                if (next) {
+                  setFollow(false)
+                }
+              }}
+              className={`px-3 py-1.5 hover:bg-slate-800 ${cameraMove ? 'text-cyan-300' : ''}`}
+            >
+              {cameraMove ? 'Move camera · WASD / arrows' : 'Move camera'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
               setResetToken((value) => value + 1)
+              setCharacterResetToken((value) => value + 1)
+              setTrip({ mode: 'idle', travelled: 0, total: 0 })
               setFollow(false)
               setCameraMove(false)
+              setFirstPerson(false)
             }}
             className="px-3 py-1.5 hover:bg-slate-800"
           >
