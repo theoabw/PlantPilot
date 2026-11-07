@@ -43,7 +43,7 @@ Four verbs, in the order the rubric scores them:
 1. **Extract.** Turn 502 k gaussians into objects. Remove the floor and the dominant wall planes, voxelise at 3 cm, cluster with a connected-component pass, then split every oversized component (the measured failure mode: 74 percent of points in one blob) and fit an oriented box per piece. A pipe run, a valve stack, a pump, a door, a pallet, a drum and a fire extinguisher should each become a frame.
 2. **Frame and map.** Every object gets a box, a class proposal and a size. The 30 package records are assigned to 30 of those objects by class and size prior, with a recorded method and confidence. Every other object stays framed and unlabelled.
 3. **Navigate.** Fit the floor, build a 10 cm occupancy grid from everything standing above it, inflate by the agent radius, run A* from a derived start position at the edge of the captured area to a service position 0.9 m beside P-005. The avatar walks the smoothed path; the camera follows; floor arrows mark the route.
-4. **Explain.** At each path sample, list the objects within 2.5 m and show their mapped metadata. On arrival, diagnose P-005 from the pack: condition, health, issue, telemetry deviation, alarms, cited knowledge documents, a confidence and a safe next check.
+4. **Explain.** As the robot moves, highlight nearby objects within 2.5 m. On arrival, diagnose P-005 from the pack: condition, health, issue, telemetry deviation, alarms, cited knowledge documents, a confidence and a safe next check.
 
 ## 4. Pipeline and contracts
 

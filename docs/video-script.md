@@ -51,11 +51,11 @@ Scores criterion 2, 25 percent.
 
 Scores criterion 2, 25 percent; feeds criterion 5.
 
-**On screen.** The nearby-asset chips at the start. The robot is already sent in beat 3, so this shot continues the walk and the camera follows. Record at 60 fps, retime only the walk to half speed. Mid route, open the panel to show tags with state words. Cover three nearby sets, then arrival.
+**On screen.** Nearby highlighted assets at the start. The robot is already sent in beat 3, so this shot continues the walk and the camera follows. Record at 60 fps, retime only the walk to half speed. Cover three nearby sets, then arrival.
 
-**Voiceover.** "The robot follows the planned line at 0.5 metres per second. Everything close by lights up: the frame brightens, and its tag appears in the nearby list in its state colour. The set changes as it moves. Healthy is green, watch is amber, degraded is orange, attention required is red. P-005 comes into range before the robot stops."
+**Voiceover.** "The robot follows the planned line at 0.5 metres per second. Nearby assets light up as it moves, and the distance remaining falls. P-005 comes into range before the robot stops."
 
-**Counts if.** At three points the nearby tag set differs; two state colours appear; the distance readout falls; tags are legible at half size.
+**Counts if.** At three points the nearby highlighted set differs and the distance readout falls.
 
 ## Beat 5. Arrival and diagnosis (2:00 to 2:30, 30 s)
 
@@ -85,9 +85,9 @@ Scores criterion 4, 15 percent.
 4. Equipment attention filter; 30/30 mapped, P-005 row.
 5. Click P-005; zoom; scroll to the mapping record; hold the proposal line.
 6. Select P-005 and send the robot; show the path and target ring.
-7. Nearby chips at the start; panel open.
+7. Nearby highlights at the start; trip progress visible.
 8. Walk; record 60 fps.
-9. Half-speed walk; three nearby sets; open Panel mid-walk.
+9. Half-speed walk; three nearby sets.
 10. Arrival; let the card appear; hold "arrived".
 11. Diagnosis card; one slow scroll.
 12. Terminal: pytest tail; `ls data/equipment`.

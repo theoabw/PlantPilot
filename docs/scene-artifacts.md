@@ -559,10 +559,9 @@ the anchor gaussians (opacity 0.55) and the contour overlay, so object regions
 are tinted while the room still reads as a photograph. The viewer draws the
 contours as screen-space points and hides the wireframe boxes in these channels.
 Selection adds light inside the selected oriented box with a 0.03 m boundary
-tolerance. During an autonomous trip, the same effect follows the nearby assets
-listed in the trip panel (up to five), updating as the robot moves. When the
-trip ends the nearby highlights clear, while an independently selected object
-stays lit.
+tolerance. During an autonomous trip, the same effect follows up to five nearby
+assets, updating as the robot moves. When the trip ends the nearby highlights
+clear, while an independently selected object stays lit.
 These are approximate box-based highlights, not object segmentation masks;
 nearby surfaces can be tinted and parts outside the boxes can still be missed.
 

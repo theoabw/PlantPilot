@@ -1458,20 +1458,6 @@ export default function RoomLab() {
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
             <div className="h-full rounded-full bg-brand-mint transition-[width] duration-300" style={{ width: `${Math.max(3, progress * 100)}%` }} />
           </div>
-          {nearbyEquipment.length > 0 ? (
-            <p className="mt-2 text-[9px] font-black uppercase tracking-wide text-amber-300/70">
-              Synthetic pack status
-            </p>
-          ) : null}
-          {nearbyEquipment.length > 0 ? (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {nearbyEquipment.map((entry) => (
-                <span key={entry.key} className="rounded border px-1.5 py-0.5 text-[10px] font-bold" style={{ borderColor: STATE_COLOURS[entry.state], color: STATE_COLOURS[entry.state] }}>
-                  {entry.name}
-                </span>
-              ))}
-            </div>
-          ) : null}
         </section>
       ) : null}
 

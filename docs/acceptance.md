@@ -59,10 +59,10 @@ Each criterion is written so a person who did not build the feature can check it
 
 **Given** the route,
 **when** the avatar walks it,
-**then** objects within 2.5 m are highlighted with a box, a tag and a state, and the set changes along the path.
+**then** nearby objects within 2.5 m are highlighted, and the set changes along the path without a nearby list in the trip panel.
 
-**Pass:** at three sampled points the highlighted set differs, the nearest three are labelled, and the label shows the mapping method.
-**Check:** scrub the path; compare the three samples.
+**Pass:** at three sampled points the highlighted set differs and the trip panel shows the destination and remaining distance.
+**Check:** replay the path; compare the three samples.
 
 ### 6. The diagnosis is grounded in the pack
 
@@ -79,5 +79,5 @@ Each criterion is written so a person who did not build the feature can check it
 **when** the demo sequence runs three times in a row with the network unplugged,
 **then** every beat plays in order and the numbers do not change between runs.
 
-**Pass:** every mandatory beat plays in order: the room, the frames, P-005 turning red with its card and the route, the avatar travelling with proximity labels, the diagnosis, and the end card that names the scene source, the mapping method and the offline status. The isolate view is P1; if it is cut, the script selects a nearby asset instead. Three clean runs, no manual retry, no network request, the same counts and route length each time.
+**Pass:** every mandatory beat plays in order: the room, the frames, P-005 turning red with its card and the route, the avatar travelling with nearby highlights, the diagnosis, and the end card that names the scene source, the mapping method and the offline status. The isolate view is P1; if it is cut, the script selects a nearby asset instead. Three clean runs, no manual retry, no network request, the same counts and route length each time.
 **Check:** unplug, run three times, note the numbers.
