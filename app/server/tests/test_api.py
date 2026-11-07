@@ -123,6 +123,31 @@ def test_the_room_endpoints_serve_the_artifacts(monkeypatch, tmp_path):
     assert response.content.startswith(b"ply\n")
 
 
+def test_the_meshes_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "MESH_DIR", tmp_path / "meshes")
+    assert client.get("/api/scene/meshes").status_code == 404
+    assert "make object-meshes" in client.get("/api/scene/meshes").json()["detail"]
+    assert client.get("/api/mesh/AN-5dbcb330").status_code == 404
+
+
+def test_the_meshes_endpoint_serves_the_manifest_and_a_mesh(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    directory = tmp_path / "meshes"
+    directory.mkdir()
+    (directory / "manifest.json").write_text(json.dumps({"artifact": "object_meshes", "objects": []}))
+    (directory / "AN-5dbcb330.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    monkeypatch.setattr(main, "MESH_DIR", directory)
+    body = client.get("/api/scene/meshes").json()
+    assert body["artifact"] == "object_meshes"
+    response = client.get("/api/mesh/AN-5dbcb330")
+    assert response.status_code == 200
+    assert response.content.startswith(b"ply")
+    assert client.get("/api/mesh/not-an-id").status_code == 404
+
+
 def test_the_filters_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 
@@ -137,14 +162,19 @@ def test_the_filters_endpoint_serves_metadata_and_assets(monkeypatch, tmp_path):
 
     directory = tmp_path / "filters"
     directory.mkdir()
-    (directory / "filters.json").write_text(json.dumps({"artifact": "filters", "filters": ["height"]}))
+    (directory / "filters.json").write_text(json.dumps({"artifact": "filters", "filters": {"applied": ["height", "edges"]}}))
     (directory / "height.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    (directory / "edges_base.ply").write_bytes(f"ply\nformat binary_little_endian 1.0\nend_header\n".encode())
+    (directory / "contours.json").write_text(json.dumps({"artifact": "contours", "count": 1, "points": [[0, 0, 0]]}))
     monkeypatch.setattr(main, "FILTER_DIR", directory)
     body = client.get("/api/scene/filters").json()
     assert body["artifact"] == "filters"
     response = client.get("/api/filter/height")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/octet-stream"
+    assert client.get("/api/filter/edges_base").status_code == 200
+    contours = client.get("/api/filter/contours").json()
+    assert contours["artifact"] == "contours" and contours["count"] == 1
     assert client.get("/api/filter/nope").status_code == 404
 
 

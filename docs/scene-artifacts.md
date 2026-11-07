@@ -16,6 +16,7 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
 | `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
 | `data/scene/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
+| `data/objects/meshes/<capture>/` | `make object-meshes` (`scripts/make_object_meshes.py`, optional Open3D) | API, viewer (object atlas and explode) |
 | `data/viewer/room.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
@@ -134,7 +135,8 @@ the `scene lab` button.
   core properties only, 28 MB for the supplied capture instead of 355 MB, so the
   browser loads it in seconds.
 - `GET /api/splat` serves that file, `GET /api/scene/anchors` serves the
-  reviewed demo layer, `GET /api/scene/assets` serves the automatic proposal
+  reviewed demo layer, `GET /api/scene/meshes` serves the object mesh manifest
+  and `GET /api/mesh/<anchor-id>` serves one mesh, `GET /api/scene/assets` serves the automatic proposal
   layer, `GET /api/scene/objects` serves the raw extraction and
   `GET /api/scene/mapped` serves the mapping when `make map` has run. Everything
   is local, so the demo makes no network calls.
@@ -356,6 +358,25 @@ Each anchor: `id` (`AN-` plus the proposal id suffix), `asset_id`, `class`,
 deliberately generic where the geometry cannot prove a machine class
 (`equipment`, `red painted equipment`), because the audit found the shape rules
 were being used as class rules.
+
+## Object meshes
+
+The reference videos turn each detection into a complete 3D asset and then move
+it. `make object-meshes` does the same for the reviewed anchors, from the PLY
+alone: for each anchor it takes the owned gaussians, uses the thinnest ellipsoid
+axis as the normal, drops faint and fog gaussians, downsamples, reconstructs a
+surface with Open3D Poisson, trims the density fringe, crops to the anchor box,
+decimates to at most 20,000 triangles and copies gaussian colours onto the
+vertices. Seven anchors bake in about six seconds and the manifest is
+byte-identical across runs when Poisson runs single threaded.
+
+The output is a binary PLY per object with vertex colours plus `manifest.json`
+with the world bounding box, triangle and vertex counts, owned gaussians and the
+anchor box. The meshes are coloured surfaces, not watertight solids: the density
+trim and the box crop open the surface, and there is no hole filling. They are
+meant for the object atlas and explode view, not for a claim of surveyed
+geometry. Open3D is optional; the stage fails with an install hint when it is
+missing, and every other stage runs without it.
 
 ## Numbers from the supplied capture
 
