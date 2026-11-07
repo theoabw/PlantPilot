@@ -6,6 +6,7 @@ import {
   fetchRoomAnchors,
   fetchRoomFilters,
   fetchRoomMeshes,
+  fetchRoomObjectSplats,
   fetchRoomAssets,
   fetchRoomMapped,
   fetchDiagnosis,
@@ -14,7 +15,7 @@ import {
   filterAssetUrl,
   splatAssetUrl,
 } from './api'
-import type { Diagnosis, MappedAsset, RoomAnchor, RoomAnchors, RoomAsset, RoomAssets, RoomFilters, RoomMapped, RoomMesh, RoomMeshes, RoomObjects, RoomObject, RoomRoute } from './api'
+import type { Diagnosis, MappedAsset, RoomAnchor, RoomAnchors, RoomAsset, RoomAssets, RoomFilters, RoomMapped, RoomMesh, RoomMeshes, RoomObjectSplats, RoomObjects, RoomObject, RoomRoute } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
 import ViewToolbar from '../components/ViewToolbar'
 
@@ -27,6 +28,7 @@ export default function RoomLab({ onLeave }: Props) {
   const [anchors, setAnchors] = useState<RoomAnchors | null>(null)
   const [filters, setFilters] = useState<RoomFilters | null>(null)
   const [meshes, setMeshes] = useState<RoomMeshes | null>(null)
+  const [objectSplats, setObjectSplats] = useState<RoomObjectSplats | null>(null)
   const [explode, setExplode] = useState(0)
   const [filterName, setFilterName] = useState(() => new URLSearchParams(window.location.search).get('filter') ?? 'photo')
   const [assets, setAssets] = useState<RoomAssets | null>(null)
@@ -73,6 +75,9 @@ export default function RoomLab({ onLeave }: Props) {
       .catch(() => undefined)
     fetchRoomMeshes()
       .then((value) => alive && setMeshes(value))
+      .catch(() => undefined)
+    fetchRoomObjectSplats()
+      .then((value) => alive && setObjectSplats(value))
       .catch(() => undefined)
     fetchRoomAssets()
       .then((value) => alive && setAssets(value))
@@ -164,14 +169,22 @@ export default function RoomLab({ onLeave }: Props) {
     ? visibleAssets.find((asset) => (asset.source_object_ids ?? []).includes(mapped?.target_object_id ?? ''))?.id ?? null
     : (mapped?.target_object_id ?? null)
 
-  const viewerMeshes = useMemo(
-    () => (meshes?.objects ?? []).map((entry: RoomMesh) => ({
+  const viewerObjects = useMemo(
+    () => (objectSplats?.objects ?? []).map((entry) => ({
       id: entry.anchor_id,
       label: entry.label,
-      url: `/api/mesh/${entry.anchor_id}`,
+      url: `/api/object-splat/${entry.anchor_id}`,
+      kind: 'splat' as const,
     })),
-    [meshes],
+    [objectSplats],
   )
+  const objectAssets = viewerObjects.length > 0 ? viewerObjects : (meshes?.objects ?? []).map((entry: RoomMesh) => ({
+    id: entry.anchor_id,
+    label: entry.label,
+    url: `/api/mesh/${entry.anchor_id}`,
+    kind: 'mesh' as const,
+  }))
+  const hasObjectAssets = objectAssets.length > 0
 
   const targetPoint = useMemo<[number, number, number] | null>(() => {
     const targetObject = mapped?.target_object_id
@@ -357,7 +370,7 @@ export default function RoomLab({ onLeave }: Props) {
                   objectMode={filterName === 'objects'}
                   hideSplat={filterName === 'objects'}
                   explode={explode}
-                  meshes={viewerMeshes}
+                  objectAssets={objectAssets}
                   route={route}
                   tripToken={tripToken}
                   follow={follow}
@@ -418,7 +431,7 @@ export default function RoomLab({ onLeave }: Props) {
 
             {filters && filters.filters.applied.length > 0 ? (
               <div className="absolute left-3 top-[6.2rem] z-20 flex flex-wrap gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 p-1 backdrop-blur">
-                {['photo', ...(meshes && meshes.objects.length > 0 ? ['objects'] : []), ...filters.filters.applied].map((name) => (
+                {['photo', ...(hasObjectAssets ? ['objects'] : []), ...filters.filters.applied].map((name) => (
                   <button
                     key={name}
                     type="button"
@@ -590,7 +603,7 @@ export default function RoomLab({ onLeave }: Props) {
                       />
                     </label>
                   ) : null}
-                  {meshes && meshes.objects.length > 0 ? (
+                  {hasObjectAssets ? (
                     <label className="mt-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
                       Explode objects {Math.round(explode * 100)} %
                       <input

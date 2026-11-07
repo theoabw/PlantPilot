@@ -51,6 +51,7 @@ DIAGNOSIS_FILE = SCENE_DIR / "diagnosis.json"
 SPLAT_ASSET = Path(os.environ.get("PLANTPILOT_SPLAT", DATA / "viewer" / "room.ply"))
 FILTER_DIR = Path(os.environ.get("PLANTPILOT_FILTERS", DATA / "viewer" / "filters" / SCENE_DIR.name))
 MESH_DIR = Path(os.environ.get("PLANTPILOT_MESHES", DATA / "objects" / "meshes" / SCENE_DIR.name))
+OBJECT_SPLAT_DIR = Path(os.environ.get("PLANTPILOT_OBJECT_SPLATS", DATA / "objects" / "splats" / SCENE_DIR.name))
 FILTER_NAMES = ("height", "normals", "edges_base", "semantics", "anchors_overlay")
 
 app = FastAPI(title="PlantPilot", version=__version__)
@@ -350,6 +351,29 @@ def scene_filters() -> dict:
     if not path.exists():
         raise HTTPException(status_code=404, detail="no filter assets, run make filter-assets")
     return json.loads(path.read_text())
+
+
+@app.get("/api/scene/object-splats", responses=_ARTIFACT_RESPONSES)
+def scene_object_splats() -> dict:
+    """The per-object splat assets of the reviewed anchors."""
+    path = OBJECT_SPLAT_DIR / "manifest.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no object splats, run make object-splats")
+    return json.loads(path.read_text())
+
+
+@app.get(
+    "/api/object-splat/{anchor_id}",
+    responses={200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def object_splat(anchor_id: str) -> FileResponse:
+    """One reviewed object's own gaussians as a core-property PLY."""
+    if not re.fullmatch(r"AN-[0-9a-f]{8}", anchor_id):
+        raise HTTPException(status_code=404, detail="unknown object splat")
+    path = OBJECT_SPLAT_DIR / f"{anchor_id}.ply"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="no object splat, run make object-splats")
+    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/scene/meshes", responses=_ARTIFACT_RESPONSES)

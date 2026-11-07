@@ -210,6 +210,38 @@ export type RoomMapped = {
 
 export const SPLAT_URL = '/api/splat'
 
+export type RoomObjectSplat = {
+  anchor_id: string
+  label: string
+  class?: string
+  file: string
+  gaussians: number
+}
+
+export type RoomObjectSplats = {
+  artifact: string
+  version: number
+  capture?: string
+  counts?: { objects?: number; gaussians?: number }
+  objects: RoomObjectSplat[]
+}
+
+export async function fetchRoomObjectSplats(): Promise<RoomObjectSplats> {
+  const response = await fetch('/api/scene/object-splats')
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'no per-object splats on the server, run make object-splats'
+        : `/api/scene/object-splats answered ${response.status}`,
+    )
+  }
+  return (await response.json()) as RoomObjectSplats
+}
+
+export function objectSplatUrl(anchorId: string): string {
+  return `/api/object-splat/${anchorId}`
+}
+
 export type RoomMesh = {
   anchor_id: string
   label: string
