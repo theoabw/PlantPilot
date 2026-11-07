@@ -14,6 +14,13 @@ test('a capped step still advances by the limit toward the goal', () => {
   assert.equal(next.y, 0)
 })
 
+test('manual crouch toggles only for a humanoid in manual control', () => {
+  assert.equal(motion.toggleManualCrouch(false, true, true), true)
+  assert.equal(motion.toggleManualCrouch(true, true, true), false)
+  assert.equal(motion.toggleManualCrouch(false, false, true), false)
+  assert.equal(motion.toggleManualCrouch(true, true, false), false)
+})
+
 test('a step under the limit lands on the goal', () => {
   assert.deepEqual(motion.cappedStep({ x: 0, y: 0, z: 0 }, { x: 0.1, y: 0.2, z: 0 }, 1), { x: 0.1, y: 0.2, z: 0 })
 })

@@ -35,7 +35,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
-import { destinationTarget, prefersCrouched, routeStatusText, shouldTryCrouched, transitionDestinationPlan, type DestinationPlanState } from './routeMotion'
+import { destinationTarget, prefersCrouched, routeStatusText, shouldTryCrouched, toggleManualCrouch, transitionDestinationPlan, type DestinationPlanState } from './routeMotion'
 import CharacterSelector, { type CharacterOption } from '../components/CharacterSelector'
 
 type MissionTarget = {
@@ -118,6 +118,7 @@ export default function RoomLab() {
   const [follow, setFollow] = useState(false)
   const [cameraMove, setCameraMove] = useState(false)
   const [manualControl, setManualControl] = useState(false)
+  const [manualCrouch, setManualCrouch] = useState(false)
   const [firstPerson, setFirstPerson] = useState(false)
   const [tripToken, setTripToken] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -713,6 +714,7 @@ export default function RoomLab() {
     cancelPlan()
     setRobotDeployed(false)
     setRobotId(id)
+    setManualCrouch(false)
     setCustomRadius(null)
     const option = ROBOTS.find((candidate) => candidate.id === id) ?? ROBOTS[1]
     robotPositionRef.current = initialStartRef.current
@@ -907,6 +909,10 @@ export default function RoomLab() {
             focusToken={focusToken}
             robotProfile={robot.id}
             manualControl={manualControl}
+            manualCrouch={manualCrouch}
+            onToggleManualCrouch={() => {
+              setManualCrouch((current) => toggleManualCrouch(current, manualControl, robot.id === 'humanoid'))
+            }}
             firstPerson={firstPerson}
             route={route}
             tripToken={tripToken}
@@ -1684,6 +1690,7 @@ export default function RoomLab() {
             onClick={() => {
               cancelPlan()
               const next = !manualControl
+              setManualCrouch(false)
               if (next) setTopDown(false)
               setManualControl(next)
               setCameraMove(false)
@@ -1700,7 +1707,7 @@ export default function RoomLab() {
           </button>
           {manualControl ? (
             <div className="px-3 py-2 text-[10px] leading-relaxed text-slate-400">
-              WASD or arrow keys to move · drag to look in first person
+              WASD or arrow keys to move · Shift toggles humanoid crouch · drag to look in first person
             </div>
           ) : null}
           {manualControl ? (

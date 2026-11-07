@@ -12,6 +12,15 @@ export const CAMERA_MAX_SPEED_M_S = 1.6
 /** The opening move onto the robot, or pulling the camera out of structure. */
 export const CAMERA_FAST_SPEED_M_S = 4
 
+/** Toggle crouching only for a humanoid under direct manual control. */
+export function toggleManualCrouch(
+  crouched: boolean,
+  manualControl: boolean,
+  humanoid: boolean,
+): boolean {
+  return manualControl && humanoid ? !crouched : false
+}
+
 /**
  * Move `from` toward `goal`, covering at most `maxStep` metres.
  *
