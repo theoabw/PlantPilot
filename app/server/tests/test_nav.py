@@ -140,8 +140,10 @@ def test_equipment_capture_uses_reviewed_door_start(tmp_path):
         scene_path=scene_path, output_path=None, agent_radius_m=0.20, manual_floor_y=0.0
     )
 
-    assert route["start"][0] == pytest.approx(-0.585, abs=0.1)
-    assert route["start"][2] == pytest.approx(-4.144, abs=0.1)
+    # The dock sits on observed floor where the widest robot fits: the older
+    # door spot had no floor gaussian under it and refused the Cargo AMR.
+    assert route["start"][0] == pytest.approx(-0.135, abs=0.1)
+    assert route["start"][2] == pytest.approx(-3.394, abs=0.1)
     assert route["grid_stats"]["floor_domain"] is True
     assert nav._configured_start_position("another-capture.ply") is None
 
