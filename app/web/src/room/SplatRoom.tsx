@@ -150,6 +150,10 @@ const PICK_SURFACE_ALPHA = 0.4
 // the plain box pick rather than a click that visibly lags.
 const PICK_RAY_BUDGET_MS = 300
 const ROBOT_GHOST_COLOUR = 0x7dd3fc
+// After the splats' depth and colour, before every solid overlay. The solid draws
+// write depth, so a ghost drawn after any of them would show through it: the
+// robot's own body, or the robot standing in front of the target.
+const GHOST_RENDER_ORDER = 0.5
 
 function ghostMaterial(color: number): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
@@ -163,14 +167,12 @@ function ghostMaterial(color: number): THREE.MeshBasicMaterial {
 }
 
 /**
- * Draw `mesh` faintly wherever it is behind something. The ghost is a child of
- * the mesh so it follows every animation, and it sorts just before the mesh:
- * the solid draw writes depth, so a ghost drawn after it would show through the
- * object's own body.
+ * Draw `mesh` faintly wherever the capture hides it. The ghost is a child of the
+ * mesh so it follows every animation.
  */
 function addGhost(mesh: THREE.Mesh, color: number): void {
   const ghost = new THREE.Mesh(mesh.geometry, ghostMaterial(color))
-  ghost.renderOrder = mesh.renderOrder - 0.5
+  ghost.renderOrder = GHOST_RENDER_ORDER
   mesh.add(ghost)
 }
 
@@ -3081,7 +3083,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const arrowGhosts = new THREE.InstancedMesh(arrowGeometry, ghostMaterial(ROUTE_COLOUR), arrowCount)
     arrowGhosts.instanceMatrix = arrows.instanceMatrix
     arrowGhosts.frustumCulled = false
-    arrowGhosts.renderOrder = 2.5
+    arrowGhosts.renderOrder = GHOST_RENDER_ORDER
     decor.add(arrowGhosts)
     state.routeGroup.add(decor)
     if (stateRef.current) {
