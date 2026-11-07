@@ -1,0 +1,471 @@
+# Visual grades of the first full vision run on the Equipment Room (465 results), from
+# two-view contact sheets made by scripts/vision_contact_sheets.py. Graded by Claude, an AI
+# model, which also built the pipeline: not a person's labels and not measured truth.
+# Columns: result number (VB-<n> in that run), grade, then a group name when one real object
+# is held by several results. w whole, p part of one object, m merged, c clutter.
+# docs/vision-boxes.md gives the settings that rebuild that run.
+1 c
+2 c
+3 p cabinetA
+4 c
+5 p cabinetA
+6 p
+7 p
+8 p cabinetA
+9 w
+10 p
+11 c
+12 c
+13 w
+14 p cabinetA
+15 p cabinetA
+16 w
+17 p
+18 p cabinetA
+19 p meterA
+20 w
+21 p
+22 p
+23 p cabinetA
+24 p
+25 w
+26 p cabinetA
+27 w
+28 c
+29 w
+30 w
+31 w
+32 c
+33 c
+34 m
+35 w
+36 c
+37 p
+38 p meterA
+39 c
+40 c
+41 w
+42 c
+43 c
+44 m
+45 c
+46 c
+47 w
+48 p
+49 m
+50 m
+51 m
+52 c
+53 c
+54 m
+55 w
+56 c
+57 p redcrate
+58 p redcrate
+59 c
+60 c
+61 c
+62 c
+63 p
+64 c
+65 m
+66 c
+67 c
+68 p
+69 c
+70 c
+71 c
+72 p
+73 c
+74 c
+75 c
+76 c
+77 c
+78 c
+79 p
+80 c
+81 c
+82 p
+83 c
+84 c
+85 w
+86 p
+87 w
+88 c
+89 c
+90 c
+91 p
+92 m
+93 c
+94 m
+95 c
+96 c
+97 c
+98 p
+99 p
+100 w
+101 p band1
+102 p band1
+103 m
+104 p
+105 p band1
+106 w
+107 w
+108 c
+109 p
+110 c
+111 p tankred
+112 p
+113 w
+114 p bluetop
+115 p bluetop
+116 w tankred
+117 c
+118 c
+119 p
+120 c
+121 c
+122 c
+123 c
+124 c
+125 c
+126 c
+127 w
+128 c
+129 c
+130 c
+131 p
+132 c
+133 c
+134 p
+135 c
+136 c
+137 c
+138 c
+139 c
+140 c
+141 p
+142 c
+143 m
+144 p
+145 m
+146 c
+147 w
+148 p cagebottom
+149 p
+150 c
+151 c
+152 c
+153 w
+154 p
+155 c
+156 p cagebottom
+157 w
+158 p
+159 c
+160 c
+161 p
+162 w
+163 m
+164 c
+165 p
+166 c
+167 c
+168 c
+169 c
+170 m
+171 c
+172 p
+173 p
+174 c
+175 c
+176 w
+177 w
+178 p
+179 c
+180 m
+181 c
+182 c
+183 c
+184 w
+185 p
+186 p
+187 w
+188 c
+189 c
+190 w
+191 c
+192 c
+193 c
+194 c
+195 c
+196 p
+197 c
+198 w
+199 c
+200 w
+201 w
+202 c
+203 c
+204 p
+205 c
+206 p
+207 m
+208 p
+209 c
+210 c
+211 c
+212 c
+213 w unitW
+214 c
+215 m
+216 p unitW
+217 p
+218 c
+219 p
+220 w
+221 w
+222 c
+223 w
+224 c
+225 c
+226 c
+227 c
+228 w
+229 c
+230 c
+231 c
+232 w
+233 w
+234 c
+235 p
+236 c
+237 c
+238 p
+239 w
+240 c
+241 c
+242 p
+243 m
+244 p
+245 p
+246 c
+247 c
+248 c
+249 c
+250 c
+251 c
+252 c
+253 c
+254 m
+255 c
+256 c
+257 p stool
+258 w
+259 w stool
+260 w
+261 p pipeB
+262 m
+263 c
+264 w pipeB
+265 m
+266 c
+267 c
+268 p pipeB
+269 p chairG
+270 w chairG
+271 w
+272 c
+273 m
+274 p
+275 c
+276 p
+277 p
+278 w
+279 w
+280 c
+281 w chairB
+282 m
+283 p
+284 m
+285 m
+286 p chairB
+287 p
+288 m
+289 p
+290 c
+291 p
+292 w vac
+293 p sheetO
+294 p vac
+295 c
+296 p sheetO
+297 c
+298 w wheelY
+299 c
+300 c
+301 c
+302 m
+303 p wheelY
+304 w
+305 c
+306 p
+307 c
+308 p
+309 c
+310 w
+311 c
+312 c
+313 c
+314 c
+315 c
+316 w
+317 c
+318 c
+319 w
+320 c
+321 p
+322 m
+323 c
+324 c
+325 c
+326 p
+327 c
+328 w
+329 c
+330 c
+331 w
+332 c
+333 w
+334 p
+335 c
+336 w
+337 c
+338 c
+339 p
+340 c
+341 m
+342 m
+343 c
+344 w cartA
+345 w
+346 c
+347 c
+348 p cartA
+349 c
+350 c
+351 c
+352 c
+353 w
+354 p
+355 m
+356 c
+357 p
+358 c
+359 c
+360 p
+361 p
+362 m
+363 c
+364 p
+365 w
+366 c
+367 c
+368 c
+369 c
+370 w
+371 c
+372 w
+373 w
+374 c
+375 p cartA
+376 p trolleyL
+377 c
+378 w trolleyL
+379 c
+380 c
+381 m
+382 p
+383 m
+384 w
+385 w
+386 p
+387 c
+388 w
+389 c
+390 p
+391 c
+392 p
+393 c
+394 p
+395 p ladderA
+396 w ladderA
+397 c
+398 c
+399 c
+400 c
+401 p
+402 c
+403 m
+404 p
+405 c
+406 c
+407 m
+408 m
+409 m
+410 p
+411 p
+412 p ladderA
+413 c
+414 c
+415 p ladderB
+416 c
+417 p
+418 c
+419 c
+420 p
+421 c
+422 w
+423 p
+424 w
+425 w
+426 c
+427 c
+428 p redstripe
+429 w
+430 c
+431 c
+432 w
+433 p
+434 c
+435 c
+436 c
+437 p
+438 p
+439 c
+440 c
+441 w
+442 c
+443 p
+444 p
+445 w
+446 c
+447 c
+448 c
+449 c
+450 c
+451 p
+452 p
+453 p
+454 p redstripe
+455 c
+456 w
+457 p
+458 c
+459 p
+460 p redstripe
+461 c
+462 c
+463 c
+464 p redstripe
+465 c

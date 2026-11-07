@@ -1,0 +1,197 @@
+# Visual grades of fixtures/scene/vision_boxes_equipment.json (193 results), same grader and
+# caveats as fixtures/scene/vision_review_equipment.txt. A result that holds at least 80% of a
+# first-run result, and is at least 80% made of it, keeps that grade ("from VB-n"); the
+# others were graded from their own contact sheets ("graded").
+VB-001 p cabinetA from VB-003
+VB-002 p cabinetA from VB-005
+VB-003 p from VB-007
+VB-004 w from VB-009
+VB-005 c from VB-012
+VB-006 w from VB-013
+VB-007 p cabinetA from VB-014
+VB-008 p cabinetA from VB-015
+VB-009 w from VB-020
+VB-010 p from VB-021
+VB-011 p from VB-022
+VB-012 p cabinetA from VB-023
+VB-013 w from VB-025
+VB-014 w from VB-027
+VB-015 w from VB-029
+VB-016 w from VB-030
+VB-017 c from VB-033
+VB-018 m from VB-034
+VB-019 p meterA from VB-038
+VB-020 w from VB-041
+VB-021 c from VB-042
+VB-022 m from VB-050
+VB-023 c from VB-052
+VB-024 m from VB-051
+VB-025 w from VB-055
+VB-026 c from VB-056
+VB-027 p redcrate from VB-057
+VB-028 c from VB-066
+VB-029 c from VB-067
+VB-030 c from VB-069
+VB-031 c from VB-071
+VB-032 p from VB-072
+VB-033 p from VB-079
+VB-034 p from VB-082
+VB-035 w from VB-085
+VB-036 p from VB-086
+VB-037 w from VB-087
+VB-038 m from VB-092
+VB-039 w from VB-100
+VB-040 m from VB-103
+VB-041 p band1 from VB-101
+VB-042 p graded
+VB-043 p from VB-104
+VB-044 w from VB-107
+VB-045 p tankred from VB-111
+VB-046 p from VB-112
+VB-047 w from VB-113
+VB-048 p bluetop from VB-114
+VB-049 p graded
+VB-050 c from VB-120
+VB-051 w tankred from VB-116
+VB-052 w from VB-127
+VB-053 c from VB-128
+VB-054 c from VB-130
+VB-055 p from VB-131
+VB-056 p from VB-141
+VB-057 m from VB-143
+VB-058 m from VB-145
+VB-059 c from VB-146
+VB-060 w from VB-147
+VB-061 c from VB-151
+VB-062 w from VB-153
+VB-063 p from VB-154
+VB-064 p cagebottom from VB-156
+VB-065 p from VB-165
+VB-066 m from VB-170
+VB-067 w from VB-162
+VB-068 c from VB-171
+VB-069 p from VB-173
+VB-070 w from VB-176
+VB-071 p from VB-178
+VB-072 c from VB-182
+VB-073 w from VB-184
+VB-074 p from VB-185
+VB-075 w from VB-187
+VB-076 w from VB-190
+VB-077 p from VB-196
+VB-078 w from VB-200
+VB-079 w from VB-201
+VB-080 c from VB-203
+VB-081 c graded
+VB-082 p from VB-204
+VB-083 p from VB-206
+VB-084 c from VB-211
+VB-085 c from VB-212
+VB-086 p graded
+VB-087 w unitW from VB-213
+VB-088 p unitW from VB-216
+VB-089 p from VB-219
+VB-090 m graded
+VB-091 w from VB-220
+VB-092 w from VB-223
+VB-093 w from VB-228
+VB-094 w from VB-232
+VB-095 w from VB-233
+VB-096 w from VB-239
+VB-097 p from VB-242
+VB-098 w graded
+VB-099 c graded
+VB-100 w from VB-258
+VB-101 w stool from VB-259
+VB-102 w from VB-260
+VB-103 p pipeB from VB-261
+VB-104 w pipeB from VB-264
+VB-105 w chairG from VB-270
+VB-106 w from VB-271
+VB-107 p from VB-274
+VB-108 p from VB-277
+VB-109 w from VB-278
+VB-110 w from VB-279
+VB-111 w chairB from VB-281
+VB-112 m from VB-282
+VB-113 p from VB-283
+VB-114 p from VB-289
+VB-115 p from VB-291
+VB-116 w vac from VB-292
+VB-117 p sheetO from VB-293
+VB-118 p vac from VB-294
+VB-119 w graded
+VB-120 w wheelY from VB-298
+VB-121 c from VB-300
+VB-122 w from VB-304
+VB-123 w graded
+VB-124 w from VB-310
+VB-125 c from VB-314
+VB-126 w from VB-316
+VB-127 c from VB-318
+VB-128 p from VB-321
+VB-129 w from VB-328
+VB-130 c from VB-329
+VB-131 w from VB-331
+VB-132 c from VB-332
+VB-133 w from VB-333
+VB-134 w from VB-336
+VB-135 p from VB-339
+VB-136 c from VB-340
+VB-137 m from VB-342
+VB-138 w cartA from VB-344
+VB-139 w from VB-345
+VB-140 p cartA from VB-348
+VB-141 w from VB-353
+VB-142 p from VB-354
+VB-143 m from VB-355
+VB-144 m from VB-362
+VB-145 p from VB-364
+VB-146 w from VB-365
+VB-147 w from VB-370
+VB-148 w from VB-372
+VB-149 w from VB-373
+VB-150 c graded
+VB-151 c graded
+VB-152 w trolleyL from VB-378
+VB-153 m from VB-381
+VB-154 c from VB-379
+VB-155 w from VB-385
+VB-156 p from VB-386
+VB-157 c from VB-387
+VB-158 w from VB-388
+VB-159 p from VB-392
+VB-160 p from VB-394
+VB-161 p ladderA from VB-395
+VB-162 w ladderA from VB-396
+VB-163 c from VB-397
+VB-164 p from VB-404
+VB-165 m from VB-407
+VB-166 p ladderA from VB-412
+VB-167 p ladderX graded
+VB-168 p graded
+VB-169 p ladderX graded
+VB-170 c from VB-418
+VB-171 p from VB-420
+VB-172 w from VB-422
+VB-173 p from VB-423
+VB-174 w from VB-424
+VB-175 w from VB-425
+VB-176 w from VB-429
+VB-177 c from VB-430
+VB-178 p from VB-417
+VB-179 w from VB-432
+VB-180 p from VB-438
+VB-181 w from VB-441
+VB-182 c from VB-442
+VB-183 p from VB-443
+VB-184 p from VB-444
+VB-185 c from VB-447
+VB-186 c from VB-435
+VB-187 c from VB-450
+VB-188 p from VB-451
+VB-189 p from VB-453
+VB-190 w from VB-456
+VB-191 p from VB-457
+VB-192 c from VB-448
+VB-193 c from VB-461
