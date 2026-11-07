@@ -562,6 +562,12 @@ Selection adds light inside the selected oriented box with a 0.03 m boundary
 tolerance. During an autonomous trip, the same effect follows up to five nearby
 assets, updating as the robot moves. When the trip ends the nearby highlights
 clear, while an independently selected object stays lit.
+When Synthetic pack frames are enabled, nearby mapped proposal boxes also
+brighten and their enclosed splats receive the same highlight. These are
+procedural proposals, not confirmed physical identities or conditions.
+In Objects tinted, enabling Synthetic pack frames also adds a steady amber
+tint inside every mapped proposal box, including when the robot is stationary.
+The tint is separate from the baked reviewed-equipment overlay and can overlap it.
 These are approximate box-based highlights, not object segmentation masks;
 nearby surfaces can be tinted and parts outside the boxes can still be missed.
 
