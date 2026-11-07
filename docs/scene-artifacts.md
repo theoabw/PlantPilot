@@ -391,17 +391,26 @@ missing, and every other stage runs without it.
 
 ## Robot profiles and clearance
 
-The room view offers a walking humanoid (0.18 m radius), a compact AMR (0.20 m)
-and a cargo AMR (0.45 m). Choosing a profile replans the same grid with that
-radius, so the route, the clearance and even the reachable set change with the
-robot rather than with a cosmetic model swap. The walking humanoid and the
-compact AMR both reach P-005 in about 6.2 m; the cargo AMR is refused honestly
-because the area around the inspection point cannot fit it. A developer slider
-covers the same clearance value by hand.
+The room view offers a walking humanoid (0.18 m radius, 1.35 m standing), a
+compact AMR (0.20 m, 0.55 m tall) and a cargo AMR (0.45 m, 0.90 m tall).
+Choosing a profile replans the same grid with that radius and height, so the
+route, the clearance and even the reachable set change with the robot rather
+than with a cosmetic model swap. A developer slider covers the clearance value
+by hand.
 
-The robot itself is procedural: a hi-vis humanoid with swinging legs and arms,
-or a wheeled AMR with chassis, wheels, mast and lidar. Both are animated from
-distance travelled, so the walk or the wheel rotation matches the route speed.
+Height matters in this basement: pipework crosses the aisles above AMR height
+but through a standing humanoid's torso. The structural band now runs from the
+floor to the robot's own height, so the tall robot plans around that pipework
+and the low robot plans under it. If the standing height cannot reach the
+target, the humanoid falls back to a crouched height (0.95 m), the route reports
+that it ducks under low pipework, and the model visibly crouches for that
+mission. A route the robot could not physically take is never drawn.
+
+The robot itself is procedural: a hi-vis humanoid with pelvis, two-segment legs
+and arms, joined knees, elbows and hips, a backpack, helmet and visor, or a
+wheeled AMR with chassis, four wheels, deck rails, mast, spinning lidar, camera
+bar and e-stop. Both are animated from distance travelled, so the walk or the
+wheel rotation matches the route speed.
 
 ## Camera avoidance
 
@@ -416,12 +425,16 @@ is scene agnostic.
 In follow mode the camera first tries its ideal position behind the robot. If
 that spot is blocked or too close to structure, it samples yaw, distance and
 height alternatives and scores them by clearance to the nearest blocked cell,
-preferring an open sight line. The chosen position is damped like the rest of
-the motion, except when the camera is already inside a blocked cell, in which
-case it moves out immediately. Focus, reset and the initial framing pass through
-the same check. If no candidate is free, the camera escapes to a point above the
-robot, so it can always re-enter the scene; Overview also drops follow and
-restores the room view. Manual orbiting is left alone.
+preferring an open sight line. The previous choice is sticky as a robot-relative
+offset, not a world position, so hysteresis prevents flicker without freezing
+the camera. The chosen target is damped, camera movement is capped per frame,
+and while following the viewer aims the camera itself instead of letting
+OrbitControls recompute it from a moving target. A camera already inside
+structure is pulled out over a short ramp rather than teleported. Focus, reset,
+the arrival camera and the initial framing pass through the same check. If no
+candidate is free, the camera escapes above the robot, so it can always re-enter
+the scene; Overview also drops follow and restores the room view. Manual
+orbiting is left alone.
 
 ## Live replanning and the area view
 

@@ -119,17 +119,6 @@ def _blocks_the_robot(obj: dict, floor_y: float, up_axis: int, up_axis_sign: int
     return not (high < floor_y + OBSTACLE_MIN_HEIGHT_M or low > floor_y + ROBOT_HEIGHT_M)
 
 
-def _blocks_the_camera(obj: dict, floor_y: float, up_axis: int, up_axis_sign: int) -> bool:
-    """True when the object reaches into the camera's eye-level band."""
-    centre = np.asarray(obj.get("centre", [0.0, 0.0, 0.0]), dtype=float)
-    axes = np.asarray(obj.get("axes", np.eye(3)), dtype=float)
-    extents = np.asarray(obj.get("extents", [0.0, 0.0, 0.0]), dtype=float)
-    half = float(np.abs(axes[up_axis, :]) @ (extents / 2.0))
-    height = float(centre[up_axis]) * float(up_axis_sign)
-    low, high = height - half, height + half
-    return not (high < floor_y + CAMERA_BAND_MIN_M or low > floor_y + CAMERA_BAND_MAX_M)
-
-
 def object_footprint(obj: dict, up_axis: int = 1) -> Rect:
     """Compute 2D horizontal bounding box for an extracted scene object."""
     # objects.json uses "centre" (British spelling per scene-artifacts.md); fall
@@ -252,10 +241,10 @@ class Grid:
         the robot band and blocks a cell at `structure_min_points` or more.
         `structure_min_points=None` uses the measured module default.
 
-        `walkable_height_max_m` is kept for callers but no longer sets the
-        obstacle band: the structural layer uses the robot body band
-        (`OBSTACLE_MIN_HEIGHT_M` to `ROBOT_HEIGHT_M`), which is what a robot can
-        hit.
+        The structural band runs from `OBSTACLE_MIN_HEIGHT_M` to
+        `walkable_height_max_m`. A low AMR keeps the 0.55 m body band; a walking
+        humanoid asks for a taller band so overhead pipework blocks the route
+        instead of phasing through its torso.
 
         The union is never discarded. The grid is reported as `saturated` when
         the inflated blocked fraction passes `MAX_BLOCKED_FRACTION`, and it
@@ -309,7 +298,7 @@ class Grid:
         # the band the robot's body occupies, then keep only cells dense enough
         # to be a surface rather than noise.
         band = (heights >= floor_y + OBSTACLE_MIN_HEIGHT_M) & (
-            heights <= floor_y + ROBOT_HEIGHT_M
+            heights <= floor_y + walkable_height_max_m
         )
         band_cols = np.floor((h_x[band] - x0) / CELL_M).astype(np.int64)
         band_rows = np.floor((h_z[band] - z0) / CELL_M).astype(np.int64)
@@ -832,6 +821,7 @@ def build_route(
     output_path: Path | None = None,
     manual_floor_y: float | None = None,
     agent_radius_m: float = DEFAULT_AGENT_RADIUS_M,
+    agent_height_m: float = ROBOT_HEIGHT_M,
     blockers: list[list[float]] | None = None,
     start_override: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
@@ -871,7 +861,7 @@ def build_route(
 
     # Load objects if available
     objects: list[dict] = []
-    walkable_height_max_m = WALKABLE_HEIGHT_MAX_M  # scene-relative override below
+    walkable_ceiling_m = WALKABLE_HEIGHT_MAX_M  # scene-relative override below
     if objects_path and objects_path.exists():
         try:
             obj_data = json.loads(objects_path.read_text())
@@ -896,7 +886,7 @@ def build_route(
                 if above_floor:
                     clearance_to_ceil = min(above_floor) - floor_h
                     # Keep 10 cm margin below the ceiling plane
-                    walkable_height_max_m = max(1.5, round(clearance_to_ceil - 0.10, 2))
+                    walkable_ceiling_m = max(1.5, round(clearance_to_ceil - 0.10, 2))
         except Exception:
             objects = []
 
@@ -945,8 +935,12 @@ def build_route(
             up_axis_sign=up_axis_sign,
             agent_radius_m=agent_radius_m,
             objects=objects,
-            walkable_height_max_m=walkable_height_max_m,
+            walkable_height_max_m=max(
+                OBSTACLE_MIN_HEIGHT_M,
+                min(float(agent_height_m), float(walkable_ceiling_m)),
+            ),
             safety_margin_m=ROUTE_SAFETY_MARGIN_M,
+            structure_min_points=30 if float(agent_height_m) > 0.6 else None,
         )
     else:
         # Fallback to synthetic reference plant
@@ -1071,6 +1065,7 @@ def build_route(
             "camera_blocked_cells": int(getattr(grid, "camera_cells", 0)),
         },
         "grid_stats": {
+            "robot_height_m": round(float(agent_height_m), 3),
             "cols": grid.cols,
             "rows": grid.rows,
             "resolution_m": CELL_M,

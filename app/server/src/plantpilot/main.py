@@ -383,6 +383,7 @@ class RerouteRequest(BaseModel):
     blockers: list[list[float]] = []
     start: list[float] | None = None
     agent_radius_m: float = 0.20
+    agent_height_m: float = 0.55
 
 
 @app.post("/api/scene/reroute", responses=_ARTIFACT_RESPONSES)
@@ -402,6 +403,7 @@ def scene_reroute(payload: RerouteRequest) -> dict:
         blockers=blockers,
         start_override=start,
         agent_radius_m=float(payload.agent_radius_m),
+        agent_height_m=float(payload.agent_height_m),
     )
 
 

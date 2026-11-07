@@ -381,11 +381,12 @@ export async function fetchReroute(
   blockers: number[][],
   start: [number, number] | null,
   agentRadiusM = 0.2,
+  agentHeightM = 0.55,
 ): Promise<RoomRoute> {
   const response = await fetch('/api/scene/reroute', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ blockers, start, agent_radius_m: agentRadiusM }),
+    body: JSON.stringify({ blockers, start, agent_radius_m: agentRadiusM, agent_height_m: agentHeightM }),
   })
   if (!response.ok) {
     throw new Error(`/api/scene/reroute answered ${response.status}`)

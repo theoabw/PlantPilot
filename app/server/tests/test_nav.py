@@ -471,3 +471,24 @@ def test_the_camera_layer_sees_eye_level_structure_the_robot_layer_misses():
     # The wall is above OBSTACLE_MIN_HEIGHT_M and ROBOT_HEIGHT_M, so the robot
     # structural layer ignores it; the camera layer is the one that sees it.
     assert int(getattr(grid, "structural_cells", 0)) == 0
+
+
+def test_a_tall_robot_blocks_pipework_an_amr_can_walk_under():
+    import numpy as np
+
+    from plantpilot import nav
+
+    floor_x, floor_z = np.meshgrid(np.arange(0.0, 1.0, 0.05), np.arange(0.0, 1.0, 0.05))
+    floor = np.stack([floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1)
+    # A pipe crossing the aisle at 1.2 m: above an AMR, through a humanoid's torso.
+    pipe_x, pipe_z = np.meshgrid(np.arange(0.2, 0.8, 0.0125), np.arange(0.45, 0.55, 0.0125))
+    pipe = np.stack([pipe_x.ravel(), np.full(pipe_x.size, 1.2), pipe_z.ravel()], axis=1)
+    points = np.concatenate([floor, pipe], axis=0)
+
+    short = nav.Grid.from_cloud(points, floor_y=0.0, objects=[], walkable_height_max_m=0.55)
+    tall = nav.Grid.from_cloud(
+        points, floor_y=0.0, objects=[], walkable_height_max_m=1.35, structure_min_points=30
+    )
+
+    assert int(getattr(short, "structural_cells", 0)) == 0
+    assert int(getattr(tall, "structural_cells", 0)) > 0
