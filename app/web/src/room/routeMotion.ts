@@ -28,3 +28,19 @@ export function cappedStep(from: Point3, goal: Point3, maxStep: number): Point3 
   const scale = maxStep / length
   return { x: from.x + dx * scale, y: from.y + dy * scale, z: from.z + dz * scale }
 }
+
+/**
+ * The point the next replan should aim for.
+ *
+ * A destination is what the user asked for: the object's centre, not the cell
+ * the planner snapped it to for one robot. A snapped waypoint fed back into the
+ * next plan moves the goal a little on every replan, and a wide robot's waypoint
+ * stays far from the object after switching back to a narrow one. The waypoint
+ * is only used when no destination was ever given, as with the shipped route.
+ */
+export function nextDestination(
+  requested: [number, number] | null,
+  waypoint: [number, number] | null,
+): [number, number] | null {
+  return requested ?? waypoint
+}

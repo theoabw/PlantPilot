@@ -35,6 +35,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
+import { nextDestination } from './routeMotion'
 
 type MissionTarget = {
   tag: string
@@ -569,11 +570,13 @@ export default function RoomLab() {
     const finish = (result: RoomRoute, crouched: boolean) => {
       setRoute(result)
       const waypoint = result.target_waypoint
+      let waypointXZ: [number, number] | null = null
       if (waypoint) {
         const axes = result.grid?.horizontal_axes ?? [0, 2]
         setDestinationScene([waypoint[0], waypoint[1], waypoint[2]])
-        destinationXZRef.current = [waypoint[axes[0]], waypoint[axes[1]]]
+        waypointXZ = [waypoint[axes[0]], waypoint[axes[1]]]
       }
+      destinationXZRef.current = nextDestination(target, waypointXZ)
       setCrouchSpans(crouched ? result.crouch_spans_m ?? [] : [])
       if (options.label) {
         setDestinationLabel(options.label)

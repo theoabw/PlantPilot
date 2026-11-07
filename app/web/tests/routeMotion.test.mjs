@@ -25,3 +25,9 @@ test('a repeated capped step closes a gap instead of freezing', () => {
   }
   assert.equal(at.x, 5)
 })
+
+test('a snapped waypoint never replaces the requested destination', () => {
+  assert.deepEqual(motion.nextDestination([1, 2], [1.4, 2.6]), [1, 2])
+  assert.deepEqual(motion.nextDestination(null, [1.4, 2.6]), [1.4, 2.6])
+  assert.equal(motion.nextDestination(null, null), null)
+})
