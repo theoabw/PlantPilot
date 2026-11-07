@@ -7,7 +7,7 @@ import * as THREE from 'three'
 const source = await readFile(new URL('../src/room/pickObject.ts', import.meta.url), 'utf8')
 const js = ts.transpile(source, { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 })
   .replace("'three'", JSON.stringify(import.meta.resolve('three')))
-const { isPickable, nestedPick, hiddenBySplats } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`)
+const { isPickable, nestedPick, hiddenBySplats, visiblePick } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`)
 
 const box = (centre, size) => {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial())
@@ -50,4 +50,24 @@ test('a surface hides a box, a floater and a box own face do not', () => {
   assert.equal(hiddenBySplats(5, [1, 5.1, 5.2]), false)
   assert.equal(hiddenBySplats(5, [4.9, 4.95, 5.1]), false)
   assert.equal(hiddenBySplats(5, []), false)
+})
+
+test('a machine\'s own surface does not hide a part framed inside it', () => {
+  const outer = box([0, 0, 0], [4, 4, 4])
+  const inner = box([0, 0, 0], [1, 1, 1])
+  const ray = new THREE.Raycaster(new THREE.Vector3(0, 0, -10), new THREE.Vector3(0, 0, 1))
+  const hits = ray.intersectObjects([outer, inner], false)
+  // Splats on the outer face, in front of the inner box by more than the tolerance.
+  assert.equal(visiblePick(hits, () => [8.05, 8.1])?.object, inner)
+})
+
+test('a surface in front of the first box still hides the click', () => {
+  const outer = box([0, 0, 0], [4, 4, 4])
+  const ray = new THREE.Raycaster(new THREE.Vector3(0, 0, -10), new THREE.Vector3(0, 0, 1))
+  const hits = ray.intersectObjects([outer], false)
+  assert.equal(visiblePick(hits, () => [3, 3.1]), null)
+})
+
+test('a ray with no hits does not pay for the splat query', () => {
+  assert.equal(visiblePick([], () => { throw new Error('queried') }), null)
 })

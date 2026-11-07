@@ -58,3 +58,21 @@ export function hiddenBySplats(distance: number, splatDistances: number[]): bool
   }
   return inFront >= SURFACE_MIN_SPLATS
 }
+
+/**
+ * The box a click selects, or null when a surface hides it. Visibility is tested
+ * at the first box the ray enters: a part framed inside a machine sits behind
+ * that machine's own surface, and testing the part would swallow the click. The
+ * splat query is a function because it is the expensive step, and a ray that hit
+ * nothing should not pay for it.
+ */
+export function visiblePick<T extends THREE.Intersection>(
+  hits: T[],
+  splatDistances: () => number[],
+): T | null {
+  const first = hits[0]
+  if (!first || hiddenBySplats(first.distance, splatDistances())) {
+    return null
+  }
+  return nestedPick(hits)
+}

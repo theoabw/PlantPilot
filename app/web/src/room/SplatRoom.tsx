@@ -6,7 +6,7 @@ import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { stableHalfDepthShader } from './depthSplatShader'
-import { CLICK_MAX_DRAG_PX, hiddenBySplats, isPickable, nestedPick } from './pickObject'
+import { CLICK_MAX_DRAG_PX, isPickable, nestedPick, visiblePick } from './pickObject'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 import { boundedStep, CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
@@ -1040,10 +1040,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       if (!liveState?.boxGroup.visible) {
         return
       }
-      const hit = nestedPick(raycaster.intersectObjects(pickGroup.children, false))
-      const id = hit?.object.userData.objectId
       // A frame behind a wall is hidden by the depth test, so its click is too.
-      if (typeof id === 'string' && hit && !hiddenBySplats(hit.distance, splatRayDistances())) {
+      const hit = visiblePick(raycaster.intersectObjects(pickGroup.children, false), splatRayDistances)
+      const id = hit?.object.userData.objectId
+      if (typeof id === 'string') {
         selectRef.current(id)
       }
     }
