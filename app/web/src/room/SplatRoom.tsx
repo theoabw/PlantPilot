@@ -2356,7 +2356,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.stickyCamera = null
     state.smoothedCamera = null
 
-    if (!route || !route.reachable || route.path.length < 2) {
+    if (!route || !route.reachable || route.path.length === 0) {
       if (previousRobot) {
         state.routeGroup.add(previousRobot)
         motion.robot = previousRobot
@@ -2378,7 +2378,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       return point.applyQuaternion(state.world.quaternion)
     }
 
-    const points = route.path.map(toWorld)
+    // A repeat visit can already be at the inspection waypoint, so the
+    // planner returns a reachable route containing only that point. Keep the
+    // robot visible by representing it as a stationary two-point path.
+    const routePath = route.path.length === 1 ? [route.path[0], route.path[0]] : route.path
+    const points = routePath.map(toWorld)
     const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5)
     curve.arcLengthDivisions = 400
     const totalLength = Math.max(0.01, curve.getLength())
