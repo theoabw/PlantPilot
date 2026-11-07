@@ -46,6 +46,7 @@ type Props = {
   upAxis: string | undefined
   floorHeight: number | null
   resetToken: number
+  characterResetToken: number
   selectedId: string | null
   mappedIds: string[]
   targetId: string | null
@@ -158,7 +159,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
 type RobotProfile = 'humanoid' | 'amr' | 'cargo'
 
 const firstPersonEyeHeight: Record<RobotProfile, number> = {
-  humanoid: 1.3,
+  humanoid: 1.55,
   amr: 0.42,
   cargo: 0.68,
 }
@@ -498,7 +499,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -598,8 +599,14 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   cameraMoveRef.current = cameraMove
   const manualControlRef = useRef(manualControl)
   manualControlRef.current = manualControl
+  const robotProfileRef = useRef(robotProfile)
+  robotProfileRef.current = robotProfile
   const firstPersonRef = useRef(firstPerson)
   firstPersonRef.current = firstPerson
+  const initialRobotTransformRef = useRef<{
+    position: THREE.Vector3
+    heading: number
+  } | null>(null)
   const nearbyRef = useRef(onNearby)
   nearbyRef.current = onNearby
   // The framed camera is kept so the toolbar's overview and reset can restore it.
@@ -1124,8 +1131,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       const heading = stateRef.current?.motion.heading ?? robot.rotation.y
       robotForward.set(0, 0, 1).applyAxisAngle(up, heading)
-      const lookHeight = followTargetHeight[robotProfile]
-      const distance = followDistances[robotProfile]
+      const profile = robotProfileRef.current
+      const lookHeight = followTargetHeight[profile]
+      const distance = followDistances[profile]
       const rawDesired = robot.position
         .clone()
         .addScaledVector(robotForward, -distance)
@@ -1252,7 +1260,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       person.visible = false
       camera.position
         .copy(person.position)
-        .add(new THREE.Vector3(0, firstPersonEyeHeight[robotProfile], 0))
+        .add(new THREE.Vector3(0, firstPersonEyeHeight[robotProfileRef.current], 0))
       camera.rotation.order = 'YXZ'
       camera.rotation.set(state.manualPitch, state.manualYaw, 0)
       camera.updateMatrixWorld()
@@ -2811,10 +2819,52 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         scenePosition.getComponent(walkGrid?.horizontal_axes[1] ?? 2),
       ]
     }
+    if (!initialRobotTransformRef.current) {
+      initialRobotTransformRef.current = {
+        position: robot.position.clone(),
+        heading: robot.rotation.y,
+      }
+    }
     state.updateArrows?.()
     tripRef.current({ mode: 'idle', travelled: 0, total: motion.total })
     renderRef.current()
   }, [route, floorHeight, upAxis, robotProfile, manualControl])
+
+  useEffect(() => {
+    const state = stateRef.current
+    const robot = state?.motion.robot
+    const initialTransform = initialRobotTransformRef.current
+    if (!state || !robot || !initialTransform || characterResetToken === 0) {
+      return
+    }
+    state.motion.active = false
+    state.motion.travelled = 0
+    state.motion.reached = false
+    state.motion.arrowOffset = 0
+    state.manualTravelled = 0
+    state.movementKeys.clear()
+    robot.position.copy(initialTransform.position)
+    robot.rotation.y = initialTransform.heading
+    state.motion.heading = initialTransform.heading
+    const animate = robot.userData.animate as
+      | ((time: number, travelled: number, moving: boolean) => void)
+      | undefined
+    animate?.(performance.now() / 1000, 0, false)
+    const scenePosition = robot.position
+      .clone()
+      .applyQuaternion(state.world.quaternion.clone().invert())
+    const axes = state.walkMask?.axes ?? [0, 2]
+    robotPositionRef.current = [
+      scenePosition.getComponent(axes[0]),
+      scenePosition.getComponent(axes[1]),
+    ]
+    state.followOffset = null
+    state.smoothedCamera = null
+    state.stickyCamera = null
+    state.updateArrows?.()
+    tripRef.current({ mode: 'idle', travelled: 0, total: state.motion.total })
+    renderRef.current()
+  }, [characterResetToken, robotPositionRef])
 
   useEffect(() => {
     const state = stateRef.current

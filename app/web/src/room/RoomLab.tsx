@@ -150,6 +150,7 @@ export default function RoomLab() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [resetToken, setResetToken] = useState(0)
+  const [characterResetToken, setCharacterResetToken] = useState(0)
   const [arrivalDismissed, setArrivalDismissed] = useState(false)
   const robotPositionRef = useRef<[number, number] | null>(null)
   const initialStartRef = useRef<[number, number] | null>(null)
@@ -742,6 +743,7 @@ export default function RoomLab() {
             upAxis={data.source.up_axis}
             floorHeight={data.floor.height}
             resetToken={resetToken}
+            characterResetToken={characterResetToken}
             selectedId={selectedId}
             mappedIds={mappedIds}
             targetId={displayTargetId}
@@ -1532,6 +1534,8 @@ export default function RoomLab() {
             type="button"
             onClick={() => {
               setResetToken((value) => value + 1)
+              setCharacterResetToken((value) => value + 1)
+              setTrip({ mode: 'idle', travelled: 0, total: 0 })
               setFollow(false)
               setCameraMove(false)
               setFirstPerson(false)
