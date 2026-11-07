@@ -13,13 +13,13 @@ Generated artifacts are written into `data/` and never committed:
 | `data/scene/mapped.json` | `make map` (`plantpilot.mapping`) | route, diagnosis, API, viewer |
 | `data/scene/diagnosis.json` | `make diagnose` (`plantpilot.diagnose`) | API, viewer, video |
 | `data/scene/scene.npz` | `make scene` (`plantpilot.splat`) | objects, route, API, viewer |
-| `data/scene/objects.json` | `make objects` (`plantpilot.segment`) | mapping, route proximity, API, viewer |
+| `data/scene/objects.json` | `make objects` (`plantpilot.segment`, then `plantpilot.classes`) | mapping, route proximity, API, viewer |
 | `data/scene/assets.json` | `make assets` (`plantpilot.assets`) | API, viewer (proposal layer) |
 | `data/scene/anchors.json` | `make anchors` (`scripts/make_anchors.py`) | API, viewer (the default reviewed layer) |
 | `data/objects/splats/<capture>/` | `make object-splats` (`scripts/make_object_splats.py`) | API, viewer (recognizable objects for the atlas and explode) |
 | `data/objects/meshes/<capture>/` | `make object-meshes` (`scripts/make_object_meshes.py`, optional Open3D) | API, viewer (silhouette and solid atlas fallback) |
 | `data/viewer/filters/<capture>/` | `make filter-assets` (`scripts/make_filter_assets.py`) | API, viewer (derived channels) |
-| `data/viewer/room.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
+| `data/viewer/equipment.ply`, `data/viewer/boiler.ply` | `make splat-asset` (`scripts/make_splat_asset.py`) | the browser splat renderer |
 
 [plantpilot-plan.md](plantpilot-plan.md) fixes the artifact names and the module
 boundaries. This page fixes the exact shape, because the stages are written in
@@ -30,9 +30,9 @@ parallel and a silent change to a key breaks another seat's work.
 ```
 make pipeline                       # build every artifact the room view needs
 make demo                           # build, then serve the API and the web page
-make demo CAPTURE=equipment         # the same stages on the complete capture
+make demo CAPTURE=boiler            # the same stages on the named capture
 make scene                          # ingest the capture as delivered
-make objects                        # extract the framed objects
+make objects                        # extract the framed objects, then refine their classes
 make splat-asset                    # the sanitised capture as a viewer PLY
 ```
 
@@ -42,7 +42,8 @@ after the delivered file was found truncated, `boiler` is the capture the brief
 names as delivered. The server reads the matching
 directory through `PLANTPILOT_SCENE` and the viewer asset through
 `PLANTPILOT_SPLAT`, so one `make demo CAPTURE=...` runs either scene with no
-other overrides.
+other overrides. The table above names the named capture's `data/scene/` paths;
+the default run writes the same files under `data/equipment/`.
 
 `make pack` reads `data/supplied/builder_pack.xlsx` and writes
 `<capture>/pack.json`. It preserves the tables needed by mapping and
@@ -85,7 +86,7 @@ declared, sane and rendered counts, the detected up axis and the timing.
 
 `make objects` prints the planes removed, the floor, the measured point spacing,
 the voxel size, the component and object counts, the largest object share, the
-class counts and the extraction time.
+class counts, the class refinement counts and the extraction time.
 
 Both stages are deterministic: the decimation seed, the plane sampler and the
 splitter are fixed. Two runs on one input produce the same planes, floor,
@@ -142,9 +143,11 @@ the room and the extracted boxes share one camera and one depth order. The room
 view is the only view; the old provisional scene lab, plate scan and plant
 mission demo screens have been removed from the frontend.
 
-- `make splat-asset` writes `data/viewer/room.ply`: the sane prefix with the 14
-  core properties only, 28 MB for the supplied capture instead of 355 MB, so the
-  browser loads it in seconds.
+- `make splat-asset` writes `data/viewer/equipment.ply` for the default capture
+  and `data/viewer/boiler.ply` for the named one: the sane prefix with the 14
+  core properties only and the fog gaussians dropped, 77,636,108 bytes for the
+  complete capture instead of 395,651,019, and 24,023,947 bytes for the supplied
+  one instead of 355,449,599, so the browser loads it in seconds.
 - `GET /api/splat` serves that file, `GET /api/scene/anchors` serves the
   reviewed demo layer, `GET /api/scene/meshes` serves the object mesh manifest
   and `GET /api/mesh/<anchor-id>` serves one mesh, `GET /api/scene/assets` serves the automatic proposal
@@ -169,8 +172,8 @@ The room view is a contextual product shell: a minimal header, a mission card
   pack mapping is a separate layer, off by default and labelled synthetic: the
   workbook has no physical coordinates, so its records are placed procedurally
   and must not be read as the identity or condition of the object they land on. The Equipment browser lists every
-  pack record by tag and state under `Pack records`, so the full 30 of 30
-  mapping is visible without presenting every proposal as reviewed equipment.
+  pack record by tag and state under `Synthetic pack records`, so every proposal and its
+  status is visible without presenting it as reviewed equipment.
   Labels and provenance appear on selection. If a capture has no reviewed
   fixture it falls back to the automatic proposal layer, and the raw extraction
   stays one toggle away in the Objects panel.
@@ -211,21 +214,19 @@ the room. Measured on the delivered capture with this stage, same voxel:
 
 | band | planes | removed as planes | objects | pipes | ducts | points in objects | largest object |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2.5 cm | 12 | 54.6 percent | 111 | 1 | 6 | 37.2 percent | 3.8 percent |
-| 4.0 cm (default) | 8 | 55.5 percent | 130 | 8 | 16 | 37.0 percent | 3.7 percent |
+| 4.0 cm (default) | 16 | 63.3 percent | 122 | 4 | 10 | 29.0 percent | 1.5 percent |
 
-The wider band removes the same share of the capture with fewer planes, and more
-of what is left becomes a pipe or a duct frame instead of a strip welded to a
-wall. Reproduce the narrow row with
+The wider band removes the slab whole, and the gate is what keeps the removal
+from slicing a machine that sits across it. Reproduce the default run with
 
 ```
-uv run python -m plantpilot.segment --plane-distance 0.025 --planes 12 \
-  --max-objects 120 --out /tmp/objects-narrow.json
+uv run python -m plantpilot.segment --plane-distance 0.04 \
+  --out /tmp/objects-default.json
 ```
 
-`--voxel` lowers the requested voxel size the same way. At 2 cm the delivered
-capture frames 163 objects instead of 130; the default 3 cm is what the demo
-draws at and keeps one machine from becoming several.
+`--voxel` lowers the requested voxel size the same way, and smaller voxels split
+merged machines into several objects; the default 3 cm is what the demo draws at
+and keeps one machine from becoming several.
 
 ## The frame
 
@@ -249,10 +250,11 @@ An object box is `centre`, `axes` and `extents`:
 - `extents[i]` is the full length along `axes[i]`, not the half length.
 - The eight corners are `centre + sum_i (sign_i * extents[i] / 2) * axes[i]`
   for every `sign_i` in `{-1, +1}`.
-- The extents are the 2nd to 98th percentile of the object's points along each
-  axis, so they fit the shape rather than one stray gaussian. A few points of
-  the object therefore sit just outside its own box; select points with a small
-  margin (5 cm, or 5 percent of the largest extent) when isolating an object.
+- The extents are the 0.5th to 99.5th percentile of the object's points along
+  each axis, so they fit the shape rather than one stray gaussian. A few points
+  of the object therefore sit just outside its own box; select points with a
+  small margin (5 cm, or 5 percent of the largest extent) when isolating an
+  object.
 
 ## Isolating an object
 
@@ -280,7 +282,7 @@ Version 1 artifacts predate `rot`; `load_scene` still reads them and returns
 
 `meta` carries:
 
-- `artifact` (`scene`), `version` (1)
+- `artifact` (`scene`), `version` (2)
 - `source`: file name and path, bytes, sha256, the property list, the declared,
   sane and dropped counts, the first invalid row, rows not read
 - `frame`: `up_axis`, `up_axis_index`, `up_axis_sign`, `up_axis_source`,
@@ -313,7 +315,8 @@ Top level:
 | `parameters` | every threshold in force, plus `voxel_m_effective` and the `spacing` measurement, so a run can be reproduced |
 | `planes` | `removed`, `removed_points`, `removed_fraction`, `items` (normal, offset, inliers, rms, horizontal, kind) |
 | `floor` | `detected`, `height` (signed, in the up axis), `normal`, `inliers`, `rms_m` |
-| `counts` | `components`, `components_split`, `clusters`, `objects`, `capped`, `points_in_objects`, `points_in_objects_fraction`, `largest_object_share`, `median_points_per_object`, `objects_by_class` |
+| `counts` | `components`, `components_kept`, `components_split`, `clusters`, `clusters_dropped_min_points`, `objects`, `capped`, `capped_points`, `floor_snapped`, `points_in_objects`, `points_in_objects_fraction`, `largest_object_share`, `median_points_per_object`, `objects_by_class`, `labels_generic`, `labels_fused`, and the split counters (`splits_by_gap`, `splits_by_neck`, `splits_by_quota`) |
+| `classes` | the class refinement: its rules, the structural, standing and fitted class lists, the decisions and the `rewritten` and `named_by_fusion` counts |
 | `scale_check` | `performed`, door heights, median, assumed door height, `scale`, `units_are_metres`, reason |
 | `timing_s` | extraction time |
 | `objects` | the list below, sorted by centre x, then y, then z, ids assigned in that order |
@@ -326,7 +329,7 @@ Each object:
 | `centre` | box centre in the splat frame |
 | `axes`, `extents` | the box, as fixed above |
 | `points` | points inside this piece, after plane removal |
-| `class` | a geometric proposal: `pipe`, `duct`, `beam`, `valve`, `pump`, `motor`, `machine`, `drum`, `pallet`, `cabinet`, `door`, `ladder`, `panel`, `surface`, `structure`, `unknown` |
+| `class` | a proposal from shape and context: `pipe`, `duct`, `beam`, `valve`, `pump`, `motor`, `machine`, `drum`, `pallet`, `cabinet`, `door`, `ladder`, `panel`, `surface`, `structure`, `seat`, `object`, `unknown` |
 | `class_confidence` | 0 to 1, from the rule that fired |
 | `class_reason` | the sentence the interface can show |
 | `height_above_floor` | centre height above the floor plane, along the up axis |
@@ -334,16 +337,21 @@ Each object:
 | `planarity` | smallest eigenvalue share, 0 for a perfect plane |
 
 The class is a proposal, not an identification. The challenge does not score
-label accuracy against a labelled reference, so the rule is geometric and says
-so. The mapping stage decides which proposal a package record may use, and the
-interface shows the confidence next to the class.
+label accuracy against a labelled reference, so the rule is geometric and
+contextual and says so: `classes.py` keeps a valve only when pipework is within
+half a metre, keeps a standing class only with floor or a supporting box under
+it, and turns anything else into `object` with the reason. A matching fused
+instance may name an object instead. The mapping stage decides which proposal a
+package record may use, and the interface shows the confidence next to the
+class.
 
 ## `assets.json`
 
 The refined object layer. The raw extraction is a segmentation of point
 clusters, and a cluttered room merges neighbouring machines into long boxes and
-splits equipment into fragments. This artifact is the representation the room
-view draws by default.
+splits equipment into fragments. This artifact is the automatic proposal layer
+the viewer falls back to when a capture has no reviewed fixture, and the layer
+the developer drawer lists.
 
 Top level: `artifact` (`assets`), `version` (1), `source` (scene and objects
 paths), `counts` (`raw_objects`, `colour_instances`, `geometry_candidates`,
@@ -376,7 +384,8 @@ The reviewed demo layer. An audit of the proposal layer found that of the 20
 boxes it drew by default, 4 matched one object, 5 were partial, 7 wrapped
 several things and 4 sat on empty space, and 14 of 20 labels did not fit the
 content. The anchors are the boxes that survived that audit, with labels
-corrected to what the box actually contains.
+corrected to what the box actually contains, plus the office chair that
+instance fusion recovered.
 
 The input is a small committed fixture, `fixtures/scene/anchors_<capture>.json`,
 which also records the audit verdict and a note per anchor. `make anchors` fits
@@ -386,14 +395,24 @@ no fixture is skipped and the viewer falls back to the proposal layer.
 
 Each anchor: `id` (`AN-` plus the proposal id suffix), `asset_id`, `class`,
 `label`, `reviewed`, `verdict` (A or B from the audit), `note`, `centre`,
-`axes`, `extents`, `points` and the `source_object_ids` it came from. Labels are
+`axes`, `extents`, `points`, `mean_rgb`, the `source_object_ids` it came from,
+and the `fused` instance described below. Every anchor that came from the
+proposal layer keeps the box the review accepted under `reviewed_box`; the
+washing machine is the one whose drawn box is the fused one. Labels are
 deliberately generic where the geometry cannot prove a machine class
-(`equipment`, `equipment cluster`), because the audit found the shape rules were
-being used as class rules.
+(`equipment`, `equipment cluster`), because the audit found the shape rules
+were being used as class rules.
 
-Two anchors carry an independent SAM 3 corroboration: `sam3.label`, `sam3.score`, `sam3.views`, the SAM 3 box and its agreement with the reviewed box. The blue-tank segment agrees within 8 cm at the centre and 10 percent in extents; the washing-machine segment agrees on class and within 11 cm, with a larger box because the masks include surroundings. The equipment card shows this as a SAM 3 check. It is not part of the demo path.
+Every anchor carries the multi-view fusion under `fused`: the method, the
+support views, the score, the vertical coverage, the floor gap, the visible
+fraction and the fused box. The six reviewed boxes the fusion agreed with stay
+in place; the washing machine's reviewed box was the top band of the body, so
+the viewer draws its fused box and keeps the reviewed one under `reviewed_box`.
+The office chair was recovered by fusion, so its box is the recovered one and it
+has no separate `reviewed_box`. The equipment card shows the change as a fusion
+check: the views, the score, the stand gap and the percent visible.
 
-The seven anchors also separate observation from inference. Each carries
+The eight anchors also separate observation from inference. Each carries
 `observed_type` (what the reviewed box visibly contains), `inferred_function`
 (what it is probably used for), `category`, `classification_confidence` and the
 `evidence` sentence behind the call. The Equipment card shows the observation
@@ -406,8 +425,8 @@ expansion vessels and the Grundfos pump station visible in the source video are
 not enclosed by reviewed anchors, and brand text on a tank is not proof that a
 particular reviewed box is that tank. Labels only claim what the box itself
 shows: a front-load drum appliance, a vertical vessel, a pump-and-motor body, a
-pipe run, a door or cabinet, and an unidentified floor cluster. Inferred
-functions stay unconfirmed in the UI.
+pipe run, a door or cabinet, a floor-level hose and cover, an office chair, and
+an unidentified floor cluster. Inferred functions stay unconfirmed in the UI.
 
 ## Object meshes
 
@@ -417,7 +436,7 @@ alone: for each anchor it takes the owned gaussians, uses the thinnest ellipsoid
 axis as the normal, drops faint and fog gaussians, downsamples, reconstructs a
 surface with Open3D Poisson, trims the density fringe, crops to the anchor box,
 decimates to at most 20,000 triangles and copies gaussian colours onto the
-vertices. Seven anchors bake in about six seconds and the manifest is
+vertices. Eight anchors bake in seconds each and the manifest is
 byte-identical across runs when Poisson runs single threaded.
 
 The output is a binary PLY per object with vertex colours plus `manifest.json`
@@ -438,12 +457,14 @@ than with a cosmetic model swap. A developer slider covers the clearance value
 by hand.
 
 Height matters in this basement: pipework crosses the aisles above AMR height
-but through a standing humanoid's torso. The structural band now runs from the
-floor to the robot's own height, so the tall robot plans around that pipework
-and the low robot plans under it. If the standing height cannot reach the
-target, the humanoid falls back to a crouched height (0.95 m), the route reports
-that it ducks under low pipework, and the model visibly crouches for that
-mission. A route the robot could not physically take is never drawn.
+but through a standing humanoid's torso. The wall layer runs to the room's
+working height rather than the robot's, and a separate overhead layer blocks
+the horizontal patches inside the robot's own body band above 0.35 m, so the
+tall robot plans around that pipework and the low robot plans under it. If the
+standing height cannot reach the target, the humanoid falls back to a crouched
+height (0.95 m), the route reports that it ducks under low pipework, and the
+model visibly crouches for that mission. A route the robot could not physically
+take is never drawn.
 
 The robot itself is procedural: a hi-vis humanoid with pelvis, two-segment legs
 and arms, joined knees, elbows and hips, a backpack, helmet and visor, or a
@@ -453,18 +474,17 @@ wheel rotation matches the route speed.
 
 ## Robot occlusion
 
-The splat pass is transparent and does not write depth, so overlays such as the
-robot were drawn on top of every machine. The viewer now renders the reviewed
-equipment volumes again as invisible depth-only boxes after the splats and
-before the robot. They write depth without colour, which gives the robot and the
-route decorations a real depth test against tanks, cabinets and other reviewed
-plant. The boxes are shrunk slightly and are disabled while the camera is inside
-one of them, so a close camera cannot make the robot vanish.
+The splat pass is transparent and writes no depth, so overlays such as the
+robot used to be drawn on top of every machine. The viewer now draws the same
+splats a second time, colourless, into the depth buffer before the colour pass,
+so a frame, the route line and the robot are hidden by whatever the capture has
+in front of them. The splat image itself is unchanged: the colour pass still
+blends in painter's order and writes no depth.
 
-This is a proxy depth, not a splat depth map: it occludes against the equipment
-boxes in the scene artifacts, so thin pipework and railings still do not hide
-the robot. A full per-pixel splat depth pass would need the Spark renderer to
-write depth, which it currently does not.
+The depth pass reads the capture's own surface, so tanks, cabinets, pipework and
+railings all occlude alike. A faint veil of large, low-alpha gaussians is not a
+surface, so the depth pass cuts it at a higher opacity than the colour pass
+does; without that, the veil would punch invisible holes in anything behind it.
 
 ## Camera avoidance
 
@@ -472,9 +492,9 @@ The follow camera would otherwise sit behind the robot through a tank or a pipe.
 The route document now carries a second occupancy layer at eye level: the
 capture's own gaussians between 1.15 m and 1.85 m above the floor, blocked when
 a 0.10 m cell holds at least 50 points. It is deliberately separate from the
-robot grid, which stops at 0.55 m and says nothing about pipework at camera
-height. The layer is derived from the capture like every other obstacle, so it
-is scene agnostic.
+robot grid: the robot's body band tops out at 0.55 m and says nothing about
+pipework at camera height. The layer is derived from the capture like every
+other obstacle, so it is scene agnostic.
 
 In follow mode the camera first tries its ideal position behind the robot. If
 that spot is blocked or too close to structure, it samples yaw, distance and
@@ -499,7 +519,7 @@ packed as base64 bits. The viewer uses it for two things.
 Placing an obstacle on the floor sends a POST to `/api/scene/reroute` with the
 transient blocker rectangles and the robot's current scene position. The server
 replans the same grid with `agent_radius_m` 0.20, one inflation pass, and the
-same structural obstacles, then returns a route document with the new path,
+same four obstacle layers, then returns a route document with the new path,
 distance and clearance. The whole call is about 150 ms, so the path redraws
 immediately and the robot resumes from where it stood. When no alternative
 exists the response is honest: `reachable` false and the viewer says the path is
@@ -536,7 +556,7 @@ Poisson surface from the same gaussians is lumpy and is not watertight.
 
 ## Numbers from the supplied capture
 
-Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
+Run on the delivered `Industrial Boiler Room (1).ply`:
 
 | Number | Value | Printed by |
 | --- | --- | --- |
@@ -545,17 +565,17 @@ Run on the delivered `Industrial Boiler Room (1).ply`, Friday evening:
 | Rendered gaussians | 502,483 | `make scene` |
 | First invalid row | 502,483 | `make scene` |
 | Up axis | `-y`, two slabs, floor slab at +1.069 (the brighter one) | `make scene` |
-| Points removed as planes | 278,931 (55.5 percent) | `make objects` |
-| Planes removed | 8 | `make objects` |
-| Floor height | -1.074 in the up coordinate (scene y +1.074), rms 0.012 | `make objects` |
+| Points removed as planes | 317,938 (63.3 percent) | `make objects` |
+| Planes removed | 16 | `make objects` |
+| Floor height | -1.072 in the up coordinate (scene y +1.072), rms 0.011 | `make objects` |
 | Point spacing on the floor | 0.014 m | `make objects` |
-| Components at 3 cm | 23,952 | `make objects` |
-| Objects framed | 130 | `make objects` |
-| Points inside objects | 37.0 percent | `make objects` |
-| Largest object share | 3.7 percent of points | `make objects` |
-| Median points per object | 431 | `make objects` |
-| Extraction time | 2.9 s | `make objects` |
-| Clear height | 1.95 m between the floor (scene y +1.074) and the ceiling (scene y -0.877) | `make objects` |
+| Components at 3 cm | 24,358 | `make objects` |
+| Objects framed | 122 from 122 clusters, nothing capped | `make objects` |
+| Points inside objects | 29.0 percent | `make objects` |
+| Largest object share | 1.5 percent of points | `make objects` |
+| Median points per object | 330 | `make objects` |
+| Extraction time | 3.71 s | `make objects` |
+| Clear height | 1.95 m between the floor (scene y +1.072) and the ceiling (scene y -0.878) | `make objects` |
 
 The 1.95 m clear height matters for the scale check: a 2 m door does not fit
 under a 1.95 m ceiling, so the capture units are at least a few percent larger
@@ -575,14 +595,14 @@ second scene in its own right, and it is the better demo material.
 | Sane prefix | 1,676,481, none dropped | `make scene` |
 | Up axis | `-y`, floor slab at +1.167 (15.5 percent of points) | `make scene` |
 | Dense bounds | x -4.84 to 4.16, y -1.29 to 1.26, z -3.76 to 3.49 | `make scene` |
-| Floor | +1.173 in the scene frame, rms 0.016 | `make objects` |
+| Floor | +1.174 in the scene frame, rms 0.015 | `make objects` |
 | Point spacing on the floor | 0.016 m | `make objects` |
-| Points removed as planes | 705,418 (42.1 percent) | `make objects` |
-| Components at 3 cm | 73,673 | `make objects` |
-| Objects framed | 150 (capped from 380 clusters) | `make objects` |
-| Points inside objects | 47.4 percent | `make objects` |
-| Largest object share | 1.2 percent of points | `make objects` |
-| Extraction time | 10.71 s | `make objects` |
+| Points removed as planes | 717,640 (42.8 percent) | `make objects` |
+| Components at 3 cm | 76,200 | `make objects` |
+| Objects framed | 150 from 272 clusters, 122 capped | `make objects` |
+| Points inside objects | 48.8 percent | `make objects` |
+| Largest object share | 4.2 percent of points | `make objects` |
+| Extraction time | 22.04 s | `make objects` |
 
 Run it with its own capture argument, so the boiler room artifacts stay where
 the other stages expect them:
@@ -592,9 +612,9 @@ make scene CAPTURE=equipment
 make objects CAPTURE=equipment
 ```
 
-Both captures are in `data/supplied/`, and both are gitignored. Switching the
-demo to the equipment room is a team decision: the mapping, route and diagnosis
-stages read the artifact paths, so it is a change of `CAPTURE`, not of code.
+Both captures are in `data/supplied/`, and both are gitignored. The demo runs
+on the equipment room by default and the boiler room keeps its own artifact
+paths, so switching between them is a change of `CAPTURE`, not of code.
 
 ## Not in these artifacts
 
