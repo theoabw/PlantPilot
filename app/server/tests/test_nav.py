@@ -448,3 +448,26 @@ def test_obstacle_raster_writes_a_png_with_the_route(tmp_path):
     assert int(image.max()) > 200  # free cells stay light
     red = (image[:, :, 0] > 180) & (image[:, :, 1] < 90) & (image[:, :, 2] < 90)
     assert int(red.sum()) > 0
+
+
+def test_the_camera_layer_sees_eye_level_structure_the_robot_layer_misses():
+    import numpy as np
+
+    from plantpilot import nav
+
+    # A floor at 0 m and a dense shelf face at 1.5 m, in front of the robot but
+    # well above the robot body band. The robot grid may stay free; the camera
+    # layer must not.
+    floor_x, floor_z = np.meshgrid(np.arange(0.0, 1.0, 0.05), np.arange(0.0, 1.0, 0.05))
+    floor = np.stack([floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1)
+    wall_x, wall_h = np.meshgrid(np.arange(0.2, 0.6, 0.0125), np.arange(1.3, 1.7, 0.0125))
+    wall = np.stack([wall_x.ravel(), wall_h.ravel(), np.full(wall_x.size, 0.5)], axis=1)
+    points = np.concatenate([floor, wall], axis=0)
+
+    grid = nav.Grid.from_cloud(points, floor_y=0.0, up_axis=1, up_axis_sign=1, objects=[])
+
+    assert getattr(grid, "camera_cells", 0) > 0
+    assert int(getattr(grid, "camera_mask").sum()) > 0
+    # The wall is above OBSTACLE_MIN_HEIGHT_M and ROBOT_HEIGHT_M, so the robot
+    # structural layer ignores it; the camera layer is the one that sees it.
+    assert int(getattr(grid, "structural_cells", 0)) == 0

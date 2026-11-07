@@ -403,6 +403,26 @@ The robot itself is procedural: a hi-vis humanoid with swinging legs and arms,
 or a wheeled AMR with chassis, wheels, mast and lidar. Both are animated from
 distance travelled, so the walk or the wheel rotation matches the route speed.
 
+## Camera avoidance
+
+The follow camera would otherwise sit behind the robot through a tank or a pipe.
+The route document now carries a second occupancy layer at eye level: the
+capture's own gaussians between 1.15 m and 1.85 m above the floor, blocked when
+a 0.10 m cell holds at least 50 points. It is deliberately separate from the
+robot grid, which stops at 0.55 m and says nothing about pipework at camera
+height. The layer is derived from the capture like every other obstacle, so it
+is scene agnostic.
+
+In follow mode the camera first tries its ideal position behind the robot. If
+that spot is blocked or too close to structure, it samples yaw, distance and
+height alternatives and scores them by clearance to the nearest blocked cell,
+preferring an open sight line. The chosen position is damped like the rest of
+the motion, except when the camera is already inside a blocked cell, in which
+case it moves out immediately. Focus, reset and the initial framing pass through
+the same check. If no candidate is free, the camera escapes to a point above the
+robot, so it can always re-enter the scene; Overview also drops follow and
+restores the room view. Manual orbiting is left alone.
+
 ## Live replanning and the area view
 
 The route document carries the occupancy grid it planned on: origin, cell size,

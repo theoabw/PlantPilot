@@ -1036,7 +1036,14 @@ export default function RoomLab({ onLeave }: Props) {
           </label>
         ) : null}
         <div className="pointer-events-auto flex flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-950/85 text-[11px] font-bold text-slate-300 shadow-xl backdrop-blur">
-          <button type="button" onClick={() => setResetToken((value) => value + 1)} className="px-3 py-1.5 hover:bg-slate-800">
+          <button
+            type="button"
+            onClick={() => {
+              setResetToken((value) => value + 1)
+              setFollow(false)
+            }}
+            className="px-3 py-1.5 hover:bg-slate-800"
+          >
             Overview
           </button>
           {driving || arrived ? (
