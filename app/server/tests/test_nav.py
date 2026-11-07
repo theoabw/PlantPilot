@@ -785,3 +785,30 @@ def test_a_start_may_snap_to_the_limit_and_is_refused_beyond_it(tmp_path):
     too_far = nav.build_route(**plan, blockers=[[0.6, 1.1, 2.4, 2.9]])
     assert too_far["reachable"] is False
     assert "does not fit" in too_far["reason"]
+
+
+def test_the_standoff_of_a_destination_is_measured_to_that_destinations_box(tmp_path):
+    objects = tmp_path / "objects.json"
+    machine = {
+        "id": "OBJ-A",
+        "class": "pump",
+        "centre": [2.0, 0.5, 2.0],
+        "axes": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        "extents": [0.6, 1.0, 0.6],
+    }
+    elsewhere = dict(machine, id="OBJ-B", centre=[0.6, 0.5, 3.4], extents=[0.2, 1.0, 0.2])
+    objects.write_text(json.dumps({"objects": [elsewhere, machine]}))
+    route = nav.build_route(
+        scene_path=_pocket_scene(tmp_path),
+        objects_path=objects,
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(0.6, 0.6),
+        goal_override=(2.0, 2.0),
+    )
+    assert route["reachable"] is True
+    stop = (route["target_waypoint"][0], route["target_waypoint"][2])
+    gap_x = max(1.7 - stop[0], 0.0, stop[0] - 2.3)
+    gap_z = max(1.7 - stop[1], 0.0, stop[1] - 2.3)
+    assert route["target_waypoint_standoff_m"] == pytest.approx(math.hypot(gap_x, gap_z), abs=0.01)
+    assert route["target_waypoint_standoff_m"] < 0.5

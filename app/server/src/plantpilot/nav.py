@@ -1653,8 +1653,24 @@ def build_route(
     # service waypoint, larger when the asset sits where no floor-level ground
     # beside it exists and the route has to stop on the nearest reachable ground.
     goal_standoff_m = 0.0
-    if target_box is not None:
-        footprint = object_footprint(target_box, up_axis=up_axis)
+    standoff_box = target_box
+    if goal_override is not None:
+        # A destination is not the default target. The viewer sends an object's
+        # centre, so the box is the one centred there; a point that is no object's
+        # centre has no footprint, and the distance to it is the stand-off.
+        wanted = (float(goal_override[0]), float(goal_override[1]))
+        standoff_box = next(
+            (
+                obj
+                for obj in objects
+                if "centre" in obj
+                and math.dist((obj["centre"][horizontal[0]], obj["centre"][horizontal[1]]), wanted) < 0.01
+            ),
+            None,
+        )
+        goal_standoff_m = math.dist(goal_2d, wanted)
+    if standoff_box is not None:
+        footprint = object_footprint(standoff_box, up_axis=up_axis)
         gap_x = max(footprint.x0 - goal_2d[0], 0.0, goal_2d[0] - footprint.x1)
         gap_z = max(footprint.z0 - goal_2d[1], 0.0, goal_2d[1] - footprint.z1)
         goal_standoff_m = float(np.hypot(gap_x, gap_z))
