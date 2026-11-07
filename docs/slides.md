@@ -49,7 +49,7 @@ Density is the first rubric line at 30 percent, and 122 frames is the answer to 
 **On the slide**
 - Obstacle cells come from four layers: the extracted object boxes, the floor the capture never saw, near-vertical surfaces that run the room's height, and overhead structure; the artifact records each layer's cell count.
 - The grid is built once and inflated once, with a 0.20 m agent radius and a 0.02 m margin.
-- The route to P-005 on the named capture is 1.08 m with 2 path points and 0.51 m minimum clearance; A* takes 2.3 ms.
+- The route to P-005 on the named capture is 1.08 m with 2 path points and 0.51 m minimum clearance; A* takes 1.57 ms.
 - Before this, a saturated point grid fell back to an empty one and the route ran through machines.
 
 **Visual**
