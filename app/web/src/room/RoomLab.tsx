@@ -1026,7 +1026,7 @@ export default function RoomLab({ onLeave }: Props) {
             {diagnosis?.issue?.code ?? mission.issue ?? 'Report'} <span className="text-slate-400">at</span> {mission.tag}
           </h2>
           <p className="mt-1 text-xs font-semibold text-slate-300">
-            Health {diagnosis?.health_score ?? '—'} · {diagnosis?.issue?.summary ?? mission.condition}
+            Health {diagnosis?.health_score ?? 'n/a'} · {diagnosis?.issue?.summary ?? mission.condition}
           </p>
           {diagnosis?.next_safe_check ? (
             <p className="mt-2 rounded-md border border-slate-700 bg-slate-900/70 px-2 py-1.5 text-[11px] font-semibold leading-snug text-slate-300">
@@ -1121,20 +1121,20 @@ export default function RoomLab({ onLeave }: Props) {
             <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Scene</p>
             <dl className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] font-semibold">
               <dt className="text-slate-500">Gaussians</dt>
-              <dd className="text-right text-slate-200">{data?.source.points.toLocaleString() ?? '—'}</dd>
+              <dd className="text-right text-slate-200">{data?.source.points.toLocaleString() ?? 'n/a'}</dd>
               <dt className="text-slate-500">Raw objects</dt>
-              <dd className="text-right text-slate-200">{data?.counts.objects ?? '—'}</dd>
+              <dd className="text-right text-slate-200">{data?.counts.objects ?? 'n/a'}</dd>
               <dt className="text-slate-500">Reviewed</dt>
               <dd className="text-right text-slate-200">{reviewed.length}</dd>
               <dt className="text-slate-500">Route</dt>
-              <dd className="text-right text-slate-200">{route?.distance_m?.toFixed(2) ?? '—'} m</dd>
+              <dd className="text-right text-slate-200">{route?.distance_m?.toFixed(2) ?? 'n/a'} m</dd>
               <dt className="text-slate-500">Clearance</dt>
-              <dd className="text-right text-slate-200">{route?.clearance_m?.toFixed(2) ?? '—'} m</dd>
+              <dd className="text-right text-slate-200">{route?.clearance_m?.toFixed(2) ?? 'n/a'} m</dd>
               <dt className="text-slate-500">Grid blocked</dt>
               <dd className="text-right text-slate-200">
                 {typeof route?.grid_stats?.blocked_fraction === 'number'
                   ? `${(route.grid_stats.blocked_fraction * 100).toFixed(0)} %`
-                  : '—'}
+                  : 'n/a'}
               </dd>
             </dl>
             <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Robot clearance</p>
