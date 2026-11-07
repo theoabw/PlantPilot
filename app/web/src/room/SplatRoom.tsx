@@ -7,7 +7,7 @@ import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
-import { CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
+import { boundedStep, CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
 
 export type TripState = {
   mode: 'idle' | 'moving' | 'arrived'
@@ -205,6 +205,12 @@ const CAMERA_ATTEMPTS: [number, number, number][] = [
 const CROUCH_EYE_DROP_M = 0.31
 // Off the route by more than this, its crouch spans say nothing about the place.
 const CROUCH_ROUTE_REACH_M = 0.6
+
+// The orbit may look up from low down, but never swing fully under its target.
+const ORBIT_MAX_POLAR_RAD = Math.PI * 0.7
+const CAMERA_FLOOR_CLEARANCE_M = 0.12
+// How far past the mapped floor the free camera may wander.
+const FREE_CAMERA_MARGIN_M = 1
 
 const followDistances: Record<RobotProfile, number> = {
   humanoid: 2.55,
@@ -611,6 +617,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     lastPointerX: number
     lastPointerY: number
     walkMask: WalkMask | null
+    cameraFloorY: number | null
     centre: THREE.Vector3
     radius: number
   } | null>(null)
@@ -697,6 +704,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     controls.enableDamping = true
     controls.minDistance = 0.4
     controls.maxDistance = 80
+    controls.maxPolarAngle = ORBIT_MAX_POLAR_RAD
 
     let needsRender = true
     let warmupUntil = performance.now() + 2_500
@@ -1417,6 +1425,26 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         return
       }
       direction.normalize().multiplyScalar(3 * dt)
+      const mask = state.walkMask
+      if (mask) {
+        const toScene = state.world.quaternion.clone().invert()
+        const sceneAt = camera.position.clone().applyQuaternion(toScene)
+        const sceneStep = direction.clone().applyQuaternion(toScene)
+        const [axisX, axisZ] = mask.axes
+        const allowed = boundedStep(
+          { x: sceneAt.getComponent(axisX), z: sceneAt.getComponent(axisZ) },
+          { x: sceneStep.getComponent(axisX), z: sceneStep.getComponent(axisZ) },
+          {
+            minX: mask.x0 - FREE_CAMERA_MARGIN_M,
+            maxX: mask.x0 + mask.cols * mask.cell_m + FREE_CAMERA_MARGIN_M,
+            minZ: mask.z0 - FREE_CAMERA_MARGIN_M,
+            maxZ: mask.z0 + mask.rows * mask.cell_m + FREE_CAMERA_MARGIN_M,
+          },
+        )
+        sceneStep.setComponent(axisX, allowed.x)
+        sceneStep.setComponent(axisZ, allowed.z)
+        direction.copy(sceneStep.applyQuaternion(state.world.quaternion))
+      }
       camera.position.add(direction)
       controls.target.add(direction)
       if (state.followOffset) {
@@ -1597,6 +1625,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
         if (!stateRef.current?.firstPerson) {
           controls.update()
+          const cameraFloorY = stateRef.current?.cameraFloorY ?? null
+          if (cameraFloorY !== null && camera.position.y < cameraFloorY + CAMERA_FLOOR_CLEARANCE_M) {
+            camera.position.y = cameraFloorY + CAMERA_FLOOR_CLEARANCE_M
+            camera.lookAt(controls.target)
+          }
         }
         const label = labelRef.current
         if (label) {
@@ -1753,6 +1786,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       lastPointerX: 0,
       lastPointerY: 0,
       walkMask: null,
+      cameraFloorY: null,
       centre: new THREE.Vector3(0, 1, 0),
       radius: 5,
     }
@@ -2886,6 +2920,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     // robot visible by representing it as a stationary two-point path.
     const routePath = route.path.length === 1 ? [route.path[0], route.path[0]] : route.path
     const planned = routePath.map(toWorld)
+    state.cameraFloorY = planned[0].y - ROBOT_FLOOR_OFFSET_M
     const liveRobot = !manualControl && previousRobot
       ? previousRobot.position.clone().setY(planned[0].y)
       : null

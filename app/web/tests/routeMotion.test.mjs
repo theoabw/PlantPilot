@@ -119,3 +119,10 @@ test('a position maps to the nearest place along the polyline', () => {
   assert.ok(Math.abs(hit.off - 0.1) < 1e-9)
   assert.equal(motion.nearestAlongPolyline({ x: 0, z: 0 }, [], []), null)
 })
+
+test('the free camera slides along the bounds and can come back in', () => {
+  const bounds = { minX: 0, maxX: 10, minZ: 0, maxZ: 10 }
+  assert.deepEqual(motion.boundedStep({ x: 9.95, z: 5 }, { x: 0.1, z: 0.1 }, bounds), { x: 0, z: 0.1 })
+  assert.deepEqual(motion.boundedStep({ x: 12, z: 5 }, { x: -0.1, z: 0 }, bounds), { x: -0.1, z: 0 })
+  assert.deepEqual(motion.boundedStep({ x: 12, z: 5 }, { x: 0.1, z: 0 }, bounds), { x: 0, z: 0 })
+})

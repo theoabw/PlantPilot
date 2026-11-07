@@ -226,3 +226,25 @@ export function nearestAlongPolyline(
   }
   return best
 }
+
+export type Bounds2 = { minX: number; maxX: number; minZ: number; maxZ: number }
+
+/**
+ * A free-camera step that cannot carry it further out of the bounds.
+ *
+ * Each axis is judged alone, so it slides along the edge, and a camera already
+ * outside, as in the room overview, can still move back in instead of snapping.
+ */
+export function boundedStep(at: Point2, step: Point2, bounds: Bounds2): Point2 {
+  const axis = (value: number, delta: number, min: number, max: number): number => {
+    const next = value + delta
+    if ((next > max && delta > 0) || (next < min && delta < 0)) {
+      return 0
+    }
+    return delta
+  }
+  return {
+    x: axis(at.x, step.x, bounds.minX, bounds.maxX),
+    z: axis(at.z, step.z, bounds.minZ, bounds.maxZ),
+  }
+}
