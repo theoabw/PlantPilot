@@ -84,7 +84,7 @@ objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
 
 The complete Equipment Room capture starts from its reviewed doorway position in [route_starts.json](./fixtures/scene/route_starts.json). Live reroutes use the robot's current position instead.
 
-During a mission, use **Follow** to track the robot while orbiting with the pointer. Select **Move camera** to stop following and move the view with W/A/S/D; select **Follow** again to resume tracking.
+During a mission, use **Follow** to track the robot while orbiting with the pointer. Select **Move camera** to stop following and move the view with W/A/S/D or the arrow keys; select **Follow** again to resume tracking. The character selector also includes **Manual human**: use W/A/S/D or the arrow keys to walk within the route's supported floor area, then choose **Third person** or **First person**. Drag in first-person mode to look around.
 
 **Diagnosis.** `diagnose.py` joins P-005's current state, telemetry, alarms, data-quality cases and knowledge documents from the pack. It writes `diagnosis.json` with the condition `attention_required`, health 44, the `FOULING` issue at high urgency, two findings with evidence ids, a next safe check (`inspect hydraulic path`, document `DOC-FIELD-SAFETY`) and citations. The join is deterministic, not a model call: 144 telemetry rows, 34 alarms, 9 data-quality cases and 2 documents feed it. The same stage writes a `reasoning` block: the computed deltas behind the condition, five claims that each cite an evidence id, three alternative causes with a verdict, and a guardrail count. The card opens it on arrival, so it says why fouling is the reading and why a suction restriction or a drifting flow sensor is not.
 

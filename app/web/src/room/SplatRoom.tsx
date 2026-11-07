@@ -27,6 +27,16 @@ type Motion = {
   reached: boolean
 }
 
+type WalkMask = {
+  x0: number
+  z0: number
+  cell_m: number
+  rows: number
+  cols: number
+  axes: [number, number]
+  bits: Uint8Array
+}
+
 type Props = {
   objects: RoomObject[]
   frameObjects: RoomObject[]
@@ -64,7 +74,9 @@ type Props = {
   frameOpacity: number
   focusTarget: { centre: [number, number, number]; radius: number } | null
   focusToken: number
-  robotProfile: 'humanoid' | 'amr' | 'cargo'
+  robotProfile: 'manual' | 'humanoid' | 'amr' | 'cargo'
+  manualHuman: boolean
+  firstPerson: boolean
   crouchSpans: [number, number][]
   showRobot: boolean
   route: RoomRoute | null
@@ -81,6 +93,21 @@ type BoxView = {
   id: string
   lines: THREE.LineSegments
   material: THREE.LineBasicMaterial
+}
+
+function movementKey(key: string): string {
+  switch (key) {
+    case 'ArrowUp':
+      return 'w'
+    case 'ArrowLeft':
+      return 'a'
+    case 'ArrowDown':
+      return 's'
+    case 'ArrowRight':
+      return 'd'
+    default:
+      return key.toLowerCase()
+  }
 }
 
 // Surface and structure frames are room-sized and would drown the equipment,
@@ -128,7 +155,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
 }
 
 
-type RobotProfile = 'humanoid' | 'amr' | 'cargo'
+type RobotProfile = 'manual' | 'humanoid' | 'amr' | 'cargo'
 
 /**
  * A procedural service robot. A walking humanoid is a small industrial worker
@@ -153,7 +180,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   shadow.position.y = 0.005
   group.add(shadow)
 
-  if (profile === 'humanoid') {
+  if (profile === 'humanoid' || profile === 'manual') {
     const bob = new THREE.Group()
     group.add(bob)
     const HIP_Y = 0.8
@@ -453,7 +480,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualHuman, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -517,6 +544,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     orbitPointerActive: boolean
     cameraMove: boolean
     movementKeys: Set<string>
+    manualHuman: boolean
+    firstPerson: boolean
+    manualYaw: number
+    manualPitch: number
+    manualTravelled: number
+    pointerLookActive: boolean
+    lastPointerX: number
+    lastPointerY: number
+    walkMask: WalkMask | null
     centre: THREE.Vector3
     radius: number
   } | null>(null)
@@ -542,6 +578,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   followRef.current = follow
   const cameraMoveRef = useRef(cameraMove)
   cameraMoveRef.current = cameraMove
+  const manualHumanRef = useRef(manualHuman)
+  manualHumanRef.current = manualHuman
+  const firstPersonRef = useRef(firstPerson)
+  firstPersonRef.current = firstPerson
   const nearbyRef = useRef(onNearby)
   nearbyRef.current = onNearby
   // The framed camera is kept so the toolbar's overview and reset can restore it.
@@ -715,6 +755,17 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     const onPointerMove = (event: PointerEvent) => {
       const liveState = stateRef.current
+      if (liveState?.pointerLookActive && liveState.firstPerson) {
+        liveState.manualYaw -= (event.clientX - liveState.lastPointerX) * 0.004
+        liveState.manualPitch = THREE.MathUtils.clamp(
+          liveState.manualPitch - (event.clientY - liveState.lastPointerY) * 0.004,
+          -1.35,
+          1.35,
+        )
+        liveState.lastPointerX = event.clientX
+        liveState.lastPointerY = event.clientY
+        requestRender()
+      }
       if (!liveState || !liveState.boxGroup.visible) {
         return
       }
@@ -736,9 +787,25 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
     }
     const onPointerLeave = () => clearHover()
+    const stopPointerLook = () => {
+      if (stateRef.current) {
+        stateRef.current.pointerLookActive = false
+      }
+    }
     renderer.domElement.addEventListener('pointermove', onPointerMove)
     renderer.domElement.addEventListener('pointerleave', onPointerLeave)
+    renderer.domElement.addEventListener('pointerup', stopPointerLook)
+    renderer.domElement.addEventListener('pointercancel', stopPointerLook)
     const onPointerDown = (event: PointerEvent) => {
+      const current = stateRef.current
+      if (current?.manualHuman && current.firstPerson) {
+        current.pointerLookActive = true
+        current.lastPointerX = event.clientX
+        current.lastPointerY = event.clientY
+        renderer.domElement.setPointerCapture(event.pointerId)
+        event.preventDefault()
+        return
+      }
       const rect = renderer.domElement.getBoundingClientRect()
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -800,7 +867,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     controls.addEventListener('end', noteOrbitEnd)
     controls.addEventListener('change', onControlsChange)
     const onCameraKeyDown = (event: KeyboardEvent) => {
-      if (!cameraMoveRef.current || event.altKey || event.ctrlKey || event.metaKey) {
+      if (
+        (!cameraMoveRef.current && !manualHumanRef.current)
+        || event.altKey
+        || event.ctrlKey
+        || event.metaKey
+      ) {
         return
       }
       const target = event.target
@@ -810,7 +882,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       ) {
         return
       }
-      const key = event.key.toLowerCase()
+      const key = movementKey(event.key)
       if (!['w', 'a', 's', 'd'].includes(key)) {
         return
       }
@@ -819,7 +891,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       renderRef.current()
     }
     const onCameraKeyUp = (event: KeyboardEvent) => {
-      stateRef.current?.movementKeys.delete(event.key.toLowerCase())
+      stateRef.current?.movementKeys.delete(movementKey(event.key))
     }
     const clearCameraKeys = () => stateRef.current?.movementKeys.clear()
     window.addEventListener('keydown', onCameraKeyDown)
@@ -1034,8 +1106,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       const heading = stateRef.current?.motion.heading ?? robot.rotation.y
       robotForward.set(0, 0, 1).applyAxisAngle(up, heading)
-      const lookHeight = robotProfile === 'humanoid' ? 0.62 : 0.45
-      const followDistance = robotProfile === 'humanoid' ? 2.55 : 2.35
+      const lookHeight = robotProfile === 'humanoid' || robotProfile === 'manual' ? 0.78 : 0.45
+      const followDistance = robotProfile === 'humanoid' || robotProfile === 'manual' ? 2.55 : 2.35
       const rawDesired = robot.position
         .clone()
         .addScaledVector(robotForward, -followDistance)
@@ -1082,9 +1154,94 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
       controls.target.lerp(desiredTarget, factor)
     }
+    const canWalkTo = (worldPosition: THREE.Vector3): boolean => {
+      const state = stateRef.current
+      const mask = state?.walkMask
+      if (!state || !mask) {
+        return true
+      }
+      const point = worldPosition.clone().applyQuaternion(state.world.quaternion.clone().invert())
+      const col = Math.floor((point.getComponent(mask.axes[0]) - mask.x0) / mask.cell_m)
+      const row = Math.floor((point.getComponent(mask.axes[1]) - mask.z0) / mask.cell_m)
+      if (row < 0 || row >= mask.rows || col < 0 || col >= mask.cols) {
+        return false
+      }
+      const index = row * mask.cols + col
+      return (mask.bits[index >> 3] & (0x80 >> (index & 7))) === 0
+    }
+    const moveManualHuman = (dt: number): boolean => {
+      const state = stateRef.current
+      const person = state?.motion.robot
+      if (!state?.manualHuman || !person || state.movementKeys.size === 0) {
+        return false
+      }
+      const forward = camera.getWorldDirection(new THREE.Vector3())
+      forward.y = 0
+      if (forward.lengthSq() < 1e-5) {
+        return false
+      }
+      forward.normalize()
+      const right = new THREE.Vector3().crossVectors(forward, up).normalize()
+      const direction = new THREE.Vector3()
+      if (state.movementKeys.has('w')) direction.add(forward)
+      if (state.movementKeys.has('s')) direction.sub(forward)
+      if (state.movementKeys.has('d')) direction.add(right)
+      if (state.movementKeys.has('a')) direction.sub(right)
+      if (direction.lengthSq() === 0) {
+        return false
+      }
+      direction.normalize().multiplyScalar(1.5 * dt)
+      const distance = direction.length()
+      const steps = Math.max(1, Math.ceil(distance / 0.05))
+      const step = direction.clone().divideScalar(steps)
+      let moved = 0
+      for (let index = 0; index < steps; index += 1) {
+        const next = person.position.clone().add(step)
+        if (!canWalkTo(next)) {
+          break
+        }
+        person.position.copy(next)
+        moved += step.length()
+      }
+      if (moved === 0) {
+        return false
+      }
+      state.manualTravelled += moved
+      const heading = Math.atan2(direction.x, direction.z)
+      person.rotation.y = heading
+      state.motion.heading = heading
+      const animate = person.userData.animate as
+        | ((time: number, travelled: number, moving: boolean) => void)
+        | undefined
+      animate?.(performance.now() / 1000, state.manualTravelled, true)
+      const scenePosition = person.position
+        .clone()
+        .applyQuaternion(state.world.quaternion.clone().invert())
+      const horizontal = route?.grid?.horizontal_axes ?? [0, 2]
+      renderRef.current()
+      robotPositionRef.current = [
+        scenePosition.getComponent(horizontal[0]),
+        scenePosition.getComponent(horizontal[1]),
+      ]
+      return true
+    }
+    const updateFirstPersonCamera = () => {
+      const state = stateRef.current
+      const person = state?.motion.robot
+      if (!state?.manualHuman || !state.firstPerson || !person) {
+        return
+      }
+      person.visible = false
+      camera.position.copy(person.position).add(new THREE.Vector3(0, 1.28, 0))
+      camera.rotation.order = 'YXZ'
+      camera.rotation.set(state.manualPitch, state.manualYaw, 0)
+      camera.updateMatrixWorld()
+      controls.target.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()))
+      renderRef.current()
+    }
     const moveCameraFromKeys = (dt: number) => {
       const state = stateRef.current
-      if (!state?.cameraMove || state.movementKeys.size === 0) {
+      if (!state?.cameraMove || state.manualHuman || state.movementKeys.size === 0) {
         return
       }
       const forward = camera.getWorldDirection(new THREE.Vector3())
@@ -1151,7 +1308,18 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         const dt = Math.min(0.1, (now - lastTime) / 1000)
         lastTime = now
         advanceMotion(dt)
-        if (stateRef.current?.follow && stateRef.current.motion.robot) {
+        let manualMoving = false
+        if (stateRef.current?.manualHuman) {
+          if (stateRef.current.firstPerson) {
+            updateFirstPersonCamera()
+          }
+          manualMoving = moveManualHuman(dt)
+          if (stateRef.current.firstPerson) {
+            updateFirstPersonCamera()
+          } else if (stateRef.current.follow) {
+            updateFollow(dt)
+          }
+        } else if (stateRef.current?.follow && stateRef.current.motion.robot) {
           updateFollow(dt)
         }
         moveCameraFromKeys(dt)
@@ -1159,7 +1327,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           | ((time: number, travelled: number, moving: boolean) => void)
           | undefined
         if (animated) {
-          animated(now / 1000, stateRef.current?.motion.travelled ?? 0, stateRef.current?.motion.active ?? false)
+          const live = stateRef.current
+          animated(
+            now / 1000,
+            live?.manualHuman ? live.manualTravelled : live?.motion.travelled ?? 0,
+            live?.manualHuman ? manualMoving : live?.motion.active ?? false,
+          )
           if (stateRef.current?.motion.active) {
             renderRef.current()
           }
@@ -1247,7 +1420,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           }
           renderRef.current()
         }
-        controls.update()
+        if (!stateRef.current?.firstPerson) {
+          controls.update()
+        }
         const label = labelRef.current
         if (label) {
           const chosen = selectedRef.current
@@ -1390,6 +1565,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       orbitPointerActive: false,
       cameraMove: cameraMoveRef.current,
       movementKeys: new Set<string>(),
+      manualHuman: manualHumanRef.current,
+      firstPerson: firstPersonRef.current,
+      manualYaw: Math.PI,
+      manualPitch: 0,
+      manualTravelled: 0,
+      pointerLookActive: false,
+      lastPointerX: 0,
+      lastPointerY: 0,
+      walkMask: null,
       centre: new THREE.Vector3(0, 1, 0),
       radius: 5,
     }
@@ -1404,6 +1588,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
+      renderer.domElement.removeEventListener('pointerup', stopPointerLook)
+      renderer.domElement.removeEventListener('pointercancel', stopPointerLook)
       controls.removeEventListener('start', noteOrbitStart)
       controls.removeEventListener('end', noteOrbitEnd)
       controls.removeEventListener('change', onControlsChange)
@@ -2433,6 +2619,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.cumulative = []
     motion.robot = null
     motion.reached = false
+    state.manualHuman = robotProfile === 'manual'
+    state.movementKeys.clear()
 
     const cameraGrid = route?.camera_grid ?? null
     if (cameraGrid) {
@@ -2455,6 +2643,28 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       }
     } else {
       state.cameraMask = null
+    }
+    const walkGrid = route?.grid ?? null
+    if (walkGrid) {
+      const binary = atob(walkGrid.blocked_packed)
+      const bits = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) {
+        bits[index] = binary.charCodeAt(index)
+      }
+      state.walkMask = {
+        x0: walkGrid.x0,
+        z0: walkGrid.z0,
+        cell_m: walkGrid.cell_m,
+        rows: walkGrid.rows,
+        cols: walkGrid.cols,
+        axes: [
+          walkGrid.horizontal_axes[0] ?? 0,
+          walkGrid.horizontal_axes[1] ?? 2,
+        ],
+        bits,
+      }
+    } else {
+      state.walkMask = null
     }
     state.stickyCamera = null
     state.smoothedCamera = null
@@ -2532,7 +2742,27 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       decor.add(ring)
     }
 
-    const robot = buildRobot(robotProfile)
+    const keepManualPosition =
+      robotProfile === 'manual' && previousRobot?.userData.profile === 'manual'
+    const previousPosition = keepManualPosition ? previousRobot.position.clone() : null
+    let manualStart: THREE.Vector3 | null = null
+    if (robotProfile === 'manual' && !keepManualPosition && robotPositionRef.current) {
+      const axes = walkGrid?.horizontal_axes ?? [0, 2]
+      const up = upVector(upAxis ?? route.up_axis)
+      const upAxisIndex = up.findIndex((component) => Math.abs(component) > 0.5)
+      const upSign = up[upAxisIndex] >= 0 ? 1 : -1
+      const localStart = new THREE.Vector3()
+      localStart.setComponent(axes[0], robotPositionRef.current[0])
+      localStart.setComponent(axes[1], robotPositionRef.current[1])
+      localStart.setComponent(upAxisIndex, upSign * ((floorHeight ?? route.floor_height_m) + 0.07))
+      manualStart = localStart.applyQuaternion(state.world.quaternion)
+    }
+    const robot = keepManualPosition ? previousRobot : buildRobot(robotProfile)
+    if (robotProfile === 'manual') {
+      robot.userData.profile = 'manual'
+    } else {
+      state.manualTravelled = 0
+    }
     motion.points = points
     motion.cumulative = cumulative
     motion.curve = curve
@@ -2541,10 +2771,21 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.arrow = arrows
     motion.arrowOffset = 0
     motion.arrowSpacing = 0.45
-    robot.position.copy(points[0])
+    robot.position.copy(previousPosition ?? manualStart ?? points[0])
+    motion.heading = robot.rotation.y
     state.routeGroup.add(robot)
     motion.robot = robot
-    state.placeRobotAt?.(0.016)
+    if (robotProfile !== 'manual') {
+      state.placeRobotAt?.(0.016)
+    } else {
+      const scenePosition = robot.position
+        .clone()
+        .applyQuaternion(state.world.quaternion.clone().invert())
+      robotPositionRef.current = [
+        scenePosition.getComponent(walkGrid?.horizontal_axes[0] ?? 0),
+        scenePosition.getComponent(walkGrid?.horizontal_axes[1] ?? 2),
+      ]
+    }
     state.updateArrows?.()
     tripRef.current({ mode: 'idle', travelled: 0, total: motion.total })
     renderRef.current()
@@ -2596,6 +2837,42 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     renderRef.current()
   }, [cameraMove])
+
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    state.manualHuman = manualHuman
+    state.firstPerson = firstPerson
+    state.pointerLookActive = false
+    state.movementKeys.clear()
+    state.controls.enabled = !firstPerson
+    if (state.manualHuman && state.motion.robot) {
+      state.motion.robot.visible = !firstPerson
+    }
+    if (firstPerson && state.motion.robot) {
+      state.manualYaw = state.motion.robot.rotation.y + Math.PI
+      state.manualPitch = 0
+      state.followOffset = null
+    } else if (state.manualHuman && state.follow && state.motion.robot) {
+      const person = state.motion.robot
+      const forward = new THREE.Vector3(0, 0, 1)
+        .applyAxisAngle(new THREE.Vector3(0, 1, 0), person.rotation.y)
+      const target = person.position.clone().add(new THREE.Vector3(0, 0.78, 0))
+      const eye = person.position
+        .clone()
+        .addScaledVector(forward, -2.55)
+        .add(new THREE.Vector3(0, 1.58, 0))
+      state.camera.position.copy(eye)
+      state.controls.target.copy(target)
+      state.camera.lookAt(target)
+      state.followOffset = eye.sub(target)
+      state.smoothedCamera = state.camera.position.clone()
+      state.followTransitionStart = performance.now()
+    }
+    renderRef.current()
+  }, [manualHuman, firstPerson])
 
   if (glError) {
     return (
