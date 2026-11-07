@@ -380,6 +380,26 @@ meant for the object atlas and explode view, not for a claim of surveyed
 geometry. Open3D is optional; the stage fails with an install hint when it is
 missing, and every other stage runs without it.
 
+## Live replanning and the area view
+
+The route document carries the occupancy grid it planned on: origin, cell size,
+row and column counts, the two horizontal scene axes, and the blocked cells
+packed as base64 bits. The viewer uses it for two things.
+
+Placing an obstacle on the floor sends a POST to `/api/scene/reroute` with the
+transient blocker rectangles and the robot's current scene position. The server
+replans the same grid with `agent_radius_m` 0.20, one inflation pass, and the
+same structural obstacles, then returns a route document with the new path,
+distance and clearance. The whole call is about 150 ms, so the path redraws
+immediately and the robot resumes from where it stood. When no alternative
+exists the response is honest: `reachable` false and the viewer says the path is
+blocked.
+
+The area view draws every blocked cell from `grid` as a faint tile on the floor,
+so the walls, machine bodies and structural obstacles the planner understands
+are visible next to the path. It is the same grid the route uses, not an
+illustration.
+
 ## Information channels
 
 `make filter-assets` bakes four channels over the same gaussian geometry. Height

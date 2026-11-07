@@ -47,6 +47,11 @@ type Props = {
   hideSplat: boolean
   explode: number
   objectAssets: { id: string; label: string; url: string; kind: 'splat' | 'mesh' }[]
+  obstacleMode: boolean
+  obstacles: [number, number][]
+  robotPositionRef: { current: [number, number] | null }
+  onPlaceObstacle: (point: [number, number]) => void
+  showOccupancy: boolean
   route: RoomRoute | null
   tripToken: number
   follow: boolean
@@ -102,7 +107,7 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -123,6 +128,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     overlay: SplatMesh | null
     objectGroup: THREE.Group
     meshGroups: Map<string, { group: THREE.Group; index: number }>
+    obstacleGroup: THREE.Group
+    occupancy: THREE.InstancedMesh | null
     boxGroup: THREE.Group
     pickGroup: THREE.Group
     boxes: BoxView[]
@@ -163,6 +170,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   showLabelsRef.current = showLabels
   const objectModeRef = useRef(objectMode)
   objectModeRef.current = objectMode
+  const obstacleModeRef = useRef(obstacleMode)
+  obstacleModeRef.current = obstacleMode
+  const placeObstacleRef = useRef(onPlaceObstacle)
+  placeObstacleRef.current = onPlaceObstacle
   const explodeRef = useRef(explode)
   explodeRef.current = explode
 
@@ -211,6 +222,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const objectGroup = new THREE.Group()
     objectGroup.name = 'objects'
     world.add(objectGroup)
+    const obstacleGroup = new THREE.Group()
+    world.add(obstacleGroup)
     // the splat needs no lights, the extracted meshes do
     scene.add(new THREE.HemisphereLight(0xf2f6ff, 0x1b2430, 1.1))
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.25)
@@ -301,6 +314,18 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(pointer, camera)
       const liveState = stateRef.current
+      if (obstacleModeRef.current && liveState) {
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(floorHeight ?? 0))
+        const hitPoint = new THREE.Vector3()
+        if (raycaster.ray.intersectPlane(plane, hitPoint)) {
+          const scenePoint = hitPoint.clone().applyQuaternion(liveState.world.quaternion.clone().invert())
+          const upAxisName = (upAxis ?? '+y').replace(/[+-]/, '')
+          const upIndex = upAxisName === 'z' ? 2 : 1
+          const horizontal = [0, 1, 2].filter((axis) => axis !== upIndex)
+          placeObstacleRef.current([scenePoint.getComponent(horizontal[0]), scenePoint.getComponent(horizontal[1])])
+          return
+        }
+      }
       if (objectModeRef.current && liveState) {
         const meshHit = raycaster.intersectObjects(liveState.objectGroup.children, true)[0]
         const meshId = meshHit?.object.userData.objectId
@@ -482,6 +507,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
             label.style.display = 'none'
           }
         }
+        const liveState2 = stateRef.current
+        const liveRobot = liveState2?.motion.robot
+        if (liveState2 && liveRobot) {
+          const sceneRobot = liveRobot.position.clone().applyQuaternion(liveState2.world.quaternion.clone().invert())
+          const upAxisName = (upAxis ?? '+y').replace(/[+-]/, '')
+          const upIndex = upAxisName === 'z' ? 2 : 1
+          const horizontal = [0, 1, 2].filter((axis) => axis !== upIndex)
+          robotPositionRef.current = [sceneRobot.getComponent(horizontal[0]), sceneRobot.getComponent(horizontal[1])]
+        }
         if (labelsRef.current && showLabelsRef.current) {
           const live = stateRef.current
           if (live) {
@@ -556,6 +590,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       overlay: null,
       objectGroup,
       meshGroups: new Map(),
+      obstacleGroup: new THREE.Group(),
+      occupancy: null,
       boxGroup,
       pickGroup,
       boxes: [],
@@ -592,6 +628,20 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         ;(mesh.material as THREE.Material).dispose()
       })
       state?.pickGroup.clear()
+      if (state?.occupancy) {
+        state.scene.remove(state.occupancy)
+        state.occupancy.geometry.dispose()
+        ;(state.occupancy.material as THREE.Material).dispose()
+        state.occupancy = null
+      }
+      if (state?.obstacleGroup) {
+        for (const child of [...state.obstacleGroup.children]) {
+          const mesh = child as THREE.Mesh
+          mesh.geometry?.dispose()
+          ;(mesh.material as THREE.Material).dispose()
+        }
+        state.obstacleGroup.clear()
+      }
       if (state?.objectGroup) {
         state.objectGroup.traverse((child) => {
           const mesh = child as THREE.Mesh
@@ -851,6 +901,116 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     renderRef.current()
   }, [hideSplat, filterUrl])
+
+  // The area the planner understands: every blocked cell of the occupancy grid,
+  // drawn as a faint tile on the floor.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    if (state.occupancy) {
+      state.scene.remove(state.occupancy)
+      state.occupancy.geometry.dispose()
+      ;(state.occupancy.material as THREE.Material).dispose()
+      state.occupancy = null
+    }
+    const grid = route?.grid
+    if (!showOccupancy || !grid) {
+      renderRef.current()
+      return
+    }
+    const binary = atob(grid.blocked_packed)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+    const bits = grid.rows * grid.cols
+    const blocked: number[] = []
+    for (let index = 0; index < bits; index += 1) {
+      if (bytes[index >> 3] & (0x80 >> (index & 7))) {
+        blocked.push(index)
+      }
+    }
+    if (blocked.length === 0) {
+      renderRef.current()
+      return
+    }
+    const upAxisName = (upAxis ?? '+y').replace(/[+-]/, '')
+    const upSign = (upAxis ?? '+y').startsWith('-') ? -1 : 1
+    const upIndex = upAxisName === 'z' ? 2 : 1
+    const upVectorLocal = new THREE.Vector3(...upVector(upAxis)).normalize()
+    const geometry = new THREE.PlaneGeometry(grid.cell_m * 0.92, grid.cell_m * 0.92)
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xff5544,
+      transparent: true,
+      opacity: 0.3,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+    const mesh = new THREE.InstancedMesh(geometry, material, blocked.length)
+    mesh.renderOrder = 2
+    const matrix = new THREE.Matrix4()
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), upVectorLocal)
+    const live = stateRef.current
+    if (!live) {
+      geometry.dispose()
+      material.dispose()
+      return
+    }
+    blocked.forEach((index, instance) => {
+      const row = Math.floor(index / grid.cols)
+      const col = index % grid.cols
+      const a = grid.x0 + (col + 0.5) * grid.cell_m
+      const b = grid.z0 + (row + 0.5) * grid.cell_m
+      const scenePoint = new THREE.Vector3()
+      scenePoint.setComponent(grid.horizontal_axes[0], a)
+      scenePoint.setComponent(grid.horizontal_axes[1], b)
+      scenePoint.setComponent(upIndex, upSign * (floorHeight ?? 0) + upSign * 0.05)
+      const worldPoint = scenePoint.applyQuaternion(live.world.quaternion)
+      matrix.compose(worldPoint, quaternion, new THREE.Vector3(1, 1, 1))
+      mesh.setMatrixAt(instance, matrix)
+    })
+    mesh.instanceMatrix.needsUpdate = true
+    live.scene.add(mesh)
+    live.occupancy = mesh
+    renderRef.current()
+    live.renderer.render(live.scene, live.camera)
+  }, [showOccupancy, route, upAxis, floorHeight])
+
+  // Obstacle markers: a translucent barrier on the floor where the user placed one.
+  useEffect(() => {
+    const state = stateRef.current
+    if (!state) {
+      return
+    }
+    for (const child of [...state.obstacleGroup.children]) {
+      state.obstacleGroup.remove(child)
+      const mesh = child as THREE.Mesh
+      mesh.geometry?.dispose()
+      ;(mesh.material as THREE.Material).dispose()
+    }
+    const upAxisName = (upAxis ?? '+y').replace(/[+-]/, '')
+    const upSign = (upAxis ?? '+y').startsWith('-') ? -1 : 1
+    const upIndex = upAxisName === 'z' ? 2 : 1
+    const horizontal = [0, 1, 2].filter((axis) => axis !== upIndex)
+    for (const obstacle of obstacles) {
+      const scene = new THREE.Vector3()
+      scene.setComponent(horizontal[0], obstacle[0])
+      scene.setComponent(horizontal[1], obstacle[1])
+      scene.setComponent(upIndex, upSign * (floorHeight ?? 0))
+      const worldPoint = scene.clone().applyQuaternion(state.world.quaternion)
+      const marker = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.24, 1.1, 20),
+        new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.4 }),
+      )
+      marker.position.copy(worldPoint).add(new THREE.Vector3(0, 0.55, 0))
+      marker.renderOrder = 4
+      state.obstacleGroup.add(marker)
+    }
+    renderRef.current()
+    state.renderer.render(state.scene, state.camera)
+  }, [obstacles, upAxis, floorHeight])
 
   // In the derived channels the contours and labels carry the story, so the
   // wireframe boxes step out of the way as the reference clips do.

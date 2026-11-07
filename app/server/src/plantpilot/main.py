@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
+from pydantic import BaseModel
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -374,6 +375,34 @@ def object_splat(anchor_id: str) -> FileResponse:
     if not path.exists():
         raise HTTPException(status_code=404, detail="no object splat, run make object-splats")
     return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
+
+
+class RerouteRequest(BaseModel):
+    """Transient obstacles for a live replan, in scene plane coordinates."""
+
+    blockers: list[list[float]] = []
+    start: list[float] | None = None
+    agent_radius_m: float = 0.20
+
+
+@app.post("/api/scene/reroute", responses=_ARTIFACT_RESPONSES)
+def scene_reroute(payload: RerouteRequest) -> dict:
+    """Replan the route around transient obstacles from the robot's position."""
+    if not (SCENE_DIR / "scene.npz").exists() or not OBJECTS_FILE.exists() or not MAPPED_FILE.exists():
+        raise HTTPException(status_code=404, detail="reroute needs scene, objects and mapping; run make pipeline")
+    blockers = [[float(value) for value in rect] for rect in payload.blockers if len(rect) == 4]
+    start = None
+    if payload.start and len(payload.start) >= 2:
+        start = (float(payload.start[0]), float(payload.start[1]))
+    return nav.build_route(
+        scene_path=SCENE_DIR / "scene.npz",
+        objects_path=OBJECTS_FILE,
+        mapped_path=MAPPED_FILE,
+        output_path=None,
+        blockers=blockers,
+        start_override=start,
+        agent_radius_m=float(payload.agent_radius_m),
+    )
 
 
 @app.get("/api/scene/meshes", responses=_ARTIFACT_RESPONSES)

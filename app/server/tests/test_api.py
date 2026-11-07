@@ -123,6 +123,46 @@ def test_the_room_endpoints_serve_the_artifacts(monkeypatch, tmp_path):
     assert response.content.startswith(b"ply\n")
 
 
+def test_the_reroute_endpoint_requires_the_pipeline(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    monkeypatch.setattr(main, "SCENE_DIR", tmp_path)
+    monkeypatch.setattr(main, "OBJECTS_FILE", tmp_path / "missing.json")
+    monkeypatch.setattr(main, "MAPPED_FILE", tmp_path / "missing.json")
+    response = client.post("/api/scene/reroute", json={"blockers": [], "start": None})
+    assert response.status_code == 404
+    assert "make pipeline" in response.json()["detail"]
+
+
+def test_the_reroute_endpoint_passes_blockers_start_and_robot_radius(monkeypatch, tmp_path):
+    from plantpilot import main
+
+    (tmp_path / "scene.npz").write_bytes(b"stub")
+    objects = tmp_path / "objects.json"
+    objects.write_text("{}")
+    mapping = tmp_path / "mapped.json"
+    mapping.write_text("{}")
+    monkeypatch.setattr(main, "SCENE_DIR", tmp_path)
+    monkeypatch.setattr(main, "OBJECTS_FILE", objects)
+    monkeypatch.setattr(main, "MAPPED_FILE", mapping)
+    captured: dict = {}
+
+    def fake_build_route(**kwargs):
+        captured.update(kwargs)
+        return {"reachable": True, "path": [], "distance_m": 2.0}
+
+    monkeypatch.setattr(main.nav, "build_route", fake_build_route)
+    body = client.post(
+        "/api/scene/reroute",
+        json={"blockers": [[0.0, 0.0, 1.0, 1.0]], "start": [0.5, 0.5]},
+    ).json()
+    assert body["reachable"] is True
+    assert captured["blockers"] == [[0.0, 0.0, 1.0, 1.0]]
+    assert captured["start_override"] == (0.5, 0.5)
+    assert captured["agent_radius_m"] == 0.2
+    assert captured["output_path"] is None
+
+
 def test_the_object_splats_endpoint_explains_a_missing_artifact(monkeypatch, tmp_path):
     from plantpilot import main
 

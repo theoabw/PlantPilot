@@ -90,6 +90,16 @@ export type RoomRoute = {
   clearance_m: number
   floor_height_m: number
   up_axis: string
+  active_blockers?: number[][]
+  grid?: {
+    x0: number
+    z0: number
+    cell_m: number
+    rows: number
+    cols: number
+    horizontal_axes: number[]
+    blocked_packed: string
+  }
 }
 
 export type DiagnosisEvidence = {
@@ -346,6 +356,21 @@ export function splatAssetUrl(version?: number): string {
 }
 
 /** The navigation route, or null when make route has not run yet. */
+export async function fetchReroute(
+  blockers: number[][],
+  start: [number, number] | null,
+): Promise<RoomRoute> {
+  const response = await fetch('/api/scene/reroute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ blockers, start }),
+  })
+  if (!response.ok) {
+    throw new Error(`/api/scene/reroute answered ${response.status}`)
+  }
+  return (await response.json()) as RoomRoute
+}
+
 export async function fetchRoomRoute(): Promise<RoomRoute | null> {
   const response = await fetch('/api/scene/route')
   if (response.status === 404) {
