@@ -14,6 +14,7 @@ import { heightSplatFilter } from './heightSplatFilter'
 import { topDownPose } from './topDownPose'
 import { selectionSplatEdit } from './selectionSplatEdit'
 import { highlightObjects } from './highlightObjects'
+import { channelLabel } from './splatChannel'
 import { ROBOT_PALETTE, robotLogo } from './robotBrand'
 import { routeCurve } from './routeCurve'
 import { canEscapeCell, escapeDistances } from './walkGrid'
@@ -625,6 +626,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   robotManualCrouch = manualControl && robotProfile === 'humanoid' ? manualCrouch : null
   const [progress, setProgress] = useState(0)
   const [loaded, setLoaded] = useState(false)
+  // Bumped whenever a different SplatMesh becomes the drawn one, so the effects
+  // that attach splat edits re-attach them to it.
+  const [meshVersion, setMeshVersion] = useState(0)
+  const [swap, setSwap] = useState<{ label: string; progress: number } | null>(null)
   const [perf, setPerf] = useState<{ draws: number; ms: number; calls: number; splats: number } | null>(null)
   const perfEnabled = useRef(new URLSearchParams(window.location.search).has('perf')).current
   // Effects outside the render effect need a way to say "the scene changed".
@@ -638,6 +643,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     world: THREE.Group
     splat: SplatMesh | null
     splatUrl: string
+    // The photo capture, kept after a channel swap so returning to it is instant.
+    baseSplat: SplatMesh | null
+    baseSplatUrl: string
+    // A channel that is still downloading; the current splat stays drawn until it is ready.
+    pendingSplat: SplatMesh | null
     contours: THREE.Points | null
     overlay: SplatMesh | null
     objectGroup: THREE.Group
@@ -1925,6 +1935,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       world,
       splat,
       splatUrl,
+      baseSplat: splat,
+      baseSplatUrl: splatUrl,
+      pendingSplat: null,
       contours: null,
       overlay: null,
       objectGroup,
@@ -2082,7 +2095,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       active = false
       logoTextureRef.current = null
       logoTexture.dispose()
-      splat?.dispose()
+      const meshes = new Set([splat, state?.splat, state?.baseSplat, state?.pendingSplat])
+      meshes.forEach((mesh) => mesh?.dispose())
       renderer.dispose()
       host.removeChild(renderer.domElement)
       stateRef.current = null
@@ -2103,41 +2117,77 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   }, [upAxis])
 
   // Swapping the baked information channel: same geometry, different colours,
-  // so the camera, boxes and robot stay exactly where they were.
+  // so the camera, boxes and robot stay exactly where they were. The current
+  // splats stay on screen while the next channel downloads, and the photo
+  // capture is kept, so a swap never blanks the room and returning to photo
+  // does not fetch the capture again.
   useEffect(() => {
     const state = stateRef.current
     if (!state) {
       return
     }
     const wanted = filterUrl ?? splatUrl
+    const pending = state.pendingSplat
+    if (pending) {
+      // A newer choice replaces a channel that has not finished loading.
+      state.pendingSplat = null
+      if (pending !== state.baseSplat) {
+        pending.dispose()
+      }
+      setSwap(null)
+    }
     if (state.splatUrl === wanted) {
       return
     }
-    const previous = state.splat
-    if (previous) {
-      state.world.remove(previous)
-      previous.dispose()
+    const show = (mesh: SplatMesh, url: string) => {
+      const previous = state.splat
+      if (previous && previous !== mesh) {
+        state.world.remove(previous)
+        if (previous !== state.baseSplat) {
+          previous.dispose()
+        }
+      }
+      if (mesh.parent !== state.world) {
+        state.world.add(mesh)
+      }
+      state.splat = mesh
+      state.splatUrl = url
+      setMeshVersion((value) => value + 1)
+      renderRef.current()
     }
-    setLoaded(false)
-    setProgress(0)
+    if (wanted === splatUrl && state.baseSplat && state.baseSplatUrl === splatUrl) {
+      show(state.baseSplat, wanted)
+      return
+    }
+    const label = channelLabel(filterUrl)
+    setSwap({ label, progress: 0 })
     const mesh = new SplatMesh({
       url: wanted,
       fileType: SplatFileType.PLY,
       onProgress: (event: ProgressEvent) => {
-        if (event.lengthComputable && event.total > 0) {
-          setProgress(Math.round((event.loaded / event.total) * 100))
+        if (event.lengthComputable && event.total > 0 && stateRef.current?.pendingSplat === mesh) {
+          setSwap({ label, progress: Math.round((event.loaded / event.total) * 100) })
         }
       },
-      onLoad: () => setLoaded(true),
     })
     mesh.rotation.set(0, 0, 0)
+    state.pendingSplat = mesh
     mesh.initialized
       .then(() => {
-        if (stateRef.current !== state || state.splat !== mesh) {
+        if (stateRef.current !== state || state.pendingSplat !== mesh) {
           return
         }
-        setLoaded(true)
-        renderRef.current()
+        state.pendingSplat = null
+        setSwap(null)
+        if (wanted === splatUrl) {
+          // a new photo capture replaces the cached one
+          if (state.baseSplat && state.baseSplat !== state.splat) {
+            state.baseSplat.dispose()
+          }
+          state.baseSplat = mesh
+          state.baseSplatUrl = wanted
+        }
+        show(mesh, wanted)
         // the animation loop is throttled in a background tab, so paint a few
         // frames explicitly after a channel swap just as the first load does
         let tries = 0
@@ -2151,14 +2201,12 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         paint()
       })
       .catch((problem: unknown) => {
-        if (stateRef.current === state && state.splat === mesh) {
+        if (stateRef.current === state && state.pendingSplat === mesh) {
+          state.pendingSplat = null
+          setSwap(null)
           setGlError(problem instanceof Error ? problem.message : String(problem))
         }
       })
-    state.splat = mesh
-    state.splatUrl = wanted
-    state.world.add(mesh)
-    renderRef.current()
   }, [filterUrl, splatUrl])
 
   useEffect(() => {
@@ -2173,7 +2221,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       mesh.remove(edit)
       renderRef.current()
     }
-  }, [boxedSplatsOnly, filterBoxes, filterUrl, splatUrl])
+  }, [boxedSplatsOnly, filterBoxes, meshVersion])
 
   useEffect(() => {
     const mesh = stateRef.current?.splat
@@ -2187,7 +2235,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       mesh.remove(edit)
       renderRef.current()
     }
-  }, [heightCutoff, floorHeight, upAxis, filterUrl, splatUrl])
+  }, [heightCutoff, floorHeight, upAxis, meshVersion])
 
   // Use one union edit so selected and nearby boxes cannot add light twice.
   useEffect(() => {
@@ -2206,7 +2254,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       mesh.remove(edit)
       renderRef.current()
     }
-  }, [selectedId, nearbyHighlightIds, showNearbyHighlights, frameObjects, objects, splatUrl, filterUrl])
+  }, [selectedId, nearbyHighlightIds, showNearbyHighlights, frameObjects, objects, meshVersion])
 
   useEffect(() => {
     const state = stateRef.current
@@ -2319,7 +2367,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       state.depthSplats.visible = !hideSplat && occlusion
     }
     renderRef.current()
-  }, [hideSplat, filterUrl, occlusion])
+  }, [hideSplat, meshVersion, occlusion])
 
   // The area the planner understands: every blocked cell of the occupancy grid,
   // drawn as a faint tile on the floor.
@@ -3394,6 +3442,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       {perf ? (
         <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-md border border-slate-700 bg-slate-950/85 px-2 py-1 text-[10px] font-bold text-slate-300">
           {perf.draws === 0 ? 'idle' : `${perf.draws} draws/s`} | cpu {perf.ms.toFixed(1)} ms | {perf.calls} calls | {perf.splats.toLocaleString()} splats
+        </div>
+      ) : null}
+      {loaded && swap ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-700 bg-slate-950/85 px-3 py-1 text-[11px] font-bold text-slate-200 backdrop-blur">
+          <span>loading {swap.label} view</span>
+          <span className="inline-block h-1.5 w-20 overflow-hidden rounded-full bg-slate-800">
+            <span className="block h-full bg-brand-mint" style={{ width: `${Math.max(3, swap.progress)}%` }} />
+          </span>
+          <span className="tabular-nums text-slate-400">{swap.progress}%</span>
         </div>
       ) : null}
       {!loaded ? (
