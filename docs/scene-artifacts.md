@@ -420,6 +420,21 @@ wheeled AMR with chassis, four wheels, deck rails, mast, spinning lidar, camera
 bar and e-stop. Both are animated from distance travelled, so the walk or the
 wheel rotation matches the route speed.
 
+## Robot occlusion
+
+The splat pass is transparent and does not write depth, so overlays such as the
+robot were drawn on top of every machine. The viewer now renders the reviewed
+equipment volumes again as invisible depth-only boxes after the splats and
+before the robot. They write depth without colour, which gives the robot and the
+route decorations a real depth test against tanks, cabinets and other reviewed
+plant. The boxes are shrunk slightly and are disabled while the camera is inside
+one of them, so a close camera cannot make the robot vanish.
+
+This is a proxy depth, not a splat depth map: it occludes against the equipment
+boxes in the scene artifacts, so thin pipework and railings still do not hide
+the robot. A full per-pixel splat depth pass would need the Spark renderer to
+write depth, which it currently does not.
+
 ## Camera avoidance
 
 The follow camera would otherwise sit behind the robot through a tank or a pipe.
