@@ -92,6 +92,8 @@ During a mission, use **Follow** to track the selected character while orbiting 
 
 **Viewer.** `main.py` serves the built React app and the room endpoints (`/api/scene/objects`, `/api/scene/mapped`, `/api/scene/route`, `/api/splat`). The room view draws the capture with Spark inside three.js, takes the up axis from the artifact, draws the reviewed anchors, the mapped proposal frames and the route, and moves the robot along the curve at 0.5 m/s with an obstacle-aware follow camera. The splat pass writes depth and always passes the depth test, so the splat image is unchanged but a frame, the route line and the robot are hidden by whatever the capture has in front of them; that is the occlusion the ARCore Depth API exists to give. On arrival it fetches `/api/diagnosis`, shows the pack evidence references and a citation, and opens the service panel.
 
+In **Layers**, use **Only splats in equipment boxes** to hide splats whose centres are outside all reviewed equipment boxes. Toggle it again to restore the capture. This is a visual box filter, not object segmentation: background inside a box can remain, and splats that overlap a box but have centres outside it are hidden. The control is unavailable when there are no reviewed boxes.
+
 ## Numbers
 
 Every number comes from a run on the two supplied captures in `data/supplied/`; ingest and segmentation read the PLY, mapping and route read the generated artifacts. Times are single runs, not a benchmark.

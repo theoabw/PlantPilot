@@ -47,6 +47,8 @@ jobs:
             app/web/package.json
       - run: npm ci
         working-directory: app/web
+      - run: npm test
+        working-directory: app/web
       - run: npm run build
         working-directory: app/web
 
