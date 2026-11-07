@@ -71,7 +71,12 @@ test('head-on into a wall does not move', () => {
   assert.equal(motion.slideStep({ x: 0.95, z: 0 }, { x: 0.1, z: 0 }, free, () => true), null)
 })
 
-test('a character on a blocked cell can walk out, but not off the grid', () => {
+test('a diagonal cannot slip through the corner between blocked cells', () => {
+  const free = (point) => (point.x < 1 && point.z < 1) || (point.x >= 1 && point.z >= 1)
+  assert.equal(motion.slideStep({ x: 0.99, z: 0.99 }, { x: 0.02, z: 0.02 }, free, () => false), null)
+})
+
+test('a character on a blocked cell can only step in an allowed escape direction', () => {
   const free = () => false
   assert.deepEqual(motion.slideStep({ x: 0, z: 0 }, { x: 0.1, z: 0 }, free, () => true), { x: 0.1, z: 0 })
   assert.equal(motion.slideStep({ x: 0, z: 0 }, { x: 0.1, z: 0 }, free, () => false), null)

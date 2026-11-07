@@ -5,6 +5,7 @@ import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
 import { boxSplatFilter } from './boxSplatFilter'
+import { boxQuaternion } from './boxGeometry'
 import { cameraGridClearance, cameraGridIsFree } from './cameraGrid'
 import { followCameraGoal, FollowOrbitInput } from './followOrbit'
 import { stableHalfDepthShader } from './depthSplatShader'
@@ -13,6 +14,8 @@ import { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, visib
 import { heightSplatFilter } from './heightSplatFilter'
 import { topDownPose } from './topDownPose'
 import { selectionSplatEdit } from './selectionSplatEdit'
+import { routeCurve } from './routeCurve'
+import { canEscapeCell, escapeDistances } from './walkGrid'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 import { boundedStep, CAMERA_FAST_SPEED_M_S, CAMERA_MAX_SPEED_M_S, cappedStep, headingFromTangent, easeFollowOffset, joinRouteToRobot, nearestAlongPolyline, remapAlong, sightClear, slideStep, turnHeading } from './routeMotion'
 
@@ -28,7 +31,7 @@ type Motion = {
   total: number
   points: THREE.Vector3[]
   cumulative: number[]
-  curve: THREE.CatmullRomCurve3 | null
+  curve: THREE.CurvePath<THREE.Vector3> | null
   heading: number | null
   arrow: THREE.InstancedMesh | null
   arrowOffset: number
@@ -50,6 +53,7 @@ type WalkMask = {
   cols: number
   axes: [number, number]
   bits: Uint8Array
+  escapeDistances: Int32Array
 }
 
 type Props = {
@@ -212,14 +216,6 @@ function distanceToBox(point: THREE.Vector3, object: RoomObject): number {
   )
   return outside.length()
 }
-
-function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
-  const x = new THREE.Vector3(...axes[0]).normalize()
-  const y = new THREE.Vector3(...axes[1]).normalize()
-  const z = new THREE.Vector3(...axes[2]).normalize()
-  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
-}
-
 
 type RobotProfile = 'humanoid' | 'amr' | 'cargo'
 
@@ -1157,8 +1153,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       for (let index = 0; index < count; index += 1) {
         const distance = (motion.arrowOffset + 0.3 + index * motion.arrowSpacing) % total
         const t = Math.min(0.999, Math.max(0.001, distance / total))
-        motion.curve.getPointAt(t, position)
-        motion.curve.getTangentAt(t, tangent)
+        motion.curve.getPoint(t, position)
+        motion.curve.getTangent(t, tangent)
         tangent.y = 0
         if (tangent.lengthSq() < 1e-6) {
           tangent.set(0, 0, -1)
@@ -1177,8 +1173,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         return
       }
       const t = Math.max(0, Math.min(1, motion.total > 0 ? motion.travelled / motion.total : 0))
-      const position = motion.curve.getPointAt(t)
-      const tangent = motion.curve.getTangentAt(t)
+      const position = motion.curve.getPoint(t)
+      const tangent = motion.curve.getTangent(t)
       motion.robot.position.copy(position)
       const targetHeading = headingFromTangent(tangent.x, tangent.z, motion.heading ?? motion.robot.rotation.y)
       if (motion.heading === null) {
@@ -1402,19 +1398,25 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       camera.position.set(capped.x, capped.y, capped.z)
       controls.target.lerp(desiredTarget, factor)
     }
-    const walkCell = (worldPosition: THREE.Vector3): 'free' | 'blocked' | 'outside' => {
+    const walkIndex = (worldPosition: THREE.Vector3): number => {
       const state = stateRef.current
       const mask = state?.walkMask
       if (!state || !mask) {
-        return 'free'
+        return -1
       }
       const point = worldPosition.clone().applyQuaternion(state.world.quaternion.clone().invert())
       const col = Math.floor((point.getComponent(mask.axes[0]) - mask.x0) / mask.cell_m)
       const row = Math.floor((point.getComponent(mask.axes[1]) - mask.z0) / mask.cell_m)
       if (row < 0 || row >= mask.rows || col < 0 || col >= mask.cols) {
-        return 'outside'
+        return -1
       }
       const index = row * mask.cols + col
+      return index
+    }
+    const walkCell = (worldPosition: THREE.Vector3): 'free' | 'blocked' | 'outside' => {
+      const mask = stateRef.current?.walkMask
+      const index = walkIndex(worldPosition)
+      if (!mask || index < 0) return 'outside'
       return (mask.bits[index >> 3] & (0x80 >> (index & 7))) === 0 ? 'free' : 'blocked'
     }
     // Where the character is, in the planner's metres along the route: the crouch
@@ -1435,9 +1437,10 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const moveManualHuman = (dt: number): boolean => {
       const state = stateRef.current
       const person = state?.motion.robot
-      if (!state?.manualControl || !person || state.movementKeys.size === 0) {
+      if (!state?.manualControl || !state.walkMask || !person || state.movementKeys.size === 0) {
         return false
       }
+      const walkMask = state.walkMask
       const forward = camera.getWorldDirection(new THREE.Vector3())
       forward.y = 0
       if (forward.lengthSq() < 1e-5) {
@@ -1466,7 +1469,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           from,
           { x: step.x, z: step.z },
           (point) => cellAt(point) === 'free',
-          (point) => cellAt(point) !== 'outside',
+          (fromPoint, toPoint) => {
+            const from = walkIndex(probe.set(fromPoint.x, person.position.y, fromPoint.z))
+            const to = walkIndex(probe.set(toPoint.x, person.position.y, toPoint.z))
+            return canEscapeCell(from, to, walkMask.escapeDistances)
+          },
         )
         if (!next) {
           break
@@ -2420,12 +2427,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       const lines = new THREE.LineSegments(geometry, material)
       lines.scale.set(frame.extents[0], frame.extents[1], frame.extents[2])
       lines.position.copy(new THREE.Vector3(...frame.centre).applyQuaternion(world))
-      const basis = new THREE.Matrix4().makeBasis(
-        new THREE.Vector3(...frame.axes[0]),
-        new THREE.Vector3(...frame.axes[1]),
-        new THREE.Vector3(...frame.axes[2]),
-      )
-      lines.quaternion.setFromRotationMatrix(basis).premultiply(world)
+      lines.quaternion.copy(boxQuaternion(frame.axes)).premultiply(world)
       lines.renderOrder = 1
       group.add(lines)
     }
@@ -3063,6 +3065,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           walkGrid.horizontal_axes[1] ?? 2,
         ],
         bits,
+        escapeDistances: escapeDistances({ rows: walkGrid.rows, cols: walkGrid.cols, bits }),
       }
     } else {
       state.walkMask = null
@@ -3131,18 +3134,13 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       ? previousRobot.position.clone().setY(planned[0].y)
       : null
     const { points, offsetM } = joinRouteToRobot(planned, liveRobot)
-    const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5)
-    curve.arcLengthDivisions = 400
+    const curve = routeCurve(points)
     const totalLength = Math.max(0.01, curve.getLength())
     const cumulative = [0]
     for (let index = 1; index < points.length; index += 1) {
       cumulative.push(cumulative[index - 1] + points[index - 1].distanceTo(points[index]))
     }
-    // The curve passes through each vertex at an even step of its parameter.
-    const stepsPerVertex = 8
-    const arcLengths = curve.getLengths((points.length - 1) * stepsPerVertex)
-    const arcAtVertex = points.map((_, index) => arcLengths[index * stepsPerVertex])
-    curve.getLengths(curve.arcLengthDivisions)
+    const arcAtVertex = [...cumulative]
 
     // A moving arrow trail instead of a thin line: flat chevrons spaced along
     // the smoothed path, scrolling in the direction of travel.
@@ -3292,7 +3290,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     motion.faceHeading = null
     motion.arrowOffset = 0
     if (motion.curve) {
-      motion.robot.position.copy(motion.curve.getPointAt(0))
+      motion.robot.position.copy(motion.curve.getPoint(0))
     }
     tripRef.current({ mode: 'moving', travelled: 0, total: motion.total })
     renderRef.current()

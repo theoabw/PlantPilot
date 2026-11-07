@@ -188,9 +188,13 @@ The room view is a contextual product shell: a minimal header, a mission card
   and up in scene coordinates. That view stands at 1.45 m above the detected
   floor and looks down the longest open sightline, so the browser and the
   rendered stills show the same room.
-- The route is drawn as a moving arrow trail on a centripetal Catmull-Rom curve
-  through the planned polyline, and the robot follows the same curve with a
-  damped heading and a damped follow camera, so corners do not snap.
+- The route is drawn as a moving arrow trail along the planned polyline, and
+  the robot follows the same segments with a damped heading and follow camera.
+  Following the checked segments avoids a curve cutting across blocked corners.
+- Manual movement uses the route's inflated occupancy grid. A robot starting in
+  a blocked cell may move within it or toward a free cell, rather than crossing
+  further into blocked cells. The grid approximates the captured geometry and
+  does not guarantee that all physical obstacles are represented.
 - `GET /api/scene/route` serves the route `make route` writes. The room view
   draws it on the detected floor (the artifact's path carries heights in the up
   axis, the viewer places the line and the robot on the floor plane), sends the
@@ -552,6 +556,9 @@ the object that owns it. Semantics is the same dim base plus a pastel overlay of
 the anchor gaussians (opacity 0.55) and the contour overlay, so object regions
 are tinted while the room still reads as a photograph. The viewer draws the
 contours as screen-space points and hides the wireframe boxes in these channels.
+Selection adds light inside the selected oriented box with a 0.03 m boundary
+tolerance. This is an approximate highlight, not an object segmentation mask;
+nearby surfaces can be tinted and parts outside the box can still be missed.
 
 ## Object splats
 
