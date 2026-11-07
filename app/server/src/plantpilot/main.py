@@ -36,10 +36,10 @@ MESH_DIR = Path(os.environ.get("PLANTPILOT_MESHES", DATA / "objects" / "meshes" 
 OBJECT_SPLAT_DIR = Path(os.environ.get("PLANTPILOT_OBJECT_SPLATS", DATA / "objects" / "splats" / SCENE_DIR.name))
 FILTER_NAMES = ("height", "normals", "edges_base", "semantics", "anchors_overlay")
 
-# The body heights the viewer's robots plan at: the compact AMR, the cargo AMR, and
-# the humanoid standing and crouched. A robot's layers take seconds to build the
+# The body heights the viewer's robots plan at: the compact AMR and the humanoid
+# standing and crouched. A robot's layers take seconds to build the
 # first time, and a replan holds the robot still until its answer arrives.
-ROBOT_BODY_HEIGHTS_M = (0.55, 0.9, 1.35, 0.95)
+ROBOT_BODY_HEIGHTS_M = (0.55, 1.35, 0.95)
 
 
 def warm_route_layers() -> None:

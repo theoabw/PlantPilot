@@ -1,5 +1,5 @@
 export type CharacterOption = {
-  id: 'humanoid' | 'amr' | 'cargo'
+  id: 'humanoid' | 'amr'
   label: string
   radius: number
   height: number

@@ -453,8 +453,8 @@ missing, and every other stage runs without it.
 
 ## Robot profiles and clearance
 
-The room view offers a walking humanoid (0.18 m radius, 1.35 m standing), a
-compact AMR (0.20 m, 0.55 m tall) and a cargo AMR (0.45 m, 0.90 m tall).
+The room view offers a walking humanoid (0.18 m radius, 1.35 m standing) and a
+compact AMR (0.20 m, 0.55 m tall).
 Choosing a profile replans the same grid with that radius and height, so the
 route, the clearance and even the reachable set change with the robot rather
 than with a cosmetic model swap. A developer slider covers the clearance value
@@ -474,7 +474,7 @@ The robot itself is procedural: a hi-vis humanoid with pelvis, two-segment legs
 and arms, joined knees, elbows and hips, a backpack, yellow hard hat and visor,
 or a wheeled AMR with a white, grey and green chassis, four dark wheels, deck
 rails, mast, spinning lidar, camera bar and e-stop. The supplied Valmet logo is
-stored locally and shown on the humanoid's vest and backpack and the AMRs'
+stored locally and shown on the humanoid's vest and backpack and the AMR's
 chassis. Both are animated from distance travelled, so the walk or the wheel
 rotation matches the route speed.
 

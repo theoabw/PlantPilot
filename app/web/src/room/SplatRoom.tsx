@@ -102,7 +102,7 @@ type Props = {
   frameOpacity: number
   focusTarget: { centre: [number, number, number]; radius: number } | null
   focusToken: number
-  robotProfile: 'humanoid' | 'amr' | 'cargo'
+  robotProfile: 'humanoid' | 'amr'
   manualControl: boolean
   manualCrouch: boolean
   onToggleManualCrouch: () => void
@@ -221,18 +221,16 @@ function distanceToBox(point: THREE.Vector3, object: RoomObject): number {
   return outside.length()
 }
 
-type RobotProfile = 'humanoid' | 'amr' | 'cargo'
+type RobotProfile = 'humanoid' | 'amr'
 
 const firstPersonEyeHeight: Record<RobotProfile, number> = {
   humanoid: 1.2,
   amr: 0.42,
-  cargo: 0.68,
 }
 
 const followTargetHeight: Record<RobotProfile, number> = {
   humanoid: 0.78,
   amr: 0.28,
-  cargo: 0.45,
 }
 
 // Route points and the robot's origin sit this far above the floor.
@@ -264,7 +262,6 @@ const FREE_CAMERA_MARGIN_M = 1
 const followDistances: Record<RobotProfile, number> = {
   humanoid: 2.55,
   amr: 2.05,
-  cargo: 2.35,
 }
 
 /**
@@ -476,7 +473,7 @@ function buildRobotBody(profile: RobotProfile, logoTexture: THREE.Texture): THRE
     return group
   }
 
-  const scale = profile === 'cargo' ? 1.5 : 0.85
+  const scale = 0.85
   const chassisWidth = 0.56
   const chassisLength = 0.84
   const wheelRadius = 0.105
@@ -600,18 +597,6 @@ function buildRobotBody(profile: RobotProfile, logoTexture: THREE.Texture): THRE
   const plate = mesh(new THREE.BoxGeometry(0.14, 0.006, 0.1), 0xe2e8f0, 0.85)
   plate.position.set(0.02, 0.46, 0.02)
   body.add(plate)
-
-  if (profile === 'cargo') {
-    const bed = mesh(new THREE.BoxGeometry(chassisWidth + 0.06, 0.06, chassisLength + 0.02), 0x1e293b)
-    bed.position.y = 0.49
-    body.add(bed)
-    const crate = mesh(new THREE.BoxGeometry(0.42, 0.3, 0.44), 0xb45309)
-    crate.position.y = 0.67
-    body.add(crate)
-    const crateBand = mesh(new THREE.BoxGeometry(0.43, 0.04, 0.45), 0xf59e0b, 0.9)
-    crateBand.position.y = 0.63
-    body.add(crateBand)
-  }
 
   group.scale.setScalar(scale)
 
