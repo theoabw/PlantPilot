@@ -52,7 +52,7 @@ view says what it could not load.
 
 Most rows are optional: a 404 leaves that layer out, and the page says what it
 could not load. `scene.npz` is the row that bites. Without it the room view
-still draws and the mission card still appears, but pressing Send robot leaves
+still draws and the mission card can be opened from the header, but pressing Send robot leaves
 the robot standing still: the viewer replans from the robot's position on every
 drive, and the planner answers 404 when the scene is missing.
 

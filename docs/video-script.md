@@ -11,6 +11,7 @@ Open on [`brand/title-1920x1080-dark.png`](brand/title-1920x1080-dark.png) and k
 The app moved on after this script was written, so these do not match it. Fix them in the edit, not at the shoot:
 
 - The route, the target ring and the robot are only drawn while the robot is moving (`showRoute={driving}` in `RoomLab.tsx`). Beat 3 cannot be shot at idle, so it starts on the click in beat 4.
+- The mission card starts closed; open it with Mission in the header before using Send robot.
 - There is no gaussian badge and no object-count badge in the header. The header reads `PlantPilot`, the capture name, the synthetic-scenario badge and the live dot. The gaussian count, the raw object count, the reviewed count, the route and the clearance are in the developer drawer, which Settings opens.
 - There is no `Panel` control; the panel is open or closed, and beat 4 says so.
 - The diagnosis lists up to four evidence references per finding, not an evidence count. 19 and 9 are the number of evidence ids behind each finding in `diagnosis.json`, not numbers on screen.
@@ -64,7 +65,7 @@ Scores criterion 3, 20 percent.
 
 **Voiceover.** "On arrival the card appears. Condition attention required, health 44, issue fouling, high urgency. Two findings, each listing the evidence references behind it: telemetry rows, alarm events and data quality cases. The next check is to inspect the hydraulic path. The card is grounded in the pack's process pump document, and the evidence ids point back to rows in the supplied pack."
 
-**Counts if.** The card shows FOULING, health 44, an evidence reference, the next check and the citation; the mission card reads "Inspection complete".
+**Counts if.** The card shows FOULING, health 44, an evidence reference, the next check and the citation.
 
 ## Beat 6. Architecture (2:30 to 2:44, 14 s)
 
@@ -83,7 +84,7 @@ Scores criterion 4, 15 percent.
 3. Close panel; orbit the frames; reopen.
 4. Equipment attention filter; 30/30 mapped, P-005 row.
 5. Click P-005; zoom; scroll to the mapping record; hold the proposal line.
-6. Send robot; path, target ring, mission card.
+6. Select P-005 and send the robot; show the path and target ring.
 7. Nearby chips at the start; panel open.
 8. Walk; record 60 fps.
 9. Half-speed walk; three nearby sets; open Panel mid-walk.

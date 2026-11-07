@@ -140,6 +140,7 @@ export default function RoomLab() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [characterOpen, setCharacterOpen] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
+  const [missionOpen, setMissionOpen] = useState(false)
   const [browserQuery, setBrowserQuery] = useState('')
   const [browserFilter, setBrowserFilter] = useState<'all' | 'attention' | 'reviewed'>('all')
   const [obstacleMode, setObstacleMode] = useState(false)
@@ -648,6 +649,7 @@ export default function RoomLab() {
         setSelectedId(null)
         setFollow(!topDownRef.current)
         setArrivalDismissed(false)
+        setMissionOpen(false)
         setTripToken((value) => value + 1)
       } else if (resume) {
         setTripToken((value) => value + 1)
@@ -941,9 +943,9 @@ export default function RoomLab() {
           {error}
         </div>
       ) : null}
-      {rerouteNote === 'Route replan failed' ? (
+      {rerouteNote && (rerouteNote === 'Route replan failed' || route?.reachable === false) ? (
         <div role="alert" className="absolute inset-x-0 top-16 z-30 mx-auto max-w-md rounded-lg border border-red-500/40 bg-slate-950/90 px-4 py-3 text-sm text-slate-200">
-          Route replan failed. Try sending the character again.
+          {rerouteNote === 'Route replan failed' ? 'Route replan failed. Try sending the character again.' : rerouteNote}
         </div>
       ) : null}
 
@@ -962,6 +964,17 @@ export default function RoomLab() {
           </span>
         </div>
         <div className="pointer-events-auto flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:gap-2">
+          {showMission && mission ? (
+            <button
+              type="button"
+              aria-expanded={missionOpen}
+              aria-controls="mission-panel"
+              onClick={() => setMissionOpen((value) => !value)}
+              className="rounded-lg border border-white/5 bg-slate-950/55 px-2 py-2 text-[10px] font-bold text-slate-200 backdrop-blur hover:border-slate-500 sm:px-3 sm:text-xs"
+            >
+              Mission
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
@@ -1368,8 +1381,8 @@ export default function RoomLab() {
       ) : null}
 
       {/* Mission card, progress bar and arrival */}
-      {showMission && mission ? (
-        <section className="absolute bottom-4 left-4 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700/80 bg-slate-950/90 p-4 shadow-2xl backdrop-blur">
+      {showMission && mission && missionOpen ? (
+        <section id="mission-panel" aria-label="Mission" className="absolute bottom-4 left-4 z-30 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700/80 bg-slate-950/90 p-4 shadow-2xl backdrop-blur">
           <div className="flex items-center justify-between">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-brand-mint">
               Mission
@@ -1379,23 +1392,19 @@ export default function RoomLab() {
             </span>
           </div>
           <h2 className="mt-1 text-lg font-black leading-tight text-white">
-            {mission?.tag === mission?.label ? (
-              mission?.label
+            {mission.tag === mission.label ? (
+              mission.label
             ) : (
               <>
-                {mission?.tag} <span className="text-slate-400">·</span> {mission?.label}
+                {mission.tag} <span className="text-slate-400">·</span> {mission.label}
               </>
             )}
           </h2>
           <p
             className="mt-1 text-xs font-semibold"
-            style={{
-              color: !targetMapping
-                ? '#cbd5e1'
-                : STATE_COLOURS[targetMapping.state],
-            }}
+            style={{ color: !targetMapping ? '#cbd5e1' : STATE_COLOURS[targetMapping.state] }}
           >
-            {mission?.condition}
+            {mission.condition}
           </p>
           <p className="mt-2 text-[11px] font-semibold text-slate-400">
             {planning ? 'Planning route...' : routeReady
@@ -1418,7 +1427,7 @@ export default function RoomLab() {
             <button
               type="button"
               onClick={startMission}
-              disabled={!mission || planning}
+              disabled={planning}
               className="flex-1 rounded-lg bg-brand-mint px-3 py-2.5 text-sm font-black text-brand-navy hover:bg-brand-teal disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
               Send robot
