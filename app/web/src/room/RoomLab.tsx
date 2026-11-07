@@ -141,6 +141,7 @@ export default function RoomLab() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState('photo')
   const [showOutlines, setShowOutlines] = useState(true)
+  const [boxedSplatsOnly, setBoxedSplatsOnly] = useState(false)
   const [showMappedFrames, setShowMappedFrames] = useState(false)
   const [showOccupancy, setShowOccupancy] = useState(false)
   const [devMode, setDevMode] = useState(false)
@@ -802,6 +803,8 @@ export default function RoomLab() {
             objectOverlayUrl={view === 'semantics' ? '/api/filter/anchors_overlay' : null}
             showLabels={devMode || view === 'objects'}
             framesVisible={displayObjects.length > 0}
+            boxedSplatsOnly={boxedSplatsOnly}
+            filterBoxes={reviewed}
             objectMode={view === 'objects'}
             hideSplat={view === 'objects'}
             explode={explode}
@@ -904,6 +907,7 @@ export default function RoomLab() {
                     type="button"
                     onClick={() => {
                       setView(option.id)
+                      setBoxedSplatsOnly(false)
                       setLayersOpen(false)
                     }}
                     className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-semibold ${
@@ -915,6 +919,24 @@ export default function RoomLab() {
                   </button>
                 ))}
                 <div className="mt-1 border-t border-slate-800 pt-1">
+                  <button
+                    type="button"
+                    aria-pressed={boxedSplatsOnly}
+                    disabled={reviewed.length === 0}
+                    onClick={() => {
+                      setView('photo')
+                      setBoxedSplatsOnly((value) => !value)
+                    }}
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Only splats in equipment boxes
+                    {boxedSplatsOnly ? <span className="text-[10px] text-cyan-200">on</span> : null}
+                  </button>
+                  <p className="px-2 pb-1 text-[10px] text-slate-500">
+                    {reviewed.length === 0
+                      ? 'No reviewed equipment boxes available.'
+                      : 'Keeps splat centres inside reviewed boxes. Outside is hidden, not deleted.'}
+                  </p>
                   <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800">
                     Equipment outlines
                     <input

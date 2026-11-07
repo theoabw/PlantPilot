@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { SparkRenderer, SplatFileType, SplatMesh } from '@sparkjsdev/spark'
 import { CLASS_COLOURS, STATE_COLOURS, upVector } from './api'
+import { boxSplatFilter } from './boxSplatFilter'
 import type { RoomCamera, RoomObject, RoomRoute } from './api'
 
 export type TripState = {
@@ -59,6 +60,8 @@ type Props = {
   objectOverlayUrl: string | null
   showLabels: boolean
   framesVisible: boolean
+  boxedSplatsOnly: boolean
+  filterBoxes: RoomObject[]
   objectMode: boolean
   hideSplat: boolean
   explode: number
@@ -503,7 +506,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -1774,8 +1777,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     mesh.rotation.set(0, 0, 0)
     mesh.initialized
       .then(() => {
-        state.splat = mesh
-        state.splatUrl = wanted
+        if (stateRef.current !== state || state.splat !== mesh) {
+          return
+        }
         setLoaded(true)
         renderRef.current()
         // the animation loop is throttled in a background tab, so paint a few
@@ -1791,13 +1795,29 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         paint()
       })
       .catch((problem: unknown) => {
-        setGlError(problem instanceof Error ? problem.message : String(problem))
+        if (stateRef.current === state && state.splat === mesh) {
+          setGlError(problem instanceof Error ? problem.message : String(problem))
+        }
       })
     state.splat = mesh
     state.splatUrl = wanted
     state.world.add(mesh)
     renderRef.current()
   }, [filterUrl, splatUrl])
+
+  useEffect(() => {
+    const mesh = stateRef.current?.splat
+    if (!mesh || !boxedSplatsOnly || filterBoxes.length === 0) {
+      return
+    }
+    const edit = boxSplatFilter(filterBoxes)
+    mesh.add(edit)
+    renderRef.current()
+    return () => {
+      mesh.remove(edit)
+      renderRef.current()
+    }
+  }, [boxedSplatsOnly, filterBoxes, filterUrl, splatUrl])
 
   useEffect(() => {
     const state = stateRef.current
