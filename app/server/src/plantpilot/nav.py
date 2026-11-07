@@ -4,7 +4,7 @@ Builds an occupancy grid from a capture's point cloud, inflates obstacles by
 the agent radius, computes collision-free A* routes to the mapped target and
 evaluates dynamic proximity along the path.
 
-A grid built from a capture has two independent obstacle layers, because the
+A grid built from a capture has four independent obstacle layers, because the
 extracted boxes alone cannot be trusted to enclose a room: the extraction caps
 objects at 150 and removes dominant planes, so a route could avoid every
 retained box while walking through a wall the extraction omitted.
@@ -12,16 +12,31 @@ retained box while walking through a wall the extraction omitted.
 - The object layer blocks the footprint of every extracted box that reaches
   into the robot's body height, keeping the long-standing rules that a box
   larger than half the room is skipped and that the footprints are inflated once.
-- The structural layer rasterises the capture's own points in the robot band,
-  from OBSTACLE_MIN_HEIGHT_M to ROBOT_HEIGHT_M above the floor, at CELL_M, and
-  blocks a cell that holds at least STRUCTURE_MIN_POINTS gaussians. That catches
-  walls, machine bodies and pipework dense at torso height while ignoring the one
-  or two points of cable or splatter noise that cross a cell.
+- The floor layer blocks every cell where the capture never saw floor, meaning
+  no gaussian within FLOOR_TOLERANCE_M of the floor plane. Ground that was not
+  observed is not ground to walk on, and this is what stops the planner from
+  driving into the space outside the room or behind a wall.
+- The vertical-surface layer blocks a cell when a wall crosses the robot's path.
+  Each gaussian's own ellipsoid gives its surface normal: the thinnest `size`
+  axis, rotated by the `rot` quaternion into the scene frame. A cell blocks when
+  its near-vertical gaussians run at least WALL_SPAN_M up the wall band, from
+  within WALL_FLOOR_REACH_M of the floor, with no vertical gap over
+  WALL_MAX_GAP_M. The band reaches WALL_CEILING_M rather than the robot's height,
+  because across a 0.55 m body a wall and a machine face are the same surface;
+  the extraction already covers machine bodies with boxes. The older rule counted
+  gaussians per cell, and a wall is a thin surface that never reaches a dense
+  count in one 0.10 m cell, so the perimeter and the space behind it stayed
+  walkable.
+- The overhead layer blocks a cell when a near-horizontal surface patch lies
+  inside the body band above OVERHEAD_MIN_HEIGHT_M, the line under which debris,
+  pallet lips and cable runs are rideable. This is what makes a tall robot plan
+  around pipework that a low robot drives under.
 
-The union is what the route sees. It is never replaced by an empty or
-points-only grid when it looks crowded: a room with a wall must never become a
-free room, so a blocked fraction above MAX_BLOCKED_FRACTION is reported as
-`saturated` and kept as it is.
+The blocked layer is closed by one cell before the single inflation pass, so a
+one-cell pinhole between two surfaces cannot be slipped through. The union is
+what the route sees. It is never replaced by an empty or points-only grid when
+it looks crowded: a room with a wall must never become a free room, so a blocked
+fraction above MAX_BLOCKED_FRACTION is reported as `saturated` and kept as it is.
 """
 
 from __future__ import annotations
@@ -54,31 +69,89 @@ CAMERA_BAND_MIN_M = 1.15
 CAMERA_BAND_MAX_M = 1.85
 CAMERA_STRUCTURE_MIN_POINTS = 50
 LARGE_FOOTPRINT_SHARE = 0.5
-# The structural layer counts gaussians per CELL_M cell inside the robot band.
-# Measured on the two supplied captures, starting at the requested 3 to 5:
-# cells holding 1 or 2 gaussians are transient splat noise, but the equipment
-# room's floor is strewn with debris, so its histogram keeps a long tail: at a
-# 5 point minimum 44 percent of cells block, inflation turns that into 88
-# percent, and the P-005 waypoint becomes unreachable. Raising the count and
-# measuring the resulting grid and route gives a plateau from 48 to 70 points
-# where the route stays the same 6.38 m and below 48 it disconnects. The
-# equipment room's per-cell histogram decays smoothly to a shoulder at 50 to 60
-# points, and the cells above that shoulder are the dense surfaces: the debug
-# raster shows them tracing the room's walls and machine outlines, and the old
-# route crossed one of them at 635 points per cell. Fifty-five sits on the
-# shoulder, clear of the 45 to 48 knife edge, and still blocks both captures'
-# dense walls. The boiler room is sparser and stays routable from 4 upward.
-STRUCTURE_MIN_POINTS = 55
+# A merged envelope is not one object. Objects arrive as oriented boxes, and the
+# extraction now merges neighbouring instances into one box, so a box can cover a
+# whole corner of the room. The wall, floor and overhead layers already guard the
+# room's surfaces, so a footprint too big to be a single machine is left to them
+# and counted off the object layer instead of blocking the aisle with the gap
+# inside the merged shape.
+OBJECT_MAX_FOOTPRINT_M2 = 2.5
+OBJECT_MAX_SIDE_M = 2.2
+# An envelope bounds an object, it does not fill it. The extraction merges
+# neighbouring instances, so a box can span two machines and the gap between
+# them, and blocking the whole rectangle walls off the gap. Inside a plausible
+# envelope a cell blocks where the capture's own points are, plus whatever those
+# points enclose: a machine's surface gives tens of gaussians per cell and rings
+# its own interior, while the open gap of a merged pair reaches the envelope's
+# edge and stays walkable. OBJECT_MIN_POINTS_PER_CELL keeps one stray splat from
+# becoming an obstacle, and the closing pass fills a one-cell pinhole in a ring.
+OBJECT_MIN_POINTS_PER_CELL = 2
+# The floor layer: a cell is walkable ground only when the capture saw floor in
+# it. The floor plane is fitted to 1.6 cm rms in both supplied captures, so a
+# gaussian within 8 cm of it is floor, and 8 cm is also below the lowest height a
+# robot body is modelled from (OBSTACLE_MIN_HEIGHT_M), so the two rules agree.
+FLOOR_TOLERANCE_M = 0.08
+# A gap in floor evidence up to this many cells is still floor: a capture samples
+# the slab at its own spacing, and one missing point is not a hole in the room.
+FLOOR_CLOSE_CELLS = 2
+# The vertical-surface layer reads a gaussian's shape instead of counting its
+# neighbours: `size` is in metres along the ellipsoid axes, and the thinnest of
+# the three is the surface the splat lies on, so its direction is the normal.
+# A surface counts as vertical when its normal is within 0.4 of horizontal. A
+# wall is then recognised by how far it runs, not by how dense it is, and a wall
+# never needs to be dense in one cell, which is the case the old count rule
+# missed: the perimeter stayed walkable because thin surfaces never reached 55
+# gaussians in a 0.10 m cell.
+WALL_NORMAL_UP_DOT = 0.40
+# The wall band runs from the body floor line up to WALL_CEILING_M rather than to
+# the robot's own height: across 0.55 m a machine face and a wall look the same,
+# so a span test in that band cannot tell them apart. The room's working height
+# separates them: a wall runs from the floor to where the room ends, and a
+# machine's face stops at the machine. Measured on both captures, the surfaces
+# between 1.2 and 2.0 m of vertical run are the room's perimeter and its full
+# height partitions, and the machine faces drop out and stay with the object
+# layer, which is where the extraction already covers them.
+WALL_CEILING_M = 2.00
+WALL_SPAN_M = 1.20
+WALL_FLOOR_REACH_M = 0.35
+WALLS_FROM = (
+    "near-vertical gaussian surface in the wall band: |normal.up| < 0.40, vertical "
+    "span >= 1.20 m up to 2.00 m, no vertical gap over 0.20 m, starting within 0.35 m "
+    "of the floor"
+)
+# The overhead layer catches the structure a vertical-surface test cannot: a
+# surface a tall body walks into at torso height. Above 0.35 m the room's debris,
+# pallet lips and cable runs are rideable and must not seal it, so the layer only
+# looks higher, and it needs a patch of OVERHEAD_MIN_POINTS near-horizontal
+# gaussians rather than one stray splat (a 0.1 x 0.1 m cell of surface holds tens
+# of gaussians; a cable crossing it holds one or two).
+OVERHEAD_MIN_HEIGHT_M = 0.35
+OVERHEAD_NORMAL_UP_DOT = 0.50
+OVERHEAD_MIN_POINTS = 8
+# The blocked layer is closed by this many cells before the agent radius is
+# inflated, so a one-cell pinhole in a splat cannot be slipped through.
+CLOSE_MASK_CELLS = 1
+# Two surfaces caught in one cell are not a wall. The largest gap in the vertical
+# run has to stay under WALL_MAX_GAP_M, or a low kerb and a high cabinet edge
+# share a cell and dress up as a surface crossing the body.
+WALL_MAX_GAP_M = 0.20
 # The grid is never replaced when it looks crowded; at this blocked fraction the
 # artifact says `saturated` so a reviewer looks at the floor and axis instead of
-# the router quietly finding a free room. The supplied equipment room is already
-# 68 percent blocked by its object boxes alone, before the structural layer.
+# the router quietly finding a free room. The floor layer blocks the unobserved
+# ring outside the room, which is most of the grid in the boiler capture, so the
+# fraction describes how much of the grid is not walkable ground rather than how
+# much of the room is full.
 MAX_BLOCKED_FRACTION = 0.85
 # The extracted boxes are already conservative axis aligned footprints of an
 # oriented box, so the route needs only a small extra margin on top of them.
 ROUTE_SAFETY_MARGIN_M = 0.02
 DEFAULT_CLEARANCE_TARGET_M = 0.90
 MIN_WAYPOINT_DISTANCE_M = 0.60
+# An asset can sit above the floor (a machine mounted on a structure, as in the
+# boiler room), and then there is no service ground beside its footprint. The
+# inspection then stops on the nearest ground the robot can actually reach,
+# within this radius of the asset, instead of a route ending in mid air.
+SERVICE_FALLBACK_RADIUS_M = 2.50
 PROXIMITY_RADIUS_M = 2.50
 PROXIMITY_STEP_M = 0.50
 
@@ -92,29 +165,49 @@ class Rect:
 
 
 def _blocks_the_robot(obj: dict, floor_y: float, up_axis: int, up_axis_sign: int) -> bool:
-    """True when the object reaches into the robot's body height above the floor."""
+    """True when the object reaches into the robot's body height above the floor.
+
+    `axes` holds the box's own axes as its rows and `extents` the lengths along
+    them, so the reach along the world up direction is the up column of the frame
+    projected on the extents. Reading a row here instead measures a horizontal
+    axis and misjudges every object whose longest axis is not the vertical one.
+    """
     centre = np.asarray(obj.get("centre", [0.0, 0.0, 0.0]), dtype=float)
     axes = np.asarray(obj.get("axes", np.eye(3)), dtype=float)
     extents = np.asarray(obj.get("extents", [0.0, 0.0, 0.0]), dtype=float)
-    half = float(np.abs(axes[up_axis, :]) @ (extents / 2.0))
+    if axes.shape != (3, 3) or extents.shape != (3,):
+        axes, extents = np.eye(3), np.asarray(obj.get("size", [0.0, 0.0, 0.0]), dtype=float)
+    half = float(np.abs(axes[:, up_axis]) @ (extents / 2.0))
     height = float(centre[up_axis]) * float(up_axis_sign)
     low, high = height - half, height + half
     return not (high < floor_y + OBSTACLE_MIN_HEIGHT_M or low > floor_y + ROBOT_HEIGHT_M)
 
 
 def object_footprint(obj: dict, up_axis: int = 1) -> Rect:
-    """Compute 2D horizontal bounding box for an extracted scene object."""
+    """Horizontal footprint of an extracted box, as an axis aligned rectangle.
+
+    `axes` is the box's own frame with one axis per row and `extents` the lengths
+    along those axes, so the footprint is the projected envelope: each horizontal
+    half width is the sum over the box axes of their share of that direction. A
+    box read as if the extents were world sizes puts a machine's height into its
+    width, which is how a merged envelope became a wall across an aisle.
+    """
     # objects.json uses "centre" (British spelling per scene-artifacts.md); fall
     # back to "center" and then "pos" so the function works with both schemas.
     center = obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
-    extents = obj.get("extents") or obj.get("size", [0.8, 0.8, 0.8])
-    if up_axis == 1:
-        x, z = float(center[0]), float(center[2])
-        sx, sz = float(extents[0]), float(extents[2])
+    extents = np.asarray(obj.get("extents") or obj.get("size", [0.8, 0.8, 0.8]), dtype=float)
+    axes = np.asarray(obj.get("axes", np.eye(3)), dtype=float)
+    horizontal = [axis for axis in range(3) if axis != up_axis]
+    if axes.shape != (3, 3) or extents.shape != (3,):
+        # No frame: the extents are already world aligned.
+        half_x = float(extents[horizontal[0]]) / 2.0
+        half_z = float(extents[horizontal[1]]) / 2.0
     else:
-        x, z = float(center[0]), float(center[1])
-        sx, sz = float(extents[0]), float(extents[1])
-    return Rect(x - sx / 2.0, z - sz / 2.0, x + sx / 2.0, z + sz / 2.0)
+        half_x = float(np.abs(axes[:, horizontal[0]]) @ (extents / 2.0))
+        half_z = float(np.abs(axes[:, horizontal[1]]) @ (extents / 2.0))
+    x = float(center[horizontal[0]])
+    z = float(center[horizontal[1]])
+    return Rect(x - half_x, z - half_z, x + half_x, z + half_z)
 
 
 def detect_floor(
@@ -157,6 +250,170 @@ def detect_floor(
     return floor_y, y_min, y_max
 
 
+def surface_normals(rotation: np.ndarray, size: np.ndarray) -> np.ndarray:
+    """World-space surface normal of each gaussian, from its own ellipsoid.
+
+    A splat is a thin disc, so the flattest of its three axes is the surface it
+    lies on. The scene artifact stores `rot` as a unit quaternion (w, x, y, z)
+    and `size` as the three ellipsoid axes in metres, so the normal is the image
+    of the thinnest axis under that rotation.
+
+    Returns an (N, 3) float32 array of unit vectors, empty for an empty cloud.
+    The sign of a normal carries no meaning here and neither does the sign of
+    the quaternion, so the test that uses it takes an absolute dot product.
+    """
+    rotation = np.asarray(rotation)
+    size = np.asarray(size, dtype=np.float64)
+    count = int(rotation.shape[0]) if rotation.ndim == 2 else 0
+    if size.shape != (count, 3):
+        raise ValueError(
+            f"rot and size disagree: rot has {rotation.shape}, size has {size.shape}"
+        )
+    if count == 0:
+        return np.zeros((0, 3), dtype=np.float32)
+
+    quaternion = np.asarray(rotation, dtype=np.float64)
+    length = np.linalg.norm(quaternion, axis=1, keepdims=True)
+    quaternion = quaternion / np.maximum(length, 1e-12)
+    w, x, y, z = (quaternion[:, index] for index in range(4))
+    thinnest = np.argmin(size, axis=1)
+
+    normals = np.zeros((count, 3), dtype=np.float32)
+    # The columns of a quaternion's rotation matrix are the images of the local
+    # axes, so the k-th column is where local axis k points in the scene frame.
+    for axis in range(3):
+        selected = thinnest == axis
+        if not np.any(selected):
+            continue
+        wa, xa, ya, za = w[selected], x[selected], y[selected], z[selected]
+        if axis == 0:
+            column = np.stack(
+                [1 - 2 * (ya * ya + za * za), 2 * (xa * ya + wa * za), 2 * (xa * za - wa * ya)],
+                axis=1,
+            )
+        elif axis == 1:
+            column = np.stack(
+                [2 * (xa * ya - wa * za), 1 - 2 * (xa * xa + za * za), 2 * (ya * za + wa * xa)],
+                axis=1,
+            )
+        else:
+            column = np.stack(
+                [2 * (xa * za + wa * ya), 2 * (ya * za - wa * xa), 1 - 2 * (xa * xa + ya * ya)],
+                axis=1,
+            )
+        normals[selected] = column.astype(np.float32)
+    return normals
+
+
+def _supported_cells(
+    obj: dict,
+    footprint: Rect,
+    band_points: np.ndarray,
+    x0: float,
+    z0: float,
+    rows: int,
+    cols: int,
+) -> np.ndarray | None:
+    """The cells of an object's envelope that its own observed surface blocks.
+
+    Inside the envelope a cell blocks when the capture put at least
+    OBJECT_MIN_POINTS_PER_CELL gaussians in the robot's body band there, and so
+    does any cell those points enclose: a machine's surface rings its own
+    interior, so the interior goes with it. The open gap of a merged pair reaches
+    the envelope's edge and stays free, which is what keeps an aisle from being
+    walled off by a box that merely spans it.
+    """
+    centre = np.asarray(obj.get("centre", [0.0, 0.0, 0.0]), dtype=np.float64)
+    axes = np.asarray(obj.get("axes", np.eye(3)), dtype=np.float64)
+    extents = np.asarray(obj.get("extents", [0.0, 0.0, 0.0]), dtype=np.float64)
+    c0 = max(0, int(math.floor((footprint.x0 - x0) / CELL_M)))
+    c1 = min(cols, int(math.ceil((footprint.x1 - x0) / CELL_M)))
+    r0 = max(0, int(math.floor((footprint.z0 - z0) / CELL_M)))
+    r1 = min(rows, int(math.ceil((footprint.z1 - z0) / CELL_M)))
+    if c0 >= c1 or r0 >= r1:
+        return None
+    cells = np.zeros((rows, cols), dtype=bool)
+    if axes.shape != (3, 3) or extents.shape != (3,):
+        # No frame: the envelope is all the evidence there is.
+        cells[r0:r1, c0:c1] = True
+        return cells
+    # Cheap world-axis reject before the oriented test. `axes` holds one box
+    # axis per row, so the half reach along world component i is the i-th column
+    # of the frame, not the i-th row: sum_j |axes[j, i]| * extents[j] / 2.
+    reach = np.abs(axes.T) @ (extents / 2.0)
+    near = np.all(np.abs(band_points - centre) <= reach, axis=1)
+    if not near.any():
+        return None
+    local = (band_points[near] - centre) @ axes.T
+    inside = np.all(np.abs(local) <= extents / 2.0, axis=1)
+    if not inside.any():
+        return None
+    points = band_points[near][inside]
+    counts = _cell_counts(points[:, 0], points[:, 2], x0, z0, rows, cols)
+    surface = counts[r0:r1, c0:c1] >= OBJECT_MIN_POINTS_PER_CELL
+    # Free cells of the envelope window that do not reach its edge are enclosed
+    # by the object's own surface, so the object owns them too.
+    padded = np.pad((~surface).astype(np.uint8), 1, constant_values=1)
+    flood_mask = np.zeros((padded.shape[0] + 2, padded.shape[1] + 2), dtype=np.uint8)
+    cv2.floodFill(padded, flood_mask, (0, 0), 2)
+    enclosed = (padded == 1)[1:-1, 1:-1]
+    cells[r0:r1, c0:c1] = surface | enclosed
+    return cells
+
+
+def _cell_counts(
+    horizontal_x: np.ndarray,
+    horizontal_z: np.ndarray,
+    x0: float,
+    z0: float,
+    rows: int,
+    cols: int,
+) -> np.ndarray:
+    """Count points per grid cell; points outside the grid are not counted."""
+    column = np.floor((horizontal_x - x0) / CELL_M).astype(np.int64)
+    row = np.floor((horizontal_z - z0) / CELL_M).astype(np.int64)
+    inside = (column >= 0) & (column < cols) & (row >= 0) & (row < rows)
+    return np.bincount(
+        row[inside] * cols + column[inside], minlength=rows * cols
+    ).reshape(rows, cols)
+
+
+def _cell_height_range(
+    heights: np.ndarray,
+    horizontal_x: np.ndarray,
+    horizontal_z: np.ndarray,
+    x0: float,
+    z0: float,
+    rows: int,
+    cols: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Height range and largest vertical gap of the points in each cell.
+
+    Returns (lowest, highest, largest gap between consecutive points). An empty
+    cell gives inf, -inf and 0. Two surfaces that happen to share a cell show up
+    as a large gap, which is how the wall rule tells them from one wall.
+    """
+    column = np.floor((horizontal_x - x0) / CELL_M).astype(np.int64)
+    row = np.floor((horizontal_z - z0) / CELL_M).astype(np.int64)
+    inside = (column >= 0) & (column < cols) & (row >= 0) & (row < rows)
+    flat = row[inside] * cols + column[inside]
+    values = heights[inside]
+    lowest = np.full(rows * cols, np.inf, dtype=np.float64)
+    highest = np.full(rows * cols, -np.inf, dtype=np.float64)
+    np.minimum.at(lowest, flat, values)
+    np.maximum.at(highest, flat, values)
+    order = np.lexsort((values, flat))
+    ordered_cell, ordered_height = flat[order], values[order]
+    consecutive = ordered_cell[1:] == ordered_cell[:-1]
+    gaps = np.zeros(rows * cols, dtype=np.float64)
+    np.maximum.at(
+        gaps,
+        ordered_cell[:-1][consecutive],
+        ordered_height[1:][consecutive] - ordered_height[:-1][consecutive],
+    )
+    return lowest.reshape(rows, cols), highest.reshape(rows, cols), gaps.reshape(rows, cols)
+
+
 class Grid:
     """Occupancy grid for one floor. Row index is z, column index is x."""
 
@@ -193,27 +450,31 @@ class Grid:
         bounds_pad_m: float = 0.5,
         walkable_height_max_m: float = ROBOT_HEIGHT_M,
         safety_margin_m: float = SAFETY_MARGIN_M,
-        structure_min_points: int | None = None,
+        normals: np.ndarray | None = None,
     ) -> "Grid":
         """Build the occupancy grid for the capture.
 
-        Two layers are rasterised and unioned before the single inflation pass:
-        the extracted object boxes (robot-band rule and large-footprint skip
-        unchanged) and the structural layer, which counts gaussians per cell in
-        the robot band and blocks a cell at `structure_min_points` or more.
-        `structure_min_points=None` uses the measured module default.
+        Four layers are rasterised and unioned before the one-cell closing and
+        the single inflation pass: the extracted object boxes (robot-band rule
+        and large-footprint skip unchanged), the floor the capture observed, the
+        vertical surfaces that cross the robot's body, and the horizontal
+        patches above `OVERHEAD_MIN_HEIGHT_M`.
 
-        The structural band runs from `OBSTACLE_MIN_HEIGHT_M` to
-        `walkable_height_max_m`. A low AMR keeps the 0.55 m body band; a walking
-        humanoid asks for a taller band so overhead pipework blocks the route
-        instead of phasing through its torso.
+        `normals` is the per-gaussian surface normal, normally
+        `surface_normals(scene["rot"], scene["size"])`. A cloud without
+        orientation cannot tell a wall from a pipe, so a caller that omits it
+        gets the same span and patch tests applied to every point: the rule
+        still holds, it is simply less selective.
+
+        The body band runs from `OBSTACLE_MIN_HEIGHT_M` to
+        `walkable_height_max_m` above the floor. A low AMR keeps the 0.55 m body
+        band; a walking humanoid asks for a taller band so the pipework over an
+        aisle crosses its torso.
 
         The union is never discarded. The grid is reported as `saturated` when
         the inflated blocked fraction passes `MAX_BLOCKED_FRACTION`, and it
         still stands: a wall must not turn a room into free space.
         """
-        if structure_min_points is None:
-            structure_min_points = STRUCTURE_MIN_POINTS
         if up_axis == 1:
             h_x, h_z = points[:, 0], points[:, 2]
             heights = points[:, 1] * up_axis_sign
@@ -221,6 +482,7 @@ class Grid:
             h_x, h_z = points[:, 0], points[:, 1]
             heights = points[:, 2] * up_axis_sign
 
+        cloud_size = int(len(points))
         valid = np.isfinite(h_x) & np.isfinite(h_z) & np.isfinite(heights)
         h_x, h_z, heights = h_x[valid], h_z[valid], heights[valid]
 
@@ -234,79 +496,142 @@ class Grid:
 
         cols = max(10, int(math.ceil((x1 - x0) / CELL_M)))
         rows = max(10, int(math.ceil((z1 - z0) / CELL_M)))
-        blocked = np.zeros((rows, cols), dtype=np.uint8)
-        blocked[0, :] = 1
-        blocked[-1, :] = 1
-        blocked[:, 0] = 1
-        blocked[:, -1] = 1
 
         room_area = max(1e-6, (x1 - x0) * (z1 - z0))
+        # The capture's gaussians inside the robot's body band, in scene
+        # coordinates: an envelope only blocks where these points support it.
+        in_body_band = (heights >= floor_y + OBSTACLE_MIN_HEIGHT_M) & (
+            heights <= floor_y + walkable_height_max_m
+        )
+        if up_axis == 1:
+            band_points = np.stack(
+                [h_x[in_body_band], heights[in_body_band] * up_axis_sign, h_z[in_body_band]],
+                axis=1,
+            )
+        else:
+            band_points = np.stack(
+                [h_x[in_body_band], h_z[in_body_band], heights[in_body_band] * up_axis_sign],
+                axis=1,
+            )
         object_cells = np.zeros((rows, cols), dtype=np.uint8)
+        object_boxes = 0
+        object_boxes_skipped_large = 0
+        object_boxes_skipped_room = 0
         if objects:
             for obj in objects:
                 if not _blocks_the_robot(obj, floor_y, up_axis, up_axis_sign):
                     continue
                 footprint = object_footprint(obj, up_axis=up_axis)
-                area = max(0.0, footprint.x1 - footprint.x0) * max(0.0, footprint.z1 - footprint.z0)
-                if area <= 0.0 or area > LARGE_FOOTPRINT_SHARE * room_area:
+                width = max(0.0, footprint.x1 - footprint.x0)
+                depth = max(0.0, footprint.z1 - footprint.z0)
+                area = width * depth
+                if area <= 0.0:
                     continue
-                c0 = int(math.floor((footprint.x0 - x0) / CELL_M))
-                c1 = int(math.ceil((footprint.x1 - x0) / CELL_M))
-                r0 = int(math.floor((footprint.z0 - z0) / CELL_M))
-                r1 = int(math.ceil((footprint.z1 - z0) / CELL_M))
-                object_cells[max(0, r0):min(rows, r1), max(0, c0):min(cols, c1)] = 1
+                if area > LARGE_FOOTPRINT_SHARE * room_area:
+                    # Not an envelope at all: it would cover the room it is in.
+                    object_boxes_skipped_room += 1
+                    continue
+                if area > OBJECT_MAX_FOOTPRINT_M2 or max(width, depth) > OBJECT_MAX_SIDE_M:
+                    # Too big to be one object: a merged envelope around several.
+                    # The other layers guard the structure inside it.
+                    object_boxes_skipped_large += 1
+                    continue
+                supported = _supported_cells(
+                    obj, footprint, band_points, x0, z0, rows, cols
+                )
+                if supported is not None and supported.any():
+                    object_cells[supported] = 1
+                    object_boxes += 1
 
-        # Structural layer: count the capture's own gaussians per cell inside
-        # the band the robot's body occupies, then keep only cells dense enough
-        # to be a surface rather than noise.
+        # Floor layer: ground that was not observed is not ground to walk on, so
+        # a cell with no gaussian near the floor plane is blocked. This is what
+        # keeps the planner inside the room instead of driving through a wall
+        # into the unobserved space behind it. A capture samples the floor at
+        # about its point spacing, so one missing point is not a hole in the
+        # floor: the supported mask is closed by FLOOR_CLOSE_CELLS before the
+        # missing cells are blocked, which is the same tolerance the surface
+        # layers get.
+        floor_band = np.abs(heights.astype(np.float64) - float(floor_y)) <= FLOOR_TOLERANCE_M
+        floor_cells = (_cell_counts(h_x[floor_band], h_z[floor_band], x0, z0, rows, cols) > 0)
+        if FLOOR_CLOSE_CELLS > 0:
+            floor_kernel = np.ones((2 * FLOOR_CLOSE_CELLS + 1,) * 2, dtype=np.uint8)
+            floor_cells = cv2.dilate(floor_cells.astype(np.uint8), floor_kernel).astype(bool)
+        no_floor_cells = ~floor_cells
+
+        # The robot's own body band, for the overhead patch test.
         band = (heights >= floor_y + OBSTACLE_MIN_HEIGHT_M) & (
             heights <= floor_y + walkable_height_max_m
         )
-        band_cols = np.floor((h_x[band] - x0) / CELL_M).astype(np.int64)
-        band_rows = np.floor((h_z[band] - z0) / CELL_M).astype(np.int64)
-        inside = (
-            (band_cols >= 0) & (band_cols < cols) & (band_rows >= 0) & (band_rows < rows)
+        upper_band = band & (heights > floor_y + OVERHEAD_MIN_HEIGHT_M)
+        # The wall band is taller than the body: it is the room's working
+        # height, so a surface that runs the height of the room is a wall and
+        # one that stops at a machine is that machine's face.
+        wall_band = (heights >= floor_y + OBSTACLE_MIN_HEIGHT_M) & (
+            heights <= floor_y + max(WALL_CEILING_M, walkable_height_max_m)
         )
-        per_cell = np.bincount(
-            band_rows[inside] * cols + band_cols[inside], minlength=rows * cols
-        ).reshape(rows, cols)
-        structural_cells = (per_cell >= structure_min_points).astype(np.uint8)
+        if normals is not None:
+            normals = np.asarray(normals)
+            # One normal per point of the cloud as given, before the non-finite
+            # filter: the filter drops points and their normals together, so a
+            # cloud with a dropped point must not need prefiltered normals.
+            if normals.shape != (cloud_size, 3):
+                raise ValueError(
+                    f"normals has shape {normals.shape} for a cloud of {cloud_size} points; "
+                    "pass one normal per point before the non-finite filter"
+                )
+            normals = normals[valid]
+            up = np.zeros(3, dtype=np.float32)
+            up[up_axis] = 1.0
+            toward_up = np.abs(normals @ up)
+            vertical_surface = wall_band & (toward_up < WALL_NORMAL_UP_DOT)
+            horizontal_patch = upper_band & (toward_up >= OVERHEAD_NORMAL_UP_DOT)
+        else:
+            # No orientation: every point is a candidate surface for both tests.
+            vertical_surface = wall_band
+            horizontal_patch = upper_band
 
-        floor_band = np.abs(heights - floor_y) <= 0.08
-        floor_cols = np.floor((h_x[floor_band] - x0) / CELL_M).astype(np.int64)
-        floor_rows = np.floor((h_z[floor_band] - z0) / CELL_M).astype(np.int64)
-        floor_inside = (
-            (floor_cols >= 0) & (floor_cols < cols) & (floor_rows >= 0) & (floor_rows < rows)
+        lowest, highest, largest_gap = _cell_height_range(
+            heights[vertical_surface].astype(np.float64),
+            h_x[vertical_surface],
+            h_z[vertical_surface],
+            x0,
+            z0,
+            rows,
+            cols,
         )
-        floor_per_cell = np.bincount(
-            floor_rows[floor_inside] * cols + floor_cols[floor_inside],
-            minlength=rows * cols,
-        ).reshape(rows, cols)
-        floor_supported = cv2.dilate(
-            (floor_per_cell >= 1).astype(np.uint8), np.ones((5, 5), dtype=np.uint8)
+        wall_cells = (
+            ((highest - lowest) >= WALL_SPAN_M)
+            & ((lowest - floor_y) <= WALL_FLOOR_REACH_M)
+            & (largest_gap <= WALL_MAX_GAP_M)
         )
-        use_floor_domain = bool(
-            np.count_nonzero(floor_supported) >= max(100, rows * cols * 0.05)
+        overhead_cells = (
+            _cell_counts(h_x[horizontal_patch], h_z[horizontal_patch], x0, z0, rows, cols)
+            >= OVERHEAD_MIN_POINTS
         )
+        wall_cells = wall_cells.astype(np.uint8)
+        overhead_cells = overhead_cells.astype(np.uint8)
+        no_floor_cells = no_floor_cells.astype(np.uint8)
 
         # Independent camera layer, at eye level and without robot inflation.
         camera_band = (heights >= floor_y + CAMERA_BAND_MIN_M) & (
             heights <= floor_y + CAMERA_BAND_MAX_M
         )
-        camera_cols = np.floor((h_x[camera_band] - x0) / CELL_M).astype(np.int64)
-        camera_rows = np.floor((h_z[camera_band] - z0) / CELL_M).astype(np.int64)
-        camera_inside = (
-            (camera_cols >= 0) & (camera_cols < cols) & (camera_rows >= 0) & (camera_rows < rows)
-        )
-        camera_per_cell = np.bincount(
-            camera_rows[camera_inside] * cols + camera_cols[camera_inside], minlength=rows * cols
-        ).reshape(rows, cols)
-        camera_cells = (camera_per_cell >= CAMERA_STRUCTURE_MIN_POINTS).astype(np.uint8)
+        camera_cells = (
+            _cell_counts(h_x[camera_band], h_z[camera_band], x0, z0, rows, cols)
+            >= CAMERA_STRUCTURE_MIN_POINTS
+        ).astype(np.uint8)
 
-        blocked |= object_cells
-        blocked |= structural_cells
-        if use_floor_domain:
-            blocked |= (floor_supported == 0).astype(np.uint8)
+        blocked = object_cells | wall_cells | overhead_cells | no_floor_cells
+        # Close one cell before the agent radius is inflated, so a one-cell
+        # pinhole between two surfaces is not a corridor.
+        if CLOSE_MASK_CELLS > 0:
+            kernel_size = 2 * CLOSE_MASK_CELLS + 1
+            kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+            blocked = cv2.morphologyEx(blocked, cv2.MORPH_CLOSE, kernel)
+        blocked[0, :] = 1
+        blocked[-1, :] = 1
+        blocked[:, 0] = 1
+        blocked[:, -1] = 1
 
         grid_instance = cls(
             area={"x0": x0, "z0": z0, "x1": x1, "z1": z1},
@@ -319,11 +644,31 @@ class Grid:
         grid_instance.occupancy_fallback = False
         grid_instance.obstacles_from = "objects+structure" if objects else "structure"
         grid_instance.object_cells = int(np.sum(object_cells == 1))
-        grid_instance.structural_cells = int(np.sum(structural_cells == 1))
-        grid_instance.structure_min_points = int(structure_min_points)
+        grid_instance.object_boxes = object_boxes
+        grid_instance.object_boxes_skipped_large = object_boxes_skipped_large
+        grid_instance.object_boxes_skipped_room = object_boxes_skipped_room
+        grid_instance.floor_domain = True
+        grid_instance.floor_cells = int(np.sum(floor_cells == 1))
+        grid_instance.no_floor_cells = int(np.sum(no_floor_cells == 1))
+        grid_instance.wall_cells = int(np.sum(wall_cells == 1))
+        grid_instance.overhead_cells = int(np.sum(overhead_cells == 1))
+        # Cells the capture's own surfaces blocked, under the old key name. The
+        # floor layer is reported on its own: it blocks for lack of evidence,
+        # which is not a surface.
+        grid_instance.structural_cells = int(np.sum((wall_cells | overhead_cells) == 1))
+        grid_instance.structure_min_points = None
+        # The raw layers are kept for the debug raster, the tests and the
+        # "is this cell behind a wall" check: the inflated mask alone cannot
+        # say which surface closed a cell.
+        grid_instance.layers = {
+            "object": object_cells,
+            "wall": wall_cells,
+            "overhead": overhead_cells,
+            "floor": floor_cells,
+            "floor_absent": no_floor_cells,
+        }
         grid_instance.camera_mask = camera_cells
         grid_instance.camera_cells = int(np.sum(camera_cells == 1))
-        grid_instance.floor_domain = use_floor_domain
         grid_instance.blocked_fraction = round(blocked_cells / max(1, total_cells), 4)
         grid_instance.saturated = bool(grid_instance.blocked_fraction > MAX_BLOCKED_FRACTION)
         return grid_instance
@@ -633,6 +978,56 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
     }
 
 
+def reachable_cells(grid: Grid, start: tuple[float, float]) -> np.ndarray:
+    """Boolean mask of the cells A* can reach from `start` without corner clipping.
+
+    Orthogonal moves only, which is a subset of what A* allows, so every marked
+    cell really is reachable and the mask can be used to place a goal.
+    """
+    reachable = np.zeros((grid.rows, grid.cols), dtype=bool)
+    cell = grid.nearest_walkable(*grid.to_cell(start), max_m=1.0)
+    if cell is None:
+        return reachable
+    reachable[cell] = True
+    stack = [cell]
+    while stack:
+        row, column = stack.pop()
+        for row_step, column_step in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            next_row, next_column = row + row_step, column + column_step
+            if not (0 <= next_row < grid.rows and 0 <= next_column < grid.cols):
+                continue
+            if reachable[next_row, next_column] or not grid.walkable(next_row, next_column):
+                continue
+            reachable[next_row, next_column] = True
+            stack.append((next_row, next_column))
+    return reachable
+
+
+def nearest_reachable_ground(
+    grid: Grid,
+    start: tuple[float, float],
+    target: tuple[float, float],
+    max_m: float = SERVICE_FALLBACK_RADIUS_M,
+) -> tuple[float, float] | None:
+    """The walkable cell closest to `target` that the robot can reach from `start`."""
+    reachable = reachable_cells(grid, start)
+    rows, columns = np.nonzero(reachable)
+    if rows.size == 0:
+        return None
+    # to_world is the inverse of to_cell, and half a cell matters: the reachable
+    # cells of one row differ by a whole cell, so a position half a cell off maps
+    # back to its neighbour through to_cell and A* then refuses the goal.
+    centres_x = grid.x0 + columns * CELL_M
+    centres_z = grid.z0 + rows * CELL_M
+    distance = np.hypot(centres_x - float(target[0]), centres_z - float(target[1]))
+    best = int(np.argmin(distance))
+    if float(distance[best]) > max_m:
+        return None
+    world_row = int(rows[best])
+    world_column = int(columns[best])
+    return grid.to_world(world_row, world_column)
+
+
 def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) -> list[tuple[float, float]]:
     """Simplify grid path using line-of-sight shortcutting without sacrificing clearance."""
     if len(path_2d) <= 2:
@@ -912,6 +1307,12 @@ def build_route(
     if scene_path and scene_path.exists():
         data = np.load(scene_path)
         points = data["xyz"] if "xyz" in data else data["points"]
+        # The floor and wall rules read the gaussians' own shape, so the normals
+        # come from the same artifact. A capture without them still builds a
+        # grid: the span and patch tests then apply to every point.
+        normals = None
+        if "rot" in data.files and "size" in data.files:
+            normals = surface_normals(data["rot"], data["size"])
         floor_y, _, _ = detect_floor(
             points,
             up_axis=up_axis,
@@ -930,7 +1331,7 @@ def build_route(
                 min(float(agent_height_m), float(walkable_ceiling_m)),
             ),
             safety_margin_m=ROUTE_SAFETY_MARGIN_M,
-            structure_min_points=30 if float(agent_height_m) > 0.6 else None,
+            normals=normals,
         )
     else:
         # No scene artifact: plan on an empty floor so the route document is
@@ -952,18 +1353,29 @@ def build_route(
                 raise ValueError(f"Configured start for {capture_name!r} is not on the walkable floor")
             start_2d = grid.to_world(*cell)
 
+    target_centre_2d: tuple[float, float] | None = None
+    goal_from = "service_ring"
     if target_box:
         goal_2d = compute_service_waypoint(target_box, grid, up_axis=up_axis)
+        c = (
+            target_box.get("centre")
+            or target_box.get("center")
+            or target_box.get("pos")
+            or [0.0, 0.0, 0.0]
+        )
+        target_centre_2d = (
+            float(c[0]), float(c[2]) if up_axis == 1 else float(c[1])
+        )
         if not goal_2d:
-            c = (
-                target_box.get("centre")
-                or target_box.get("center")
-                or target_box.get("pos")
-                or [0.0, 0.0, 0.0]
-            )
-            goal_2d = (float(c[0]) + 0.9, float(c[2]) if up_axis == 1 else float(c[1]))
+            # No service ground beside the footprint. That happens when the asset
+            # is mounted above the floor, and the older fallback dropped the goal
+            # 0.9 m off the asset wherever that landed: in the boiler room it
+            # landed on air. The goal is resolved after the start is final, below.
+            goal_2d = None
+            goal_from = "nearest_reachable_ground"
     else:
         goal_2d = (grid.x0 + grid.width_m * 0.7, grid.z0 + grid.depth_m * 0.7)
+        goal_from = "area_centre"
 
     horizontal = [axis for axis in range(3) if axis != up_axis]
 
@@ -987,6 +1399,14 @@ def build_route(
                 f"{agent_radius_m:g} m clearance"
             )
 
+    if goal_2d is None and target_centre_2d is not None:
+        goal_2d = nearest_reachable_ground(grid, start_2d, target_centre_2d)
+        if goal_2d is not None:
+            goal_from = "nearest_reachable_ground"
+        else:
+            goal_2d = (target_centre_2d[0] + 0.9, target_centre_2d[1])
+            goal_from = "off_asset_offset"
+
     if goal_override is not None:
         # A destination is an object centre, so it usually lands inside that
         # object's inflated footprint. Snap outward up to 2.5 m to the nearest
@@ -994,6 +1414,7 @@ def build_route(
         goal_2d = _nearest_free(
             grid, (float(goal_override[0]), float(goal_override[1])), radius_cells=25
         )
+        goal_from = "goal_override"
 
     # Compute A* path
     plan_result = astar(grid, start_2d, goal_2d)
@@ -1048,6 +1469,7 @@ def build_route(
                 min(float(standing_height_m), float(walkable_ceiling_m)),
             ),
             safety_margin_m=0.0,
+            normals=normals,
         )
         if blockers:
             standing_grid = standing_grid.with_blockers(blockers)
@@ -1110,6 +1532,16 @@ def build_route(
                 merged.append([round(start_m, 2), round(end_m, 2)])
         crouch_spans = merged
 
+    # How far the inspection stops from the target's footprint. 0 for a normal
+    # service waypoint, larger when the asset sits where no floor-level ground
+    # beside it exists and the route has to stop on the nearest reachable ground.
+    goal_standoff_m = 0.0
+    if target_box is not None:
+        footprint = object_footprint(target_box, up_axis=up_axis)
+        gap_x = max(footprint.x0 - goal_2d[0], 0.0, goal_2d[0] - footprint.x1)
+        gap_z = max(footprint.z0 - goal_2d[1], 0.0, goal_2d[1] - footprint.z1)
+        goal_standoff_m = float(np.hypot(gap_x, gap_z))
+
     free_count = int(np.sum(grid.free == 1))
     blocked_count = int(np.sum(grid.blocked == 1))
     total_cells = max(1, grid.rows * grid.cols)
@@ -1118,10 +1550,17 @@ def build_route(
     route_doc: dict[str, Any] = {
         "floor_height_m": round(floor_y, 3),
         "up_axis": ("+" if up_axis_sign == 1 else "-") + ("y" if up_axis == 1 else "z"),
+        # The robot profile and the layer sources are part of the document, not
+        # only of grid_stats: the viewer and the notes read them from here.
+        "obstacles_from": getattr(grid, "obstacles_from", "points"),
+        "agent_radius_m": round(float(agent_radius_m), 3),
+        "agent_height_m": round(float(agent_height_m), 3),
         "start": [round(start_2d[0], 3), y_render, round(start_2d[1], 3)],
         "target_asset_id": target_asset_id,
         "target_object_id": target_box.get("id") if target_box else None,
         "target_waypoint": [round(goal_2d[0], 3), y_render, round(goal_2d[1], 3)],
+        "target_waypoint_from": goal_from,
+        "target_waypoint_standoff_m": round(goal_standoff_m, 2),
         "planned_height_m": round(float(agent_height_m), 3),
         "crouch_spans_m": crouch_spans,
         "reachable": plan_result["reachable"],
@@ -1158,6 +1597,7 @@ def build_route(
         },
         "grid_stats": {
             "robot_height_m": round(float(agent_height_m), 3),
+            "agent_height_m": round(float(agent_height_m), 3),
             "cols": grid.cols,
             "rows": grid.rows,
             "resolution_m": CELL_M,
@@ -1165,7 +1605,20 @@ def build_route(
             "blocked_cells": blocked_count,
             "blocked_fraction": round(blocked_fraction, 4),
             "object_blocked_cells": int(getattr(grid, "object_cells", 0)),
+            "object_boxes": int(getattr(grid, "object_boxes", 0)),
+            "object_boxes_skipped_large": int(getattr(grid, "object_boxes_skipped_large", 0)),
+            "object_boxes_skipped_room": int(getattr(grid, "object_boxes_skipped_room", 0)),
+            "object_max_footprint_m2": OBJECT_MAX_FOOTPRINT_M2,
+            "object_max_side_m": OBJECT_MAX_SIDE_M,
             "structural_blocked_cells": int(getattr(grid, "structural_cells", 0)),
+            "floor_blocked_cells": int(getattr(grid, "no_floor_cells", 0)),
+            "floor_cells": int(getattr(grid, "floor_cells", 0)),
+            "wall_blocked_cells": int(getattr(grid, "wall_cells", 0)),
+            "overhead_blocked_cells": int(getattr(grid, "overhead_cells", 0)),
+            "walls_from": WALLS_FROM,
+            "floor_tolerance_m": FLOOR_TOLERANCE_M,
+            "overhead_min_height_m": OVERHEAD_MIN_HEIGHT_M,
+            "overhead_min_points": OVERHEAD_MIN_POINTS,
             "structure_min_points": getattr(grid, "structure_min_points", None),
             "blocked_fraction_limit": MAX_BLOCKED_FRACTION,
             "saturated": bool(blocked_fraction > MAX_BLOCKED_FRACTION),

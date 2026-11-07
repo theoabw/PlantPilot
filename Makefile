@@ -33,6 +33,7 @@ ASSETS ?= $(CAPTURE_DIR)/assets.json
 ANCHORS ?= $(CAPTURE_DIR)/anchors.json
 FILTERS ?= data/viewer/filters/$(notdir $(CAPTURE_DIR))
 ANCHORS_FIXTURE ?= fixtures/scene/anchors_$(CAPTURE).json
+INSTANCES_FIXTURE ?= fixtures/scene/instances_$(CAPTURE).json
 MAPPED ?= $(CAPTURE_DIR)/mapped.json
 ROUTE ?= $(CAPTURE_DIR)/route.json
 DIAGNOSIS ?= $(CAPTURE_DIR)/diagnosis.json
@@ -40,7 +41,7 @@ DIAGNOSIS ?= $(CAPTURE_DIR)/diagnosis.json
 # The browser viewer's copy of the capture: sane prefix only, core properties
 # only. VIEWER_PLY is set by CAPTURE above.
 
-.PHONY: demo web web-build scene objects anchors object-meshes object-splats filter-assets splat-asset pack map diagnose pipeline route test check clean assets
+.PHONY: demo web web-build scene objects audit anchors object-meshes object-splats filter-assets splat-asset pack map diagnose pipeline route test check clean assets
 
 ## scene: ingest the splat into data/scene/scene.npz
 scene:
@@ -49,6 +50,12 @@ scene:
 ## objects: extract framed objects from the scene into data/scene/objects.json
 objects:
 	$(PY) python -m plantpilot.segment --scene $(SCENE) --out $(OBJECTS)
+	$(PY) python -m plantpilot.classes --objects $(OBJECTS) --out $(OBJECTS) --instances $(INSTANCES_FIXTURE)
+
+## audit: measure whether the framed objects are whole instances or fragments
+audit: objects
+	$(PY) python scripts/object_audit.py --objects $(OBJECTS) --anchors $(ANCHORS_FIXTURE) \
+	  --scene $(SCENE) --out $(CAPTURE_DIR)/object_audit.json --markdown
 
 ## object-splats: one splat asset per reviewed anchor for the object atlas
 object-splats: anchors

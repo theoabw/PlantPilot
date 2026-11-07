@@ -63,7 +63,6 @@ type Props = {
   hideSplat: boolean
   explode: number
   objectAssets: { id: string; label: string; url: string; kind: 'splat' | 'mesh' }[]
-  occluderObjects: RoomObject[]
   mappedFrames: { id: string; tag: string; state: string; centre: [number, number, number]; axes: [number, number, number][]; extents: [number, number, number] }[]
   showMappedFrames: boolean
   obstacleMode: boolean
@@ -114,6 +113,11 @@ function movementKey(key: string): string {
 // Surface and structure frames are room-sized and would drown the equipment,
 // so they stay quiet until selected.
 const QUIET_CLASSES = new Set(['surface', 'structure', 'beam'])
+// Splats below this alpha are composited colour the image barely shows, so they
+// must not change the depth the overlays test against. The fog and veil
+// gaussians that made objects vanish in mid air sit below it, while the paint
+// that actually forms a machine surface sits above it.
+const DEPTH_ALPHA_CUT = 0.08
 // The rubric asks for assets near the robot to be highlighted as it walks.
 const NEARBY_RADIUS_M = 2.5
 const SELECTED_COLOUR = 0xffffff
@@ -499,7 +503,7 @@ function buildRobot(profile: RobotProfile): THREE.Group {
   return group
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, occluderObjects, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, characterResetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -524,7 +528,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     obstacleGroup: THREE.Group
     occupancy: THREE.InstancedMesh | null
     decorGroup: THREE.Group | null
-    occluderGroup: THREE.Group | null
+    depthSplats: THREE.Mesh | null
     mappedGroup: THREE.Group | null
     placeRobotAt: ((dt: number) => void) | null
     updateArrows: (() => void) | null
@@ -589,10 +593,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   selectRef.current = onSelect
   const tripRef = useRef(onTrip)
   tripRef.current = onTrip
-  const occluderObjectsRef = useRef(occluderObjects)
-  occluderObjectsRef.current = occluderObjects
-  const showRobotRef = useRef(showRobot)
-  showRobotRef.current = showRobot
   const followRef = useRef(follow)
   followRef.current = follow
   const cameraMoveRef = useRef(cameraMove)
@@ -675,12 +675,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     world.add(objectGroup)
     const obstacleGroup = new THREE.Group()
     world.add(obstacleGroup)
-    // Invisible volumes of the reviewed equipment, rendered into depth before
-    // the robot so the robot is occluded by plant instead of floating on top of
-    // it. The splat pass does not write depth, so object volumes stand in for
-    // the real surfaces at demo scale.
-    const occluderGroup = new THREE.Group()
-    scene.add(occluderGroup)
     // Faint proposal frames for every Excel record that was mapped to a raw
     // object, so the demo shows the full mapping without calling them reviewed.
     const mappedGroup = new THREE.Group()
@@ -692,6 +686,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     scene.add(keyLight)
 
     let spark: SparkRenderer | null = null
+    let depthSplats: THREE.Mesh | null = null
     try {
       spark = new SparkRenderer({
         renderer,
@@ -702,6 +697,11 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         maxPixelRadius: 192,
         minAlpha: 0.01,
         minSortIntervalMs: 50,
+        // The colour pass is unchanged painter's order: no depth test, no depth
+        // write, so the splat image is exactly the one this viewer drew before.
+        // Depth for occlusion comes from a second, colourless draw below.
+        depthTest: false,
+        depthWrite: false,
         onDirty: requestRender,
       })
       // Spark caps the splats it accumulates (2^19 by default); a capture above
@@ -714,6 +714,42 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       // visible. Drawn in the default order the splat pass covers them.
       spark.renderOrder = -1
       scene.add(spark)
+
+      // Depth pass. The overlays need the distance of the surface the image
+      // shows, and the alpha-blended colour pass cannot provide it: it blends
+      // back to front and writes no depth. This is the same accumulated splats
+      // drawn again before the colour pass with colour writes off and a much
+      // higher opacity cut, so only splats that actually paint the picture
+      // reach the depth buffer. A faint veil of large, low-alpha gaussians is
+      // not a surface: under the colour pass' cut (0.01) it writes depth across
+      // a wide footprint and punches invisible holes in anything behind it,
+      // which is why the cut here is high. The draw shares the accumulation and
+      // geometry with the SparkRenderer and refreshes Spark's per-frame uniforms
+      // itself, because it runs first.
+      const depthMaterial = new THREE.ShaderMaterial({
+        glslVersion: THREE.GLSL3,
+        vertexShader: spark.material.vertexShader,
+        fragmentShader: spark.material.fragmentShader,
+        uniforms: { ...spark.uniforms, minAlpha: { value: DEPTH_ALPHA_CUT } },
+        premultipliedAlpha: true,
+        transparent: true,
+        depthTest: true,
+        depthWrite: true,
+        colorWrite: false,
+        side: THREE.DoubleSide,
+      })
+      // GL only updates depth while the depth test runs. Always pass: the
+      // splats are already drawn in radial order, and a normal test would reject
+      // splats whose centres sit farther than a neighbour drawn first.
+      depthMaterial.depthFunc = THREE.AlwaysDepth
+      const depthMesh = new THREE.Mesh(spark.geometry, depthMaterial)
+      depthMesh.frustumCulled = false
+      depthMesh.renderOrder = -2
+      depthMesh.onBeforeRender = (target, render, camera) => {
+        spark?.onBeforeRender(target, render, camera)
+      }
+      scene.add(depthMesh)
+      depthSplats = depthMesh
     } catch (problem) {
       setGlError(problem instanceof Error ? problem.message : String(problem))
     }
@@ -1330,7 +1366,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     let lastReport = 0
     let lastNearby = 0
     let lastNearbyKey = ''
-    let lastOccluderCheck = 0
     let lastRenderMs = 0
     let lastPerf = performance.now()
     let frames = 0
@@ -1367,19 +1402,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           )
           if (stateRef.current?.motion.active) {
             renderRef.current()
-          }
-        }
-        if (now - lastOccluderCheck > 150 && stateRef.current?.occluderGroup) {
-          lastOccluderCheck = now
-          const live = stateRef.current
-          const cameraScene = camera.position.clone().applyQuaternion(live.world.quaternion.clone().invert())
-          const inside = occluderObjectsRef.current.some((object) => {
-            const centre = new THREE.Vector3(...object.centre)
-            const radius = Math.max(...object.extents) * 0.55
-            return cameraScene.distanceTo(centre) < radius
-          })
-          if (live.occluderGroup) {
-            live.occluderGroup.visible = showRobotRef.current && !inside
           }
         }
         const liveState = stateRef.current
@@ -1560,7 +1582,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       obstacleGroup: new THREE.Group(),
       occupancy: null,
       decorGroup: null,
-      occluderGroup: null,
+      depthSplats: null,
       mappedGroup: null,
       placeRobotAt: null,
       updateArrows: null,
@@ -1609,8 +1631,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       centre: new THREE.Vector3(0, 1, 0),
       radius: 5,
     }
-    stateRef.current.occluderGroup = occluderGroup
     stateRef.current.mappedGroup = mappedGroup
+    stateRef.current.depthSplats = depthSplats
     stateRef.current.placeRobotAt = placeRobot
     stateRef.current.updateArrows = updateArrowTrail
 
@@ -1911,6 +1933,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     if (state.splat) {
       state.splat.visible = !hideSplat
     }
+    if (state.depthSplats) {
+      state.depthSplats.visible = !hideSplat
+    }
     renderRef.current()
   }, [hideSplat, filterUrl])
 
@@ -2037,56 +2062,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.renderer.render(state.scene, state.camera)
   }, [mappedFrames, showMappedFrames, frameKey])
 
-  // Invisible depth volumes of the reviewed equipment. Drawing these after the
-  // splats but before the robot gives the robot a real depth test against the
-  // machines, so it no longer shows through tanks and cabinets.
-  useEffect(() => {
-    const state = stateRef.current
-    const group = state?.occluderGroup
-    if (!state || !group) {
-      return
-    }
-    for (const child of [...group.children]) {
-      group.remove(child)
-      const mesh = child as THREE.Mesh
-      mesh.geometry?.dispose()
-      const shared = mesh.material as THREE.Material | THREE.Material[] | undefined
-      if (Array.isArray(shared)) {
-        shared.forEach((entry) => entry.dispose())
-      } else {
-        shared?.dispose()
-      }
-    }
-    if (occluderObjects.length === 0) {
-      renderRef.current()
-      return
-    }
-    const material = new THREE.MeshBasicMaterial({
-      colorWrite: false,
-      transparent: true,
-      opacity: 0,
-      depthWrite: true,
-      depthTest: true,
-      side: THREE.DoubleSide,
-    })
-    const world = state.world.quaternion
-    for (const object of occluderObjects) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material)
-      mesh.scale.set(object.extents[0] * 0.92, object.extents[1] * 0.92, object.extents[2] * 0.92)
-      mesh.position.copy(new THREE.Vector3(...object.centre).applyQuaternion(world))
-      const basis = new THREE.Matrix4().makeBasis(
-        new THREE.Vector3(...object.axes[0]),
-        new THREE.Vector3(...object.axes[1]),
-        new THREE.Vector3(...object.axes[2]),
-      )
-      mesh.quaternion.setFromRotationMatrix(basis).premultiply(world)
-      mesh.renderOrder = 2
-      group.add(mesh)
-    }
-    renderRef.current()
-    state.renderer.render(state.scene, state.camera)
-  }, [occluderObjects, frameKey, showRobot])
-
   // Obstacle markers: a translucent barrier on the floor where the user placed one.
   useEffect(() => {
     const state = stateRef.current
@@ -2141,9 +2116,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.routeGroup.visible = showRobot
     if (state.decorGroup) {
       state.decorGroup.visible = showRoute
-    }
-    if (state.occluderGroup) {
-      state.occluderGroup.visible = showRobot
     }
     if (state.mappedGroup) {
       state.mappedGroup.visible = showMappedFrames

@@ -14,6 +14,7 @@ import {
   fetchReroute,
   filterAssetUrl,
   splatAssetUrl,
+  upVector,
 } from './api'
 import type {
   Diagnosis,
@@ -31,6 +32,7 @@ import type {
   RoomObjectSplats,
   RoomObjects,
   RoomRoute,
+  RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
 
@@ -52,6 +54,20 @@ const VIEW_OPTIONS = [
 
 const humanize = (value: string | null | undefined): string =>
   (value ?? '').replace(/_/g, ' ').trim().toLowerCase()
+
+/** World-vertical extent of an oriented box, for a capture with any up axis. */
+function boxHeight(
+  axes: [number, number, number][],
+  extents: number[],
+  upAxis: string | undefined,
+): number {
+  const up = upVector(upAxis)
+  return axes.reduce(
+    (total, axis, index) =>
+      total + Math.abs(axis[0] * up[0] + axis[1] * up[1] + axis[2] * up[2]) * extents[index],
+    0,
+  )
+}
 
 const CONDITION_TEXT: Record<string, string> = {
   healthy: 'Healthy',
@@ -224,6 +240,27 @@ export default function RoomLab() {
       alive = false
     }
   }, [trip.mode, diagnosis, destinationTag, mapped])
+
+  // A camera pose in the URL pins the view, for comparing two builds from the
+  // same viewpoint. Coordinates are in the capture's own frame, like the object
+  // centres, for example ?eye=0.2,-0.2,4.5&target=-1.9,0.8,2.3. A pinned view
+  // also stops the follow camera from moving it once the robot starts driving.
+  const pinnedPose = useMemo<RoomCamera | null>(() => {
+    const read = (value: string | null): [number, number, number] | null => {
+      if (!value) {
+        return null
+      }
+      const parts = value.split(',').map(Number)
+      if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+        return null
+      }
+      return [parts[0], parts[1], parts[2]]
+    }
+    const params = new URLSearchParams(window.location.search)
+    const eye = read(params.get('eye'))
+    const target = read(params.get('target'))
+    return eye && target ? { eye, target, up: [0, 1, 0] } : null
+  }, [])
 
   const reviewed = useMemo<RoomObject[]>(() => {
     return (anchors?.anchors ?? []).map((anchor: RoomAnchor): RoomObject => ({
@@ -425,6 +462,15 @@ export default function RoomLab() {
     }
     return selectedRow?.record ?? anchorById.get(selectedId) ?? data?.objects.find((object) => object.id === selectedId) ?? null
   }, [selectedId, selectedRow, anchorById, data])
+
+  // The reviewed anchor carries the multi-view fusion evidence. The card shows
+  // it so a reader can see the box was measured from many views, not proposed.
+  const selectedAnchor = useMemo(() => {
+    if (!selectedId) {
+      return null
+    }
+    return anchors?.anchors.find((anchor) => anchor.id === selectedId) ?? null
+  }, [selectedId, anchors])
 
   const selectedMapping = useMemo(() => {
     if (!selectedId) {
@@ -748,7 +794,7 @@ export default function RoomLab() {
             mappedIds={mappedIds}
             targetId={displayTargetId}
             targetPoint={destinationScene ?? targetPoint}
-            cameraPose={null}
+            cameraPose={pinnedPose}
             maxSplats={data.source.points + 20_000}
             splatUrl={splatAssetUrl(data.source.points)}
             filterUrl={view === 'photo' || view === 'objects' ? null : filterAssetUrl(view)}
@@ -760,7 +806,6 @@ export default function RoomLab() {
             hideSplat={view === 'objects'}
             explode={explode}
             objectAssets={objectAssets}
-            occluderObjects={reviewed}
             mappedFrames={mappedFrames}
             showMappedFrames={showMappedFrames}
             obstacleMode={obstacleMode}
@@ -778,8 +823,8 @@ export default function RoomLab() {
             firstPerson={firstPerson}
             route={route}
             tripToken={tripToken}
-            follow={follow}
             cameraMove={cameraMove}
+            follow={pinnedPose ? false : follow}
             focus={follow || driving}
             onNearby={setNearby}
             onTrip={setTrip}
@@ -1115,6 +1160,26 @@ export default function RoomLab() {
                   SAM 3 check: {selectedObject.sam3.label} · score {selectedObject.sam3.score.toFixed(2)} ·{' '}
                   {selectedObject.sam3.views} views · centre agrees within{' '}
                   {selectedObject.sam3.centre_delta_m.toFixed(2)} m
+                </p>
+              ) : null}
+              {selectedAnchor?.fused && (selectedAnchor.fused.views ?? 0) > 0 ? (
+                <p className="text-[10px] font-semibold leading-snug text-cyan-300/80">
+                  Fusion check:{' '}
+                  {[
+                    `${selectedAnchor.fused.views} views`,
+                    selectedAnchor.fused.score != null
+                      ? `score ${selectedAnchor.fused.score.toFixed(2)}`
+                      : null,
+                    `box ${boxHeight(selectedAnchor.axes, selectedAnchor.extents, data?.source.up_axis).toFixed(2)} m`,
+                    selectedAnchor.fused.floor_gap_m != null
+                      ? `${selectedAnchor.fused.floor_gap_m.toFixed(2)} m stand gap`
+                      : null,
+                    selectedAnchor.fused.visible_fraction != null
+                      ? `${Math.round(selectedAnchor.fused.visible_fraction * 100)} percent visible`
+                      : null,
+                  ]
+                    .filter((part): part is string => Boolean(part))
+                    .join(', ')}
                 </p>
               ) : null}
             </div>

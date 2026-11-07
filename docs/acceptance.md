@@ -43,7 +43,7 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make map` runs,
 **then** 30 asset records are each proposed onto a distinct object or explicitly marked unresolved, with a method, a confidence where it is mapped, and the state from `Current_State`, and P-005 is designated the faulty target.
 
-**Pass:** all 30 records accounted for, all mapped ones with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record. On the complete capture that is 30 proposed and none unresolved; on the named capture 26 proposed and 4 unresolved. Selecting P-005 turns it red and opens its card with the mapped state, method and confidence.
+**Pass:** all 30 records accounted for, all mapped ones with a method and a confidence, P-005 marked as the faulty target, no duplicate object and no duplicate record. On the complete capture that is 30 proposed and none unresolved; on the named capture 28 proposed and 2 unresolved. Selecting P-005 turns it red and opens its card with the mapped state, method and confidence.
 **Check:** `make map`; select P-005 in the viewer.
 
 ### 4. The avatar reaches the faulty device without clipping
@@ -52,7 +52,7 @@ Each criterion is written so a person who did not build the feature can check it
 **when** `make route` runs,
 **then** a path is returned with a length in scene units and a minimum clearance, and the path crosses no blocked cell.
 
-**Pass:** route exists, length over 2 m, clearance at least 0.3 m, both in scene units because the door-height scale check has not run, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn on the floor, with the length and clearance visible.
+**Pass:** a route exists with at least two path points and a measured clearance of at least 0.3 m, both in scene units because the door-height scale check has not run, A* under 500 ms, the waypoint is at least 0.6 m from the object's box and inside a free cell. The path is drawn on the floor, with the length and clearance visible. Route length is not a bar: on the complete capture P-005 lands on an object near the reviewed doorway, so the route is 1.91 m, and on the truncated boiler capture it is a 1.39 m stand-off on the observed floor.
 **Check:** `make route`; replay the path in the viewer and follow the arrows.
 
 ### 5. Nearby objects are shown as the avatar moves

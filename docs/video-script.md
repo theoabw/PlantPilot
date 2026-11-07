@@ -7,7 +7,7 @@ Screen capture of the running app, plus one terminal cut: 2 minutes 44 seconds, 
 The app moved on after this script was written, so these do not match it. Fix them in the edit, not at the shoot:
 
 - The route, the target ring and the robot are only drawn while the robot is moving (`showRoute={driving}` in `RoomLab.tsx`). Beat 3 cannot be shot at idle, so it starts on the click in beat 4.
-- There is no gaussian badge and no object-count badge in the header. The header reads `PlantPilot`, the capture name and `Live`; the framed-object count is in the Capture card.
+- There is no gaussian badge and no object-count badge in the header. The header reads `PlantPilot`, the capture name, the synthetic-scenario badge and the live dot. The gaussian count, the raw object count, the reviewed count, the route and the clearance are in the developer drawer, which Settings opens.
 - There is no `Panel` control; the panel is open or closed, and beat 4 says so.
 - The diagnosis lists up to four evidence references per finding, not an evidence count. 19 and 9 are the number of evidence ids behind each finding in `diagnosis.json`, not numbers on screen.
 - The organiser's guide asks for a video under two minutes. This cut is 2:44, so about 45 seconds has to come out when the beats are assembled.
@@ -16,31 +16,31 @@ The app moved on after this script was written, so these do not match it. Fix th
 
 Scores criterion 1, 30 percent.
 
-**On screen.** Room view, panel open, slow orbit. Hold the header (`PlantPilot`, `Equipment Room`, `Live`) and the Capture card: 150 objects, up axis -y, largest share 1.2 percent. Click a duct frame, then a machine frame; hold each card with class, points, confidence and size. Close the panel, orbit over the frames, reopen.
+**On screen.** Room view, panel open, slow orbit. Hold the header (`PlantPilot`, `Equipment Room`, the synthetic-scenario badge) and the developer drawer: 1,676,481 gaussians and 150 raw objects. Click a duct frame, then a machine frame; hold each card with class, points, confidence and size. Close the panel, orbit over the frames, reopen.
 
-**Voiceover.** "This room was captured with a 3D Gaussian splat: 1,676,481 gaussians. The pipeline finds the floor, reads the up axis, and cuts the room into objects. Every frame is a 3D box around one object: its centre, its size, and a geometric class proposal. On this complete capture we frame 150 objects. The brief names the boiler room capture, and that file is damaged: it declares 1,506,136 gaussians and fills only the first 502,483. The same code frames 130 there."
+**Voiceover.** "This room was captured with a 3D Gaussian splat: 1,676,481 gaussians. The pipeline finds the floor, reads the up axis, and cuts the room into objects. Every frame is a 3D box around one object: its centre, its size, and a class proposal from shape and context. On this complete capture we frame 150 objects. The brief names the boiler room capture, and that file is damaged: it declares 1,506,136 gaussians and fills only the first 502,483. The same code frames 122 there."
 
-**Counts if.** The room and boxes are rendered, not a placeholder; the Capture card reads 150; two selected frames show class, size and confidence; the header names the capture.
+**Counts if.** The room and boxes are rendered, not a placeholder; the drawer reads 150 raw objects; two selected frames show class, size and confidence; the header names the capture.
 
 ## Beat 2. Mapping (0:38 to 1:08, 30 s)
 
 Scores criterion 1, 30 percent; feeds criterion 3.
 
-**On screen.** Open Equipment, switch to the attention filter: `30/30 mapped`, the red "P-005 FOULING" row with OBJ-068. Click the row, zoom, scroll to the mapping record.
+**On screen.** Open Equipment and switch to the attention filter: the panel reads `Synthetic pack records 30/30 procedurally mapped`, with the red "P-005 FOULING" row on OBJ-037. Click the row, zoom, scroll to the mapping record.
 
-**Voiceover.** "The pack designates one faulty target: P-005, fouling, health 44. Our mapping proposes it onto OBJ-068. All thirty package records are proposed onto thirty different objects, each with a method and a match score. The word is proposed: this is a class and size prior over geometry, not a confirmed identification, and the card says so."
+**Voiceover.** "The pack designates one faulty target: P-005, fouling, health 44. Our mapping proposes it onto OBJ-037. All thirty package records are proposed onto thirty different objects, each with a method and a match score. The word is proposed: this is a class and size prior over geometry, not a confirmed identification, and the card says so."
 
-**Counts if.** P-005, FOULING, OBJ-068 legible; method and match score on the record; the on-screen note that the mapping is a proposal; `30/30 mapped` visible.
+**Counts if.** P-005, FOULING, OBJ-037 legible; method and match score on the record; the on-screen note that the mapping is a proposal; `30/30 mapped` visible.
 
 ## Beat 3. Route (1:08 to 1:36, 28 s)
 
 Scores criterion 2, 25 percent.
 
-**On screen.** This shot starts on the click, because the route is only drawn while the robot moves. Click Send robot, then pull back and hold the floor: the path and the target ring are visible, the Route card is bottom right. Hold until "6.4 m" and "0.32 m clearance" read.
+**On screen.** This shot starts on the click, because the route is only drawn while the robot moves. Click Send robot, then pull back and hold the floor: the path and the target ring are visible, and the mission card bottom left reads "1.9 m route" and "0.32 m clearance".
 
-**Voiceover.** "Obstacles come from the extracted boxes and from the capture's own points in the robot's body band, floor plus 0.08 to 0.55. The grid is inflated once for a 0.20 agent radius and a 0.02 safety margin. A star search plans a route of 6.38, clearing the nearest object surface by 0.32. The viewer labels those numbers as metres; the door-height scale check has not been done."
+**Voiceover.** "Obstacles come from the extracted boxes, from the floor the capture never saw, from near-vertical surfaces that run the room's height, and from overhead structure. The grid is inflated once for a 0.20 agent radius and a 0.02 safety margin. A star search plans a route of 1.91, clearing the nearest object surface by 0.32. The viewer labels those numbers as metres; the door-height scale check has not been done."
 
-**Counts if.** The path and the target ring are visible; the Route card shows a distance and "0.32 m clearance"; the robot is near the start.
+**Counts if.** The path and the target ring are visible; the mission card shows a distance and "0.32 m clearance"; the robot is near the start.
 
 ## Beat 4. Walk (1:36 to 2:00, 24 s)
 
@@ -74,18 +74,18 @@ Scores criterion 4, 15 percent.
 
 ## Shot list
 
-1. Room settled, panel open; orbit; badge and Capture card.
+1. Room settled, panel open; orbit; the developer drawer with the counts.
 2. Duct frame card; machine frame card.
 3. Close panel; orbit the frames; reopen.
 4. Equipment attention filter; 30/30 mapped, P-005 row.
 5. Click P-005; zoom; scroll to the mapping record; hold the proposal line.
-6. Send robot; path, target ring, Route card.
+6. Send robot; path, target ring, mission card.
 7. Nearby chips at the start; panel open.
 8. Walk; record 60 fps.
 9. Half-speed walk; three nearby sets; open Panel mid-walk.
 10. Arrival; let the card appear; hold "arrived".
 11. Diagnosis card; one slow scroll.
-12. Terminal: pytest tail; `ls data/scene`.
+12. Terminal: pytest tail; `ls data/equipment`.
 13. End card.
 
 ## Setup checklist
@@ -93,5 +93,5 @@ Scores criterion 4, 15 percent.
 - Build: `make demo` builds the artifacts, the filter assets, the web page and the server, then serves at `http://127.0.0.1:8000`. Open that; the room view is first.
 - 1920 by 1080, 100 percent, one tab, bookmarks and notifications off. Record 60 fps, export 30.
 - Terminal: `export PS1='plantpilot $ '` so no local path shows.
-- Dry run once; confirm the Route card reads 6.1 m and 0.32 m clear. Run `make test`; if it fails, fix it or cut the shot.
+- Dry run once; confirm the mission card reads 1.4 m and 0.32 m clear. Run `make test`; if it fails, fix it or cut the shot.
 - Do not open: developer tools unless a shot calls for them. Do not show: the editor, chat, server logs, other tabs, or any number the app is not printing. No captions over numbers.

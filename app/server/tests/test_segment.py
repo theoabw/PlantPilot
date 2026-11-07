@@ -66,14 +66,33 @@ def test_a_chain_of_voxels_is_one_component():
     assert int(labels.max()) + 1 == 1
 
 
-def test_a_long_pipe_is_cut_into_pieces_when_it_is_too_long():
+def test_a_continuous_run_is_not_chopped_by_a_size_quota():
+    """A target point count is not evidence that one run is several objects.
+
+    The extraction used to cut this run into pieces because it was longer than
+    the extent limit and because a target size was available. That is the cut
+    that turned the washing machine into three boxes, so the run now stays whole
+    and the size quota is only a limit that asks the question.
+    """
     axis = np.arange(-1.0, 1.0, 0.01)
     points = np.stack([axis, np.full(axis.size, 0.5), np.zeros(axis.size)], axis=1)
     pieces = seg.split_component(points, target=500, max_points=10_000, max_extent=0.6)
-    assert len(pieces) >= 3
-    assert sum(piece.size for piece in pieces) == points.shape[0]
+    assert len(pieces) == 1
+    assert pieces[0].size == points.shape[0]
+
+
+def test_a_run_with_a_real_gap_is_cut_at_the_gap():
+    axis = np.concatenate([np.arange(-1.0, -0.1, 0.01), np.arange(0.2, 1.0, 0.01)])
+    points = np.stack([axis, np.full(axis.size, 0.5), np.zeros(axis.size)], axis=1)
+    pieces = seg.split_component(points, target=500, max_points=10_000, max_extent=0.6)
+    assert len(pieces) == 2
     rebuilt = np.concatenate([points[piece] for piece in pieces])
     assert rebuilt.shape[0] == points.shape[0]
+    cut = np.concatenate([points[piece, 0] for piece in pieces])
+    assert cut.max() >= -0.1 and cut.min() <= 0.2  # one piece on each side of the gap
+    left = [piece for piece in pieces if points[piece, 0].max() < 0.0]
+    right = [piece for piece in pieces if points[piece, 0].min() > 0.1]
+    assert len(left) == 1 and len(right) == 1
 
 
 def test_the_floor_is_found_and_removed(scene):

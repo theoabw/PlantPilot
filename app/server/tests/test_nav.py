@@ -30,13 +30,19 @@ def test_detect_floor_honours_a_negative_up_axis():
 
 
 def test_grid_from_cloud_and_clearance():
-    # Build point cloud with an obstacle at center (0, 0)
+    # Build point cloud with an obstacle at center (0, 0). The floor is sampled
+    # at 5 cm, so every cell has floor under it: a cell the capture never saw is
+    # no longer walkable, which is the floor rule.
     rng = np.random.default_rng(42)
-    floor_pts = rng.uniform(low=[-4.0, -0.02, -4.0], high=[4.0, 0.02, 4.0], size=(2000, 3))
+    floor_axis = np.arange(-4.0, 4.0, 0.05)
+    floor_x, floor_z = np.meshgrid(floor_axis, floor_axis)
+    floor_pts = np.stack(
+        [floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1
+    )
     # Obstacle pillar from x in [-0.5, 0.5], z in [-0.5, 0.5], y in [0.2, 1.5].
-    # 40000 points is about 108 per 0.1 m cell inside the robot band, dense
-    # enough for the structural layer: 500 points in the same volume was about
-    # 1.3 per cell, which is a sparse cloud, not a pillar.
+    # 40000 points is about 108 per 0.1 m cell, dense enough to be a surface: 500
+    # points in the same volume was about 1.3 per cell, which is a sparse cloud,
+    # not a pillar.
     obs_pts = rng.uniform(low=[-0.5, 0.2, -0.5], high=[0.5, 1.5, 0.5], size=(40000, 3))
     pts = np.vstack([floor_pts, obs_pts])
 
@@ -112,8 +118,11 @@ def test_build_route_contract(tmp_path):
 
 
 def test_equipment_capture_uses_reviewed_door_start(tmp_path):
-    rng = np.random.default_rng(42)
-    points = rng.uniform(low=[-6.0, 0.0, -6.0], high=[6.0, 0.0, 6.0], size=(5000, 3))
+    # A floor observed in every cell: a random scatter leaves cells with no
+    # ground under them, and those are blocked by the floor rule.
+    floor_axis = np.arange(-6.0, 6.0, 0.05)
+    floor_x, floor_z = np.meshgrid(floor_axis, floor_axis)
+    points = np.stack([floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1)
     scene_path = tmp_path / "scene.npz"
     np.savez(
         scene_path,
@@ -124,11 +133,11 @@ def test_equipment_capture_uses_reviewed_door_start(tmp_path):
         })),
     )
 
+    # The floor is a single plane, so floor detection is given the height
+    # directly: this test is about the reviewed start position, not about
+    # estimating a floor from one flat surface.
     route = nav.build_route(
-        scene_path=scene_path,
-        output_path=None,
-        agent_radius_m=0.20,
-        manual_floor_y=0.0,
+        scene_path=scene_path, output_path=None, agent_radius_m=0.20, manual_floor_y=0.0
     )
 
     assert route["start"][0] == pytest.approx(-0.585, abs=0.1)
@@ -140,6 +149,7 @@ def test_equipment_capture_uses_reviewed_door_start(tmp_path):
         scene_path=scene_path,
         output_path=None,
         agent_radius_m=0.20,
+        manual_floor_y=0.0,
         start_override=(1.0, 1.0),
     )
     assert reroute["start"][0] == pytest.approx(1.0, abs=0.1)
@@ -212,20 +222,27 @@ def test_a_y_down_capture_gets_its_path_in_scene_coordinates():
     assert nav.path_height(-1.181, 1) == pytest.approx(-1.131, abs=0.001)
 
 
-def test_objects_become_obstacles_when_the_point_grid_saturates():
-    # a band of points in every cell is what a cluttered capture looks like; the
-    # old code fell back to an empty grid, which is how a route went through a
-    # pump. The extracted box has to become the obstacle instead, and the
-    # structural layer is always part of the union now.
+def test_objects_become_obstacles_when_the_room_is_dense():
+    # a volume of points in the middle of a floored room is what a cluttered
+    # capture looks like; the old code fell back to an empty grid, which is how a
+    # route went through a pump. The extracted box has to become the obstacle
+    # instead, and the point layers are always part of the union now.
     rng = np.random.default_rng(3)
-    dense = rng.uniform(low=[-3.0, 0.2, -3.0], high=[3.0, 1.4, 3.0], size=(20000, 3))
+    floor_axis = np.arange(-3.0, 3.0, 0.05)
+    floor_x, floor_z = np.meshgrid(floor_axis, floor_axis)
+    floor_pts = np.stack([floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1)
+    dense = rng.uniform(low=[-2.0, 0.2, -2.0], high=[2.0, 1.4, 2.0], size=(20000, 3))
     box = {
         "centre": [0.0, 0.5, 0.0],
         "axes": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
         "extents": [1.0, 1.0, 1.0],
     }
-    grid = nav.Grid.from_cloud(dense, floor_y=0.0, up_axis=1, objects=[box], agent_radius_m=0.2)
+    grid = nav.Grid.from_cloud(
+        np.vstack([floor_pts, dense]), floor_y=0.0, up_axis=1, objects=[box], agent_radius_m=0.2
+    )
     assert grid.obstacles_from == "objects+structure"
+    assert grid.object_cells > 0
+    assert grid.floor_cells > 0
     row, column = grid.to_cell((0.0, 0.0))
     assert not grid.walkable(row, column)
     corner_row, corner_column = grid.to_cell((2.5, 2.5))
@@ -239,10 +256,9 @@ def test_objects_become_obstacles_when_the_point_grid_saturates():
 def room_cloud() -> np.ndarray:
     """A closed box room with one doorway, plus a sparse noise band.
 
-    The four perimeter walls are dense vertical surfaces in the robot band, the
-    internal wall blocks everything except a doorway at 0.8 < z < 2.0, and the
-    noise lattice puts at most two points in any 0.1 m cell so that it stays
-    below the measured structural minimum.
+    The four perimeter walls run the height of the room, the internal wall blocks
+    everything except a doorway at 0.8 < z < 2.0, and the noise lattice puts at
+    most two points in any 0.1 m cell so that it never forms a surface.
     """
 
     def vertical_wall(x: float, z_values: np.ndarray, y_values: np.ndarray) -> np.ndarray:
@@ -251,7 +267,9 @@ def room_cloud() -> np.ndarray:
             [np.full(z_grid.size, x), y_grid.ravel(), z_grid.ravel()], axis=1
         )
 
-    y_wall = np.arange(0.10, 0.50 + 1e-9, 0.02)
+    # 1.4 m tall: the wall layer measures how far a surface runs up the room, so
+    # a 0.4 m wall would be a machine parapet, not a wall.
+    y_wall = np.arange(0.10, 1.50 + 1e-9, 0.02)
     along = np.arange(-2.0, 2.0 + 1e-9, 0.02)
     parts = []
     for x in (-2.0, 2.0):
@@ -311,7 +329,11 @@ def test_the_grid_reports_what_each_source_blocked():
     assert grid.obstacles_from == "objects+structure"
     assert grid.object_cells > 0
     assert grid.structural_cells > 0
-    assert grid.structure_min_points == nav.STRUCTURE_MIN_POINTS
+    assert grid.wall_cells > 0
+    assert grid.floor_cells > 0
+    assert grid.no_floor_cells > 0
+    # The count threshold is gone: the wall layer reads the surface, not a count.
+    assert grid.structure_min_points is None
     # the object footprint and the wall are both blocked, the doorway is not
     assert not grid.walkable(*grid.to_cell((1.2, -1.2)))
     assert not grid.walkable(*grid.to_cell((0.0, -0.5)))
@@ -375,9 +397,109 @@ def test_a_tall_robot_blocks_pipework_an_amr_can_walk_under():
     points = np.concatenate([floor, pipe], axis=0)
 
     short = nav.Grid.from_cloud(points, floor_y=0.0, objects=[], walkable_height_max_m=0.55)
-    tall = nav.Grid.from_cloud(
-        points, floor_y=0.0, objects=[], walkable_height_max_m=1.35, structure_min_points=30
-    )
+    tall = nav.Grid.from_cloud(points, floor_y=0.0, objects=[], walkable_height_max_m=1.35)
 
     assert int(getattr(short, "structural_cells", 0)) == 0
     assert int(getattr(tall, "structural_cells", 0)) > 0
+
+
+# ---------------------------------------------------------------------------
+# Review findings: the envelope projection, the goal fallback position, and the
+# non-finite filter against the normals
+# ---------------------------------------------------------------------------
+
+def _turned_box() -> tuple[dict, dict]:
+    """A box turned 35 degrees about the up axis, and its row permutation.
+
+    The rows of `axes` are the box axes and `extents` the lengths along them, so
+    reordering a row together with its length is the same physical box.
+    """
+    angle = np.radians(35.0)
+    cosine, sine = float(np.cos(angle)), float(np.sin(angle))
+    axes = [
+        [cosine, 0.0, -sine],
+        [sine, 0.0, cosine],
+        [0.0, 1.0, 0.0],
+    ]
+    extents = [1.3, 0.8, 0.6]
+    box = {"centre": [1.0, 0.3, 1.0], "axes": axes, "extents": extents}
+    order = [2, 0, 1]
+    permuted = {
+        "centre": [1.0, 0.3, 1.0],
+        "axes": [axes[index] for index in order],
+        "extents": [extents[index] for index in order],
+    }
+    return box, permuted
+
+
+def _box_corner_cloud(box: dict, scale: float = 0.98) -> np.ndarray:
+    """A floor plus two gaussians at the point of the box that the reject loses.
+
+    The point is (e1/2, -e2/2, 0) in the box frame, scaled just inside the
+    surface and at mid height so it sits in the robot's body band. Its world z
+    offset is the box's full z reach, which the row-wise projection of `axes`
+    under-measures, so a reject built from the rows drops it while the true
+    projection keeps it.
+    """
+    axes = np.asarray(box["axes"], dtype=float)
+    extents = np.asarray(box["extents"], dtype=float)
+    local = np.array([extents[0] / 2.0, -extents[1] / 2.0, 0.0]) * scale
+    centre = np.asarray(box["centre"], dtype=float)
+    corner = centre + local @ axes
+    axis = np.arange(0.0, 3.0, 0.05)
+    floor_x, floor_z = np.meshgrid(axis, axis)
+    floor = np.stack([floor_x.ravel(), np.zeros(floor_x.size), floor_z.ravel()], axis=1)
+    return np.vstack([floor, corner, corner])
+
+
+def test_the_envelope_reject_keeps_a_corner_point_of_a_turned_box():
+    box, _ = _turned_box()
+    points = _box_corner_cloud(box)
+    grid = nav.Grid.from_cloud(
+        points, floor_y=0.0, up_axis=1, agent_radius_m=0.15, objects=[box]
+    )
+
+    # The layers rasterise a point into the cell that starts at it (a floor of
+    # the grid offset), which is how write_obstacle_png draws them too.
+    point = points[-1]
+    corner_row = int(np.floor((point[2] - grid.z0) / nav.CELL_M))
+    corner_column = int(np.floor((point[0] - grid.x0) / nav.CELL_M))
+    assert grid.layers["object"][corner_row, corner_column] == 1
+    assert not grid.walkable(corner_row, corner_column)
+
+
+def test_permuting_a_box_axes_with_their_extents_does_not_change_the_object_layer():
+    box, permuted = _turned_box()
+    points = _box_corner_cloud(box)
+    plain = nav.Grid.from_cloud(
+        points, floor_y=0.0, up_axis=1, agent_radius_m=0.15, objects=[box]
+    )
+    reordered = nav.Grid.from_cloud(
+        points, floor_y=0.0, up_axis=1, agent_radius_m=0.15, objects=[permuted]
+    )
+
+    assert plain.object_cells > 0
+    assert np.array_equal(plain.layers["object"], reordered.layers["object"])
+    assert plain.object_cells == reordered.object_cells
+
+
+def test_the_reachable_ground_fallback_lands_on_a_cell_astar_can_use():
+    # Only (5, 5) and (6, 6) are free, and the start is (0.5, 0.5) in metres.
+    # The helper must return the centre of (5, 5) as to_cell reads it: half a
+    # cell off maps to the disconnected (6, 6), and A* then refuses the goal.
+    blocked = np.ones((11, 11), dtype=np.uint8)
+    blocked[5, 5] = 0
+    blocked[6, 6] = 0
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 1.1, "z1": 1.1},
+        blocked_mask=blocked,
+        agent_radius_m=0.0,
+        safety_margin_m=0.0,
+    )
+    assert grid.to_cell((0.5, 0.5)) == (5, 5)
+
+    ground = nav.nearest_reachable_ground(grid, (0.5, 0.5), (1.0, 1.0))
+
+    assert ground is not None
+    assert grid.to_cell(ground) == (5, 5)
+    assert nav.astar(grid, (0.5, 0.5), ground)["reachable"] is True
