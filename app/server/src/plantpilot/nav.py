@@ -937,7 +937,12 @@ def build_route(
     if target_box:
         goal_2d = compute_service_waypoint(target_box, grid, up_axis=up_axis)
         if not goal_2d:
-            c = target_box.get("center", [0.0, 0.0, 0.0])
+            c = (
+                target_box.get("centre")
+                or target_box.get("center")
+                or target_box.get("pos")
+                or [0.0, 0.0, 0.0]
+            )
             goal_2d = (float(c[0]) + 0.9, float(c[2]) if up_axis == 1 else float(c[1]))
     else:
         goal_2d = (grid.x0 + grid.width_m * 0.7, grid.z0 + grid.depth_m * 0.7)
@@ -949,11 +954,25 @@ def build_route(
         grid = grid.with_blockers(blockers)
 
     # A live robot replans from where it stands, not from the artifact's start.
+    # Snapping to a free cell is fine for rounding to the grid, but a large
+    # clearance can block the robot's own dock entirely. Jumping to whichever
+    # free cell is nearest then teleports it across the room and reports a
+    # short route that the robot could never drive, so that case is refused.
+    start_problem = None
     if start_override is not None:
-        start_2d = _nearest_free(grid, (float(start_override[0]), float(start_override[1])))
+        requested_start = (float(start_override[0]), float(start_override[1]))
+        start_2d = _nearest_free(grid, requested_start)
+        snap_m = float(np.hypot(start_2d[0] - requested_start[0], start_2d[1] - requested_start[1]))
+        if snap_m > 0.8:
+            start_problem = (
+                f"the robot does not fit at its current position with "
+                f"{agent_radius_m:g} m clearance"
+            )
 
     # Compute A* path
     plan_result = astar(grid, start_2d, goal_2d)
+    if start_problem:
+        plan_result = {"reachable": False, "path": [], "reason": start_problem}
 
     # The route document is in scene coordinates, so the height above the floor
     # is multiplied by the sign of the up axis. Writing the height coordinate

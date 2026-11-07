@@ -369,11 +369,12 @@ export function splatAssetUrl(version?: number): string {
 export async function fetchReroute(
   blockers: number[][],
   start: [number, number] | null,
+  agentRadiusM = 0.2,
 ): Promise<RoomRoute> {
   const response = await fetch('/api/scene/reroute', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ blockers, start }),
+    body: JSON.stringify({ blockers, start, agent_radius_m: agentRadiusM }),
   })
   if (!response.ok) {
     throw new Error(`/api/scene/reroute answered ${response.status}`)

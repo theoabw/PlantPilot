@@ -61,6 +61,7 @@ type Props = {
   frameOpacity: number
   focusTarget: { centre: [number, number, number]; radius: number } | null
   focusToken: number
+  robotProfile: 'humanoid' | 'amr' | 'cargo'
   route: RoomRoute | null
   tripToken: number
   follow: boolean
@@ -116,7 +117,145 @@ function boxQuaternion(axes: [number, number, number][]): THREE.Quaternion {
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
 }
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
+
+type RobotProfile = 'humanoid' | 'amr' | 'cargo'
+
+/**
+ * A procedural service robot. Two boxes are not a robot; these are simple but
+ * readable industrial figures: a walking humanoid with hi-vis vest and helmet,
+ * or a wheeled AMR with chassis, wheels, mast and lidar. The animation is a
+ * function stored on the group so the render loop can drive it from distance
+ * travelled, which keeps feet and wheels in sync with the route speed.
+ */
+function buildRobot(profile: RobotProfile): THREE.Group {
+  const group = new THREE.Group()
+  group.renderOrder = 3
+  group.userData.profile = profile
+  const material = (color: number, opacity = 1) =>
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity })
+  const mesh = (geometry: THREE.BufferGeometry, color: number, opacity = 1) => {
+    const part = new THREE.Mesh(geometry, material(color, opacity))
+    part.renderOrder = 3
+    return part
+  }
+  const shadow = mesh(new THREE.RingGeometry(0.22, 0.34, 32), 0x0b1220, 0.4)
+  shadow.rotation.x = -Math.PI / 2
+  shadow.position.y = 0.005
+  group.add(shadow)
+
+  if (profile === 'humanoid') {
+    const bob = new THREE.Group()
+    group.add(bob)
+    const legPivots: THREE.Group[] = []
+    for (const side of [-1, 1]) {
+      const pivot = new THREE.Group()
+      pivot.position.set(side * 0.1, 0.82, 0)
+      const leg = mesh(new THREE.BoxGeometry(0.1, 0.7, 0.12), 0x1f2937)
+      leg.position.y = -0.35
+      pivot.add(leg)
+      const boot = mesh(new THREE.BoxGeometry(0.12, 0.08, 0.22), 0x0f172a)
+      boot.position.set(0, -0.72, 0.04)
+      pivot.add(boot)
+      bob.add(pivot)
+      legPivots.push(pivot)
+    }
+    const torso = mesh(new THREE.BoxGeometry(0.32, 0.42, 0.2), 0x334155)
+    torso.position.y = 1.12
+    bob.add(torso)
+    const vest = mesh(new THREE.BoxGeometry(0.33, 0.26, 0.21), 0xfacc15, 0.95)
+    vest.position.y = 1.17
+    bob.add(vest)
+    const shoulders = mesh(new THREE.BoxGeometry(0.44, 0.08, 0.16), 0x475569)
+    shoulders.position.y = 1.34
+    bob.add(shoulders)
+    const armPivots: THREE.Group[] = []
+    for (const side of [-1, 1]) {
+      const pivot = new THREE.Group()
+      pivot.position.set(side * 0.23, 1.3, 0)
+      const arm = mesh(new THREE.BoxGeometry(0.08, 0.5, 0.09), 0x334155)
+      arm.position.y = -0.26
+      pivot.add(arm)
+      const hand = mesh(new THREE.BoxGeometry(0.07, 0.09, 0.08), 0xe2a679)
+      hand.position.y = -0.53
+      pivot.add(hand)
+      bob.add(pivot)
+      armPivots.push(pivot)
+    }
+    const head = mesh(new THREE.SphereGeometry(0.11, 18, 14), 0xe2a679)
+    head.position.y = 1.47
+    bob.add(head)
+    const helmet = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 18), 0xf8fafc)
+    helmet.position.y = 1.55
+    bob.add(helmet)
+    const brim = mesh(new THREE.BoxGeometry(0.24, 0.02, 0.06), 0xf8fafc)
+    brim.position.set(0, 1.53, 0.1)
+    bob.add(brim)
+
+    group.userData.animate = (_time: number, travelled: number, moving: boolean) => {
+      const phase = travelled * 3.6
+      const swing = moving ? 0.55 : 0
+      legPivots[0].rotation.x = Math.sin(phase) * swing
+      legPivots[1].rotation.x = -Math.sin(phase) * swing
+      armPivots[0].rotation.x = -Math.sin(phase) * swing * 0.65
+      armPivots[1].rotation.x = Math.sin(phase) * swing * 0.65
+      bob.position.y = moving ? Math.abs(Math.sin(phase)) * 0.03 : 0
+    }
+    return group
+  }
+
+  const scale = profile === 'cargo' ? 1.7 : 1.0
+  const wheels: THREE.Group[] = []
+  const chassisWidth = 0.5
+  const chassisLength = 0.62
+  const wheelRadius = 0.1
+  for (const side of [-1, 1]) {
+    for (const end of [-1, 1]) {
+      const pivot = new THREE.Group()
+      pivot.position.set(side * (chassisWidth / 2 + 0.01), wheelRadius, end * (chassisLength / 2 - 0.12))
+      const wheel = mesh(new THREE.CylinderGeometry(wheelRadius, wheelRadius, 0.05, 14), 0x0f172a)
+      wheel.rotation.z = Math.PI / 2
+      pivot.add(wheel)
+      group.add(pivot)
+      wheels.push(pivot)
+    }
+  }
+  const chassis = mesh(new THREE.BoxGeometry(chassisWidth, 0.16, chassisLength), 0x334155)
+  chassis.position.y = 0.2
+  group.add(chassis)
+  const deck = mesh(new THREE.BoxGeometry(chassisWidth + 0.03, 0.05, chassisLength + 0.03), 0x475569)
+  deck.position.y = 0.31
+  group.add(deck)
+  const frontLight = mesh(new THREE.BoxGeometry(0.18, 0.05, 0.03), 0x22d3ee, 0.9)
+  frontLight.position.set(0, 0.26, chassisLength / 2 + 0.01)
+  group.add(frontLight)
+  const mast = mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.36, 10), 0x64748b)
+  mast.position.set(-chassisWidth / 2 + 0.1, 0.5, 0)
+  group.add(mast)
+  const lidar = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.055, 16), 0x22d3ee, 0.85)
+  lidar.position.set(-chassisWidth / 2 + 0.1, 0.7, 0)
+  group.add(lidar)
+  if (profile === 'cargo') {
+    const bed = mesh(new THREE.BoxGeometry(chassisWidth + 0.08, 0.1, chassisLength + 0.04), 0x1e293b)
+    bed.position.y = 0.4
+    group.add(bed)
+    const crate = mesh(new THREE.BoxGeometry(0.4, 0.28, 0.4), 0xb45309)
+    crate.position.y = 0.58
+    group.add(crate)
+  }
+  group.scale.setScalar(scale)
+
+  group.userData.animate = (_time: number, travelled: number, moving: boolean) => {
+    for (const pivot of wheels) {
+      pivot.rotation.x = travelled / (wheelRadius * scale)
+    }
+    if (!moving) {
+      group.position.y = group.userData.baseY ?? group.position.y
+    }
+  }
+  return group
+}
+
+export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, selectedId, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, objectMode, hideSplat, explode, objectAssets, obstacleMode, obstacles, robotPositionRef, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, route, tripToken, follow, focus, onNearby, onTrip, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -518,6 +657,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         advanceMotion(dt)
         if (stateRef.current?.follow && stateRef.current.motion.robot) {
           updateFollow(dt)
+        }
+        const animated = stateRef.current?.motion.robot?.userData.animate as
+          | ((time: number, travelled: number, moving: boolean) => void)
+          | undefined
+        if (animated) {
+          animated(now / 1000, stateRef.current?.motion.travelled ?? 0, stateRef.current?.motion.active ?? false)
+          if (stateRef.current?.motion.active) {
+            renderRef.current()
+          }
         }
         const liveState = stateRef.current
         const liveObjects = objectsRef.current
@@ -1700,30 +1848,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       state.routeGroup.add(ring)
     }
 
-    const robot = new THREE.Group()
-    // Spark draws the splats as a transparent pass, so the overlays have to be
-    // transparent too (opacity 1 is fine) to be drawn after the capture.
-    robot.renderOrder = 3
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.44, 0.3, 0.32),
-      new THREE.MeshBasicMaterial({ color: 0x1f2937, transparent: true, opacity: 1 }),
-    )
-    body.position.y = 0.15
-    robot.add(body)
-    const head = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.16, 0.2),
-      new THREE.MeshBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 1 }),
-    )
-    head.position.y = 0.38
-    robot.add(head)
-    const halo = new THREE.Mesh(
-      new THREE.RingGeometry(0.3, 0.38, 32),
-      new THREE.MeshBasicMaterial({ color: ROUTE_COLOUR, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
-    )
-    halo.renderOrder = 3
-    halo.rotation.x = -Math.PI / 2
-    halo.position.y = 0.02
-    robot.add(halo)
+    const robot = buildRobot(robotProfile)
     motion.points = points
     motion.cumulative = cumulative
     motion.curve = curve
@@ -1739,7 +1864,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.updateArrows?.()
     tripRef.current({ mode: 'idle', travelled: 0, total: motion.total })
     renderRef.current()
-  }, [route, floorHeight, upAxis])
+  }, [route, floorHeight, upAxis, robotProfile])
 
   useEffect(() => {
     const state = stateRef.current

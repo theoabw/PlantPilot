@@ -389,6 +389,20 @@ meant for the object atlas and explode view, not for a claim of surveyed
 geometry. Open3D is optional; the stage fails with an install hint when it is
 missing, and every other stage runs without it.
 
+## Robot profiles and clearance
+
+The room view offers a walking humanoid (0.18 m radius), a compact AMR (0.20 m)
+and a cargo AMR (0.45 m). Choosing a profile replans the same grid with that
+radius, so the route, the clearance and even the reachable set change with the
+robot rather than with a cosmetic model swap. The walking humanoid and the
+compact AMR both reach P-005 in about 6.2 m; the cargo AMR is refused honestly
+because the area around the inspection point cannot fit it. A developer slider
+covers the same clearance value by hand.
+
+The robot itself is procedural: a hi-vis humanoid with swinging legs and arms,
+or a wheeled AMR with chassis, wheels, mast and lidar. Both are animated from
+distance travelled, so the walk or the wheel rotation matches the route speed.
+
 ## Live replanning and the area view
 
 The route document carries the occupancy grid it planned on: origin, cell size,
