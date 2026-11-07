@@ -122,7 +122,7 @@ export default function RoomLab() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [view, setView] = useState('photo')
   const [showOutlines, setShowOutlines] = useState(true)
-  const [showMappedFrames, setShowMappedFrames] = useState(true)
+  const [showMappedFrames, setShowMappedFrames] = useState(false)
   const [showOccupancy, setShowOccupancy] = useState(false)
   const [devMode, setDevMode] = useState(false)
   const [showRawDetections, setShowRawDetections] = useState(false)
@@ -245,6 +245,7 @@ export default function RoomLab() {
       category: anchor.category,
       classification_confidence: anchor.classification_confidence,
       evidence: anchor.evidence,
+      sam3: anchor.sam3,
     }))
   }, [anchors])
 
@@ -794,6 +795,9 @@ export default function RoomLab() {
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             Live
           </span>
+          <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-300">
+            Synthetic scenario
+          </span>
         </div>
         <div className="pointer-events-auto flex items-center gap-2">
           <button
@@ -857,7 +861,7 @@ export default function RoomLab() {
                     />
                   </label>
                   <label className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800">
-                    Mapped assets ({mappedFrames.length})
+                    Synthetic pack frames ({mappedFrames.length})
                     <input
                       type="checkbox"
                       checked={showMappedFrames}
@@ -994,8 +998,11 @@ export default function RoomLab() {
             ) : null}
           </div>
           <div className="border-t border-slate-800 px-2 pb-2 pt-1">
-            <p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-              Pack records · {mapped?.counts.mapped ?? 0}/{mapped?.counts.assets ?? 30} mapped
+            <p className="px-2 pb-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-300/80">
+              Synthetic pack records · {mapped?.counts.mapped ?? 0}/{mapped?.counts.assets ?? 30} procedurally mapped
+            </p>
+            <p className="px-2 pb-1 text-[9px] font-semibold leading-snug text-slate-500">
+              Supplied synthetic metadata. The placement is procedural and is not a verified identity or location for this room.
             </p>
             <div className="max-h-44 overflow-y-auto">
               {(mapped?.mappings ?? []).map((record) => (
@@ -1048,7 +1055,7 @@ export default function RoomLab() {
               </h2>
               {selectedMapping?.tag ? (
                 <p className="mt-0.5 text-[10px] font-semibold text-slate-500">
-                  Pack record {selectedMapping.tag} · {humanize(selectedMapping.class)}
+                  Synthetic pack record {selectedMapping.tag} · {humanize(selectedMapping.class)} (procedural, not verified)
                 </p>
               ) : null}
             </div>
@@ -1057,7 +1064,9 @@ export default function RoomLab() {
             </button>
           </div>
           <p className="mt-2 text-xs font-semibold" style={{ color: selectedMapping ? STATE_COLOURS[selectedMapping.state] : '#94a3b8' }}>
-            {selectedMapping ? `Pack condition: ${severityText(selectedMapping)}` : 'No condition data'}
+            {selectedMapping
+              ? `Synthetic scenario condition: ${severityText(selectedMapping)}`
+              : 'No synthetic scenario record'}
           </p>
           {selectedObject.reviewed && selectedObject.observed_type ? (
             <div className="mt-2 space-y-1">
@@ -1081,6 +1090,13 @@ export default function RoomLab() {
               ) : null}
               {selectedObject.evidence ? (
                 <p className="text-[10px] font-semibold leading-snug text-slate-500">{selectedObject.evidence}</p>
+              ) : null}
+              {selectedObject.sam3 ? (
+                <p className="text-[10px] font-semibold leading-snug text-cyan-300/80">
+                  SAM 3 check: {selectedObject.sam3.label} · score {selectedObject.sam3.score.toFixed(2)} ·{' '}
+                  {selectedObject.sam3.views} views · centre agrees within{' '}
+                  {selectedObject.sam3.centre_delta_m.toFixed(2)} m
+                </p>
               ) : null}
             </div>
           ) : (
@@ -1147,6 +1163,9 @@ export default function RoomLab() {
               ? `${(route?.distance_m ?? 0).toFixed(1)} m route · ${(route?.clearance_m ?? 0).toFixed(2)} m clearance`
               : routeMessage(route)}
           </p>
+          <p className="mt-1 text-[9px] font-semibold leading-snug text-amber-300/80">
+            Synthetic builder-pack scenario. Target placement is procedural, not a confirmed fault in this room.
+          </p>
           {crouchSpans.length > 0 && routeReady ? (
             <p className="mt-1 text-[10px] font-semibold text-amber-200">
               Ducks under low pipework for {crouchSpans.reduce((total, [from, to]) => total + Math.max(0, to - from), 0).toFixed(1)} m of this route
@@ -1205,7 +1224,12 @@ export default function RoomLab() {
             <div className="h-full rounded-full bg-cyan-400 transition-[width] duration-300" style={{ width: `${Math.max(3, progress * 100)}%` }} />
           </div>
           {nearbyEquipment.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-1">
+            <p className="mt-2 text-[9px] font-black uppercase tracking-wide text-amber-300/70">
+              Synthetic pack status
+            </p>
+          ) : null}
+          {nearbyEquipment.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1">
               {nearbyEquipment.map((entry) => (
                 <span key={entry.key} className="rounded border px-1.5 py-0.5 text-[10px] font-bold" style={{ borderColor: STATE_COLOURS[entry.state], color: STATE_COLOURS[entry.state] }}>
                   {entry.name}
@@ -1219,7 +1243,7 @@ export default function RoomLab() {
       {showArrival && mission ? (
         <section className="absolute bottom-4 left-4 z-30 w-[24rem] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-700/80 bg-slate-950/95 p-4 shadow-2xl backdrop-blur">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300">
-            {destinationTag === null || destinationTag === mapped?.target_tag ? 'Inspection complete' : 'Arrived'}
+            {destinationTag === null || destinationTag === mapped?.target_tag ? 'Synthetic scenario diagnosis' : 'Arrived'}
           </p>
           <h2 className="mt-1 text-lg font-black leading-tight text-white">
             {destinationTag === null || destinationTag === mapped?.target_tag
@@ -1230,6 +1254,9 @@ export default function RoomLab() {
             <>
               <p className="mt-1 text-xs font-semibold text-slate-300">
                 Health {diagnosis?.health_score ?? 'n/a'} · {diagnosis?.issue?.summary ?? mission.condition}
+              </p>
+              <p className="mt-1 text-[9px] font-semibold leading-snug text-amber-300/80">
+                Computed from the supplied synthetic pack, not measured from this capture.
               </p>
               {diagnosis?.next_safe_check ? (
                 <p className="mt-2 rounded-md border border-slate-700 bg-slate-900/70 px-2 py-1.5 text-[11px] font-semibold leading-snug text-slate-300">
@@ -1510,7 +1537,7 @@ export default function RoomLab() {
           </section>
 
           <section className="mt-2 rounded-lg border border-slate-800 bg-slate-900/60 p-2">
-            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Builder assets</p>
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Synthetic builder assets</p>
             <div className="mt-1 max-h-40 overflow-y-auto">
               {(mapped?.mappings ?? []).map((mapping) => (
                 <div key={mapping.tag} className="flex items-center justify-between gap-2 text-[10px] font-semibold">

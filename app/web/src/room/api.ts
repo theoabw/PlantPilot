@@ -26,6 +26,17 @@ export type RoomObject = {
   category?: string
   classification_confidence?: 'high' | 'medium' | 'low'
   evidence?: string
+  sam3?: {
+    label: string
+    score: number
+    views: number
+    centre: number[]
+    extents: number[]
+    centre_delta_m: number
+    extent_ratio: number[]
+    method?: string
+    note?: string
+  }
 }
 
 export type RoomAnchor = {
@@ -47,6 +58,17 @@ export type RoomAnchor = {
   category?: string
   classification_confidence?: 'high' | 'medium' | 'low'
   evidence?: string
+  sam3?: {
+    label: string
+    score: number
+    views: number
+    centre: number[]
+    extents: number[]
+    centre_delta_m: number
+    extent_ratio: number[]
+    method?: string
+    note?: string
+  }
 }
 
 export type RoomAnchors = {

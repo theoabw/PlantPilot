@@ -165,8 +165,10 @@ The room view is a contextual product shell: a minimal header, a mission card
   raw detections, confidence, occupancy and builder diagnostics. Only the
   reviewed anchors are outlined, labels appear on selection or in developer
   mode, and navigation markers exist only while a mission is running.
-- The room view draws the reviewed anchors as brighter outlines and all mapped
-  pack records as faint proposal frames. The Equipment browser lists every
+- The room view draws the reviewed anchors as brighter outlines. The synthetic
+  pack mapping is a separate layer, off by default and labelled synthetic: the
+  workbook has no physical coordinates, so its records are placed procedurally
+  and must not be read as the identity or condition of the object they land on. The Equipment browser lists every
   pack record by tag and state under `Pack records`, so the full 30 of 30
   mapping is visible without presenting every proposal as reviewed equipment.
   Labels and provenance appear on selection. If a capture has no reviewed
@@ -388,6 +390,8 @@ Each anchor: `id` (`AN-` plus the proposal id suffix), `asset_id`, `class`,
 deliberately generic where the geometry cannot prove a machine class
 (`equipment`, `equipment cluster`), because the audit found the shape rules were
 being used as class rules.
+
+Two anchors carry an independent SAM 3 corroboration: `sam3.label`, `sam3.score`, `sam3.views`, the SAM 3 box and its agreement with the reviewed box. The blue-tank segment agrees within 8 cm at the centre and 10 percent in extents; the washing-machine segment agrees on class and within 11 cm, with a larger box because the masks include surroundings. The equipment card shows this as a SAM 3 check. It is not part of the demo path.
 
 The seven anchors also separate observation from inference. Each carries
 `observed_type` (what the reviewed box visibly contains), `inferred_function`
