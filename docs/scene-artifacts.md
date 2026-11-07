@@ -61,6 +61,23 @@ knowledge documents. Findings refer only to stable row evidence IDs, confidence
 is reduced when data-quality cases touch the target, and the next safe check is
 cited to `DOC-FIELD-SAFETY`.
 
+`reasoning` is computed in the same stage and explains the condition rather than
+restating it. `facts` holds the first and last value of six channels over the
+asset's window and their percentage change, taken from the same rows as the
+evidence. Five claims are generated from those facts, each citing evidence IDs
+the artifact already publishes: the flow falls at a steady speed, pressure holds
+so the head has not collapsed, motor current rises so the pump works for less
+flow, bearing temperature and vibration do not pair as a bearing fault would,
+and the next check stays a check. Three hypotheses follow, with verdicts
+computed from the facts against named thresholds (`FOULING_FLOW_DROP_PCT`,
+`FOULING_SPEED_STABLE_PCT`, `FOULING_PRESSURE_STABLE_PCT`,
+`SENSOR_DRIFT_CURRENT_RISE_PCT`): hydraulic path fouling supported, a restricted
+suction line or a partly closed valve less likely because the head holds, and
+flow sensor drift less likely because the load rises. A verdict drops to
+`cannot separate` when the data does not clear its bar. `guardrail` counts the
+claims, the cited ones and the unsupported ones, so the artifact states its own
+coverage.
+
 `make scene` reads the file it is given and filters it itself, so the counts it
 prints are the counts in the delivered file. The supplied capture declares
 1,506,136 vertices and fills the first 502,483: the tail is uninitialised

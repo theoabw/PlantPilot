@@ -183,6 +183,28 @@ export type DiagnosisFinding = {
   evidence?: DiagnosisEvidence[]
 }
 
+export type ReasoningClaim = {
+  claim_id: string
+  kind: 'observation' | 'inference' | 'action'
+  text: string
+  refs: string[]
+  confidence?: number
+}
+
+export type ReasoningDifferential = {
+  hypothesis: string
+  verdict: 'supported' | 'less likely' | 'cannot separate'
+  because: string
+  refs: string[]
+}
+
+export type Reasoning = {
+  generated_by: string
+  claims: ReasoningClaim[]
+  differential: ReasoningDifferential[]
+  guardrail: { claims: number; cited: number; unsupported: number; refs_resolved: number }
+}
+
 export type Diagnosis = {
   available: boolean
   reason?: string
@@ -194,6 +216,9 @@ export type Diagnosis = {
   trend?: DiagnosisTrend | null
   next_safe_check?: { action: string; document_id: string; reason: string }
   citations?: DiagnosisCitation[]
+  // Written by the reasoning stage when the artifact carries one. Older
+  // artifacts stop after citations, and the card renders the same either way.
+  reasoning?: Reasoning
   data_quality?: {
     confidence_effect?: string
     severity_counts?: Record<string, number>
