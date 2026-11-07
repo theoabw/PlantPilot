@@ -55,7 +55,9 @@ def test_an_ascii_ply_fails_loudly(tmp_path):
         "0 0 0 0 0 0 1 0 0 0 0 0 0 0",
         "",
     ])
-    path.write_text(text)
+    # Write as binary with Unix line endings so the header scanner finds
+    # "end_header\n" on all platforms; text mode uses \r\n on Windows.
+    path.write_bytes(text.encode("ascii"))
     with pytest.raises(splat.SplatError, match="binary_little_endian"):
         splat.read_header(path)
 

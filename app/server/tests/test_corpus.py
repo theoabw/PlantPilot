@@ -41,6 +41,10 @@ def test_search_and_section_against_build_if_present():
     db = Path(__file__).resolve().parents[3] / "data" / "index.db"
     if not db.exists():
         return
+    # Skip when the index exists but has no sections: pdftotext (poppler) was
+    # not available when make corpus ran, so the DB is an empty shell.
+    if corpus.count(db) == 0:
+        return
     rows = corpus.search(db, "cavitation damage", 2)
     assert rows and rows[0]["page"] > 0 and rows[0]["anchor"].startswith("#page=")
     one = corpus.section(db, rows[0]["id"])
