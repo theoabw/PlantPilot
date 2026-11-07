@@ -14,8 +14,9 @@ retained box while walking through a wall the extraction omitted.
   larger than half the room is skipped and that the footprints are inflated once.
 - The floor layer blocks every cell where the capture never saw floor, meaning
   no gaussian within FLOOR_TOLERANCE_M of the floor plane. Ground that was not
-  observed is not ground to walk on, and this is what stops the planner from
-  driving into the space outside the room or behind a wall.
+  observed is not ground to walk on. On a truncated capture this is what stops
+  the planner leaving the room; where a capture sees floor nearly everywhere,
+  as the complete one does, the object and overhead layers hold the perimeter.
 - The vertical-surface layer blocks a cell when a wall crosses the robot's path.
   Each gaussian's own ellipsoid gives its surface normal: the thinnest `size`
   axis, rotated by the `rot` quaternion into the scene frame. A cell blocks when
@@ -47,6 +48,7 @@ import math
 import time
 import zipfile
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -153,6 +155,13 @@ MIN_WAYPOINT_DISTANCE_M = 0.60
 # inspection then stops on the nearest ground the robot can actually reach,
 # within this radius of the asset, instead of a route ending in mid air.
 SERVICE_FALLBACK_RADIUS_M = 2.50
+# How far a live start may snap before it is refused as a robot that does not fit.
+# The Cargo AMR at the door dock snaps 0.85 m, and its body is 0.9 m wide.
+START_SNAP_LIMIT_M = 0.90
+# How far a destination may snap, in cells of the outward search: 2.5 m along an
+# axis, so a machine's inflated footprint never swallows its own inspection stop.
+GOAL_SNAP_CELLS = 25
+NO_ROUTE_REASON = "no walkable route from this position"
 PROXIMITY_RADIUS_M = 2.50
 PROXIMITY_STEP_M = 0.50
 
@@ -686,6 +695,9 @@ class Grid:
         self.blocked[r0:r1, c0:c1] = 1
 
     def _inflate(self) -> None:
+        # Before the dilation: what the capture and the blockers really occupy,
+        # which is what a measured clearance has to be measured against.
+        self.occupied = self.blocked.copy()
         margin = getattr(self, "safety_margin_m", SAFETY_MARGIN_M)
         radius_cells = (self.agent_radius_m + margin) / CELL_M
         k = max(1, int(math.ceil(radius_cells)))
@@ -694,6 +706,18 @@ class Grid:
         self.blocked = cv2.dilate(self.blocked, kernel, iterations=1)
         self.free = (self.blocked == 0).astype(np.uint8)
         self.clearance_m = cv2.distanceTransform(self.free, cv2.DIST_L2, 5) * CELL_M
+
+    def with_inflation(self, agent_radius_m: float, safety_margin_m: float) -> "Grid":
+        """Return a copy for another robot: same layers, inflated for its body."""
+        clone = Grid.__new__(Grid)
+        clone.__dict__.update(self.__dict__)
+        clone.agent_radius_m = float(agent_radius_m)
+        clone.safety_margin_m = float(safety_margin_m)
+        clone.blocked = self.base_blocked.copy()
+        clone._inflate()
+        clone.blocked_fraction = round(float(np.mean(clone.blocked == 1)), 4)
+        clone.saturated = bool(clone.blocked_fraction > MAX_BLOCKED_FRACTION)
+        return clone
 
     def with_blockers(self, blockers: list[list[float]]) -> "Grid":
         """Return a copy with extra blocked rectangles, inflated identically."""
@@ -708,12 +732,17 @@ class Grid:
         return clone
 
     def to_cell(self, point: tuple[float, float] | list[float]) -> tuple[int, int]:
-        col = int(round((float(point[0]) - self.x0) / CELL_M))
-        row = int(round((float(point[1]) - self.z0) / CELL_M))
+        """The cell holding a world point, binned as the layers are rasterised."""
+        col = int(math.floor((float(point[0]) - self.x0) / CELL_M))
+        row = int(math.floor((float(point[1]) - self.z0) / CELL_M))
         return row, col
 
     def to_world(self, row: int, col: int) -> tuple[float, float]:
-        return (round(self.x0 + col * CELL_M, 3), round(self.z0 + row * CELL_M, 3))
+        """The centre of a cell, the inverse of to_cell."""
+        return (
+            round(self.x0 + (col + 0.5) * CELL_M, 3),
+            round(self.z0 + (row + 0.5) * CELL_M, 3),
+        )
 
     def walkable(self, row: int, col: int) -> bool:
         return 0 <= row < self.rows and 0 <= col < self.cols and self.free[row, col] == 1
@@ -747,17 +776,11 @@ def compute_service_waypoint(
     The waypoint is at least min_dist_m away from the object's boundary
     and selects the walkable cell with the highest clearance.
     """
-    # objects.json uses "centre"; fall back to "center" then "pos".
-    center = target_box.get("centre") or target_box.get("center") or target_box.get("pos", [0.0, 0.0, 0.0])
-    extents = target_box.get("extents") or target_box.get("size", [0.8, 0.8, 0.8])
-    if up_axis == 1:
-        cx, cz = float(center[0]), float(center[2])
-        sx, sz = float(extents[0]), float(extents[2])
-    else:
-        cx, cz = float(center[0]), float(center[1])
-        sx, sz = float(extents[0]), float(extents[1])
-
-    half_x, half_z = sx / 2.0, sz / 2.0
+    # The footprint reads the box through its own frame: `extents` runs along the
+    # box's axes, so read as world sizes it puts a machine's height in its width.
+    footprint = object_footprint(target_box, up_axis=up_axis)
+    cx, cz = (footprint.x0 + footprint.x1) / 2.0, (footprint.z0 + footprint.z1) / 2.0
+    half_x, half_z = (footprint.x1 - footprint.x0) / 2.0, (footprint.z1 - footprint.z0) / 2.0
     candidates: list[tuple[float, tuple[float, float]]] = []
 
     # Sample 16 radial directions around the target
@@ -942,7 +965,7 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
     if g not in came and g != s:
         return {
             "reachable": False,
-            "reason": "no walkable route with this obstruction",
+            "reason": NO_ROUTE_REASON,
             "path": [],
             "distance_m": 0.0,
             "clearance_m": 0.0,
@@ -956,27 +979,48 @@ def astar(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> 
 
     path_2d = [grid.to_world(*c) for c in cells]
     length = sum(math.dist(a, b) for a, b in zip(path_2d, path_2d[1:]))
-    # clearance_m is already the distance from cell centre to nearest inflated
-    # obstacle edge. Do not add the inflation radius again; that would
-    # double-count it and report a falsely large clearance.
-    # Exclude the docking zone (last 1 m / ~10 cells): those steps are the
-    # final approach onto the inspection waypoint, which sits beside the machine.
-    # The corridor clearance is what matters for traversal.
-    docking_cells = max(1, int(round(DEFAULT_CLEARANCE_TARGET_M / CELL_M)))
-    corridor_cells = cells[:-docking_cells] if len(cells) > docking_cells else cells[:1]
-    # grid.clearance_m is the distance to the inflated obstacle boundary, so the
-    # inflation radius is added back to report the distance to the object itself.
-    inflation = float(grid.agent_radius_m) + float(getattr(grid, "safety_margin_m", SAFETY_MARGIN_M))
-    clearance = min(float(grid.clearance_m[r, c]) for r, c in corridor_cells) + inflation
 
     return {
         "reachable": True,
         "path": [[round(x, 3), round(z, 3)] for x, z in path_2d],
         "distance_m": round(length, 2),
-        "clearance_m": round(clearance, 2),
+        "clearance_m": round(path_clearance_m(grid, path_2d), 2),
         "astar_ms": elapsed_ms,
         "cells": len(cells),
     }
+
+
+def path_clearance_m(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) -> float:
+    """Smallest distance from a driven polyline to what the grid marks occupied.
+
+    Measured at 5 cm steps to the edges of the uninflated cells and to the grid's
+    boundary, for the whole path. A cell is occupied as soon as the capture puts
+    a surface anywhere in it, so this errs on the side of the smaller number.
+    """
+    if not path_2d:
+        return 0.0
+    points = [(float(p[0]), float(p[1])) for p in path_2d]
+    samples = [points[0]]
+    for a, b in zip(points, points[1:]):
+        steps = max(1, int(math.ceil(math.dist(a, b) / 0.05)))
+        samples.extend(
+            (a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps)
+            for i in range(1, steps + 1)
+        )
+    at = np.asarray(samples, dtype=np.float64)
+    x1 = grid.x0 + grid.cols * CELL_M
+    z1 = grid.z0 + grid.rows * CELL_M
+    best = float(
+        np.min(np.minimum.reduce([at[:, 0] - grid.x0, x1 - at[:, 0], at[:, 1] - grid.z0, z1 - at[:, 1]]))
+    )
+    rows, columns = np.nonzero(grid.occupied)
+    if rows.size:
+        low_x, low_z = grid.x0 + columns * CELL_M, grid.z0 + rows * CELL_M
+        for x, z in at:
+            gap_x = np.maximum(low_x - x, x - (low_x + CELL_M)).clip(min=0.0)
+            gap_z = np.maximum(low_z - z, z - (low_z + CELL_M)).clip(min=0.0)
+            best = min(best, float(np.min(np.hypot(gap_x, gap_z))))
+    return max(0.0, best)
 
 
 def reachable_cells(grid: Grid, start: tuple[float, float]) -> np.ndarray:
@@ -1004,6 +1048,12 @@ def reachable_cells(grid: Grid, start: tuple[float, float]) -> np.ndarray:
     return reachable
 
 
+def _connected(grid: Grid, start: tuple[float, float], goal: tuple[float, float]) -> bool:
+    """True when a route can join the two world points on this grid."""
+    cell = grid.nearest_walkable(*grid.to_cell(goal))
+    return cell is not None and bool(reachable_cells(grid, start)[cell])
+
+
 def nearest_reachable_ground(
     grid: Grid,
     start: tuple[float, float],
@@ -1015,11 +1065,8 @@ def nearest_reachable_ground(
     rows, columns = np.nonzero(reachable)
     if rows.size == 0:
         return None
-    # to_world is the inverse of to_cell, and half a cell matters: the reachable
-    # cells of one row differ by a whole cell, so a position half a cell off maps
-    # back to its neighbour through to_cell and A* then refuses the goal.
-    centres_x = grid.x0 + columns * CELL_M
-    centres_z = grid.z0 + rows * CELL_M
+    centres_x = grid.x0 + (columns + 0.5) * CELL_M
+    centres_z = grid.z0 + (rows + 0.5) * CELL_M
     distance = np.hypot(centres_x - float(target[0]), centres_z - float(target[1]))
     best = int(np.argmin(distance))
     if float(distance[best]) > max_m:
@@ -1030,7 +1077,13 @@ def nearest_reachable_ground(
 
 
 def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) -> list[tuple[float, float]]:
-    """Simplify grid path using line-of-sight shortcutting without sacrificing clearance."""
+    """Shortcut a grid path where the straight line keeps the stretch's clearance.
+
+    A* pays to stay away from obstacles. A line-of-sight test alone undoes that,
+    because a shortcut that skims the inflated edge still has line of sight, so a
+    shortcut is taken only when its tightest point is no tighter than the tightest
+    point of the stretch it replaces.
+    """
     if len(path_2d) <= 2:
         return [(float(p[0]), float(p[1])) for p in path_2d]
 
@@ -1042,7 +1095,9 @@ def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) ->
         next_idx = len(pts) - 1
         found = False
         while next_idx > curr_idx + 1:
-            if _has_line_of_sight(grid, pts[curr_idx], pts[next_idx]):
+            if _has_line_of_sight(grid, pts[curr_idx], pts[next_idx]) and _keeps_clearance(
+                grid, pts[curr_idx : next_idx + 1]
+            ):
                 smoothed.append(pts[next_idx])
                 curr_idx = next_idx
                 found = True
@@ -1053,6 +1108,19 @@ def smooth_path(grid: Grid, path_2d: list[list[float] | tuple[float, float]]) ->
             smoothed.append(pts[curr_idx])
 
     return smoothed
+
+
+def _keeps_clearance(grid: Grid, stretch: list[tuple[float, float]]) -> bool:
+    """True when the chord of a stretch is no tighter than the stretch itself."""
+    tightest = min(float(grid.clearance_m[grid.to_cell(p)]) for p in stretch)
+    a, b = stretch[0], stretch[-1]
+    samples = max(2, int(math.ceil(math.dist(a, b) / (CELL_M * 0.5))))
+    for i in range(samples + 1):
+        t = i / float(samples)
+        cell = grid.to_cell((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
+        if float(grid.clearance_m[cell]) < tightest:
+            return False
+    return True
 
 
 def _has_line_of_sight(grid: Grid, p0: tuple[float, float], p1: tuple[float, float]) -> bool:
@@ -1066,6 +1134,24 @@ def _has_line_of_sight(grid: Grid, p0: tuple[float, float], p1: tuple[float, flo
         if not grid.walkable(r, c):
             return False
     return True
+
+
+def _distance_to_box(point: list[float], obj: dict) -> float:
+    """Distance from a scene point to an object's oriented box, zero inside it.
+
+    This is the rule the viewer highlights by. An object without a box counts as
+    the point at its centre.
+    """
+    # objects.json uses "centre"; fall back to "center" then "pos".
+    centre = np.asarray(
+        obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0]), dtype=np.float64
+    )
+    extents = np.asarray(obj.get("extents") or obj.get("size") or [0.0, 0.0, 0.0], dtype=np.float64)
+    axes = np.asarray(obj.get("axes", np.eye(3)), dtype=np.float64)
+    if axes.shape != (3, 3) or extents.shape != (3,):
+        axes, extents = np.eye(3), np.zeros(3)
+    local = axes @ (np.asarray(point, dtype=np.float64) - centre)
+    return float(np.linalg.norm(np.maximum(np.abs(local) - extents / 2.0, 0.0)))
 
 
 def compute_path_proximity(
@@ -1128,9 +1214,7 @@ def compute_path_proximity(
         nearby: list[dict[str, Any]] = []
         for obj in objects:
             obj_id = str(obj.get("id", ""))
-            # objects.json uses "centre"; fall back to "center" then "pos".
-            center = obj.get("centre") or obj.get("center") or obj.get("pos", [0.0, 0.0, 0.0])
-            dist_to_obj = math.dist(sample_pos, [float(c) for c in center])
+            dist_to_obj = _distance_to_box(sample_pos, obj)
             if dist_to_obj <= radius_m:
                 mapped = map_by_obj.get(obj_id, {})
                 tag = mapped.get("tag") or mapped.get("asset_id") or obj.get("tag") or obj_id
@@ -1167,29 +1251,82 @@ def path_height(floor_y: float, up_axis_sign: int) -> float:
     return round(float(up_axis_sign) * (float(floor_y) + 0.05), 3)
 
 
-def _nearest_free(grid: Grid, point: tuple[float, float], radius_cells: int = 6) -> tuple[float, float]:
-    """Snap a world point to the nearest free cell centre, searching outward."""
+def _nearest_free(
+    grid: Grid, point: tuple[float, float], radius_cells: int = 6
+) -> tuple[float, float] | None:
+    """Snap a world point to the nearest free cell centre, searching outward.
+
+    Returns None when nothing is free within the radius, because a caller that
+    got the point back would read that as a zero metre snap onto free ground.
+    """
     row, col = grid.to_cell(point)
-    for radius in range(radius_cells + 1):
-        best: tuple[int, int] | None = None
-        best_distance = float("inf")
-        for dr in range(-radius, radius + 1):
-            for dc in range(-radius, radius + 1):
-                if max(abs(dr), abs(dc)) != radius:
-                    continue
-                rr, cc = row + dr, col + dc
-                if 0 <= rr < grid.rows and 0 <= cc < grid.cols and grid.blocked[rr, cc] == 0:
-                    distance = dr * dr + dc * dc
-                    if distance < best_distance:
-                        best_distance = distance
-                        best = (rr, cc)
-        if best is not None:
-            col, row = best[1], best[0]
-            return (
-                grid.x0 + (col + 0.5) * CELL_M,
-                grid.z0 + (row + 0.5) * CELL_M,
-            )
-    return point
+    r0, r1 = max(0, row - radius_cells), min(grid.rows, row + radius_cells + 1)
+    c0, c1 = max(0, col - radius_cells), min(grid.cols, col + radius_cells + 1)
+    if r0 >= r1 or c0 >= c1:
+        return None
+    # Nearest by distance, not by square ring: an inflated corner is free on an
+    # earlier ring than the side beside it, though the side is the shorter move.
+    free_rows, free_cols = np.nonzero(grid.blocked[r0:r1, c0:c1] == 0)
+    if free_rows.size == 0:
+        return None
+    centres_x = grid.x0 + (free_cols + c0 + 0.5) * CELL_M
+    centres_z = grid.z0 + (free_rows + r0 + 0.5) * CELL_M
+    best = int(np.argmin(np.hypot(centres_x - float(point[0]), centres_z - float(point[1]))))
+    return grid.to_world(int(free_rows[best]) + r0, int(free_cols[best]) + c0)
+
+
+def _file_stamp(path: Path | None) -> tuple[str, int] | None:
+    """A cache key that changes when the file does, so a rebuilt artifact is read."""
+    if path is None or not path.exists():
+        return None
+    return str(path), path.stat().st_mtime_ns
+
+
+@lru_cache(maxsize=2)
+def _scene_arrays(stamp: tuple[str, int]) -> tuple[np.ndarray, np.ndarray | None]:
+    """The capture's points and per-gaussian normals, read once per artifact."""
+    data = np.load(stamp[0])
+    points = data["xyz"] if "xyz" in data else data["points"]
+    # The floor and wall rules read the gaussians' own shape, so the normals
+    # come from the same artifact. A capture without them still builds a grid:
+    # the span and patch tests then apply to every point.
+    normals = None
+    if "rot" in data.files and "size" in data.files:
+        normals = surface_normals(data["rot"], data["size"])
+    return points, normals
+
+
+@lru_cache(maxsize=16)
+def _layered_grid(
+    scene: tuple[str, int],
+    objects_stamp: tuple[str, int] | None,
+    floor_y: float,
+    up_axis: int,
+    up_axis_sign: int,
+    body_height_m: float,
+) -> Grid:
+    """The occupancy layers for one body height, which is the slow part of a route.
+
+    A reroute changes the robot's position, its radius or a blocker, and none of
+    those touch the layers, so the raster is built once per height and each route
+    takes an inflated copy.
+    """
+    points, normals = _scene_arrays(scene)
+    objects: list[dict] = []
+    if objects_stamp is not None:
+        loaded = json.loads(Path(objects_stamp[0]).read_text())
+        objects = loaded if isinstance(loaded, list) else loaded.get("objects", [])
+    return Grid.from_cloud(
+        points=points,
+        floor_y=floor_y,
+        up_axis=up_axis,
+        up_axis_sign=up_axis_sign,
+        agent_radius_m=0.0,
+        objects=objects,
+        walkable_height_max_m=body_height_m,
+        safety_margin_m=0.0,
+        normals=normals,
+    )
 
 
 class RouteInputError(ValueError):
@@ -1324,34 +1461,26 @@ def build_route(
 
     # Build grid from scene point cloud or fallback
     if scene_path is not None:
-        data = np.load(scene_path)
-        points = data["xyz"] if "xyz" in data else data["points"]
-        # The floor and wall rules read the gaussians' own shape, so the normals
-        # come from the same artifact. A capture without them still builds a
-        # grid: the span and patch tests then apply to every point.
-        normals = None
-        if "rot" in data.files and "size" in data.files:
-            normals = surface_normals(data["rot"], data["size"])
+        scene_stamp = _file_stamp(scene_path)
+        points, _ = _scene_arrays(scene_stamp)
         floor_y, _, _ = detect_floor(
             points,
             up_axis=up_axis,
             up_axis_sign=up_axis_sign,
             manual_override=manual_floor_y,
         )
-        grid = Grid.from_cloud(
-            points=points,
-            floor_y=floor_y,
-            up_axis=up_axis,
-            up_axis_sign=up_axis_sign,
-            agent_radius_m=agent_radius_m,
-            objects=objects,
-            walkable_height_max_m=max(
-                OBSTACLE_MIN_HEIGHT_M,
-                min(float(agent_height_m), float(walkable_ceiling_m)),
-            ),
-            safety_margin_m=ROUTE_SAFETY_MARGIN_M,
-            normals=normals,
-        )
+
+        def layers_for(height_m: float) -> Grid:
+            return _layered_grid(
+                scene_stamp,
+                _file_stamp(objects_path),
+                float(floor_y),
+                up_axis,
+                up_axis_sign,
+                max(OBSTACLE_MIN_HEIGHT_M, min(float(height_m), float(walkable_ceiling_m))),
+            )
+
+        grid = layers_for(agent_height_m).with_inflation(agent_radius_m, ROUTE_SAFETY_MARGIN_M)
     else:
         # No scene artifact: plan on an empty floor so the route document is
         # still structurally valid for the API tests.
@@ -1399,6 +1528,7 @@ def build_route(
     horizontal = [axis for axis in range(3) if axis != up_axis]
 
     # Apply transient blockers (parked forklift, closed aisle, etc.)
+    permanent_grid = grid
     if blockers:
         grid = grid.with_blockers(blockers)
 
@@ -1410,16 +1540,19 @@ def build_route(
     start_problem = None
     if start_override is not None:
         requested_start = (float(start_override[0]), float(start_override[1]))
-        start_2d = _nearest_free(grid, requested_start)
-        snap_m = float(np.hypot(start_2d[0] - requested_start[0], start_2d[1] - requested_start[1]))
-        if snap_m > 0.8:
+        snapped_start = _nearest_free(
+            grid, requested_start, radius_cells=int(math.ceil(START_SNAP_LIMIT_M / CELL_M))
+        )
+        start_2d = snapped_start if snapped_start is not None else requested_start
+        snap_m = math.dist(start_2d, requested_start)
+        if snapped_start is None or snap_m > START_SNAP_LIMIT_M:
             start_problem = (
                 f"the robot does not fit at its current position with "
                 f"{agent_radius_m:g} m clearance"
             )
 
     if goal_2d is None and target_centre_2d is not None:
-        goal_2d = nearest_reachable_ground(grid, start_2d, target_centre_2d)
+        goal_2d = nearest_reachable_ground(permanent_grid, start_2d, target_centre_2d)
         if goal_2d is not None:
             goal_from = "nearest_reachable_ground"
         else:
@@ -1430,10 +1563,20 @@ def build_route(
         # A destination is an object centre, so it usually lands inside that
         # object's inflated footprint. Snap outward up to 2.5 m to the nearest
         # free cell, which becomes the inspection waypoint for the visit.
-        goal_2d = _nearest_free(
-            grid, (float(goal_override[0]), float(goal_override[1])), radius_cells=25
-        )
+        wanted = (float(goal_override[0]), float(goal_override[1]))
+        goal_2d = _nearest_free(grid, wanted, radius_cells=GOAL_SNAP_CELLS) or wanted
         goal_from = "goal_override"
+        permanent_goal = _nearest_free(permanent_grid, wanted, radius_cells=GOAL_SNAP_CELLS) or wanted
+        if not _connected(permanent_grid, start_2d, permanent_goal):
+            # Resolve a disconnected pocket against the permanent room first.
+            # Transient blockers must still reach that inspection stop, rather
+            # than silently moving it to this side of a newly blocked aisle.
+            ground = nearest_reachable_ground(
+                permanent_grid, start_2d, wanted, max_m=GOAL_SNAP_CELLS * CELL_M * math.sqrt(2)
+            )
+            if ground is not None:
+                goal_2d = ground
+                goal_from = "goal_override_reachable"
     elif target_problem:
         # The target has no object to drive to. An explicit destination above
         # does not need one, so only this case refuses the plan.
@@ -1443,8 +1586,18 @@ def build_route(
     # Compute A* path
     if goal_override is None and target_problem:
         plan_result = {"reachable": False, "path": [], "reason": target_problem}
+    elif (
+        blockers
+        and goal_from in {"nearest_reachable_ground", "goal_override_reachable"}
+        and not grid.walkable(*grid.to_cell(goal_2d))
+    ):
+        # A* normally snaps a blocked goal. A permanent fallback is already the
+        # chosen inspection stop, so that snap must not hide a new obstruction.
+        plan_result = {"reachable": False, "path": [], "reason": NO_ROUTE_REASON}
     else:
         plan_result = astar(grid, start_2d, goal_2d)
+    if not plan_result["reachable"] and blockers and plan_result["reason"] == NO_ROUTE_REASON:
+        plan_result["reason"] = "no walkable route with this obstruction"
     if start_problem:
         plan_result = {"reachable": False, "path": [], "reason": start_problem}
 
@@ -1456,6 +1609,11 @@ def build_route(
         raw_path = plan_result["path"]
         smoothed_2d = smooth_path(grid, raw_path)
         path_3d = [[round(x, 3), y_render, round(z, 3)] for x, z in smoothed_2d]
+        # The robot drives the smoothed line, so that is what gets reported.
+        plan_result["distance_m"] = round(
+            sum(math.dist(a, b) for a, b in zip(smoothed_2d, smoothed_2d[1:])), 2
+        )
+        plan_result["clearance_m"] = round(path_clearance_m(grid, smoothed_2d), 2)
     else:
         path_3d = []
 
@@ -1484,20 +1642,7 @@ def build_route(
         # sideways to slip past structure, which is how a person would pass
         # pipework beside the path. Testing the full navigation inflation made
         # the model duck for obstacles it could simply walk past.
-        standing_grid = Grid.from_cloud(
-            points=points,
-            floor_y=floor_y,
-            up_axis=up_axis,
-            up_axis_sign=up_axis_sign,
-            agent_radius_m=0.12,
-            objects=objects,
-            walkable_height_max_m=max(
-                OBSTACLE_MIN_HEIGHT_M,
-                min(float(standing_height_m), float(walkable_ceiling_m)),
-            ),
-            safety_margin_m=0.0,
-            normals=normals,
-        )
+        standing_grid = layers_for(float(standing_height_m)).with_inflation(0.12, 0.0)
         if blockers:
             standing_grid = standing_grid.with_blockers(blockers)
         distances = [0.0]
@@ -1563,8 +1708,24 @@ def build_route(
     # service waypoint, larger when the asset sits where no floor-level ground
     # beside it exists and the route has to stop on the nearest reachable ground.
     goal_standoff_m = 0.0
-    if target_box is not None:
-        footprint = object_footprint(target_box, up_axis=up_axis)
+    standoff_box = target_box
+    if goal_override is not None:
+        # A destination is not the default target. The viewer sends an object's
+        # centre, so the box is the one centred there; a point that is no object's
+        # centre has no footprint, and the distance to it is the stand-off.
+        wanted = (float(goal_override[0]), float(goal_override[1]))
+        standoff_box = next(
+            (
+                obj
+                for obj in objects
+                if "centre" in obj
+                and math.dist((obj["centre"][horizontal[0]], obj["centre"][horizontal[1]]), wanted) < 0.01
+            ),
+            None,
+        )
+        goal_standoff_m = math.dist(goal_2d, wanted)
+    if standoff_box is not None:
+        footprint = object_footprint(standoff_box, up_axis=up_axis)
         gap_x = max(footprint.x0 - goal_2d[0], 0.0, goal_2d[0] - footprint.x1)
         gap_z = max(footprint.z0 - goal_2d[1], 0.0, goal_2d[1] - footprint.z1)
         goal_standoff_m = float(np.hypot(gap_x, gap_z))
@@ -1588,6 +1749,14 @@ def build_route(
         "target_waypoint": [round(goal_2d[0], 3), y_render, round(goal_2d[1], 3)],
         "target_waypoint_from": goal_from,
         "target_waypoint_standoff_m": round(goal_standoff_m, 2),
+        # How far the stop is from the destination the viewer asked for. A large
+        # figure with "goal_override_reachable" means a taller body could not get
+        # near it, so a crouched plan may stop closer.
+        "goal_snap_m": (
+            round(math.dist(goal_2d, (float(goal_override[0]), float(goal_override[1]))), 2)
+            if goal_override is not None
+            else 0.0
+        ),
         "planned_height_m": round(float(agent_height_m), 3),
         "crouch_spans_m": crouch_spans,
         "reachable": plan_result["reachable"],

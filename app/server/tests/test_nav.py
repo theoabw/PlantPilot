@@ -117,7 +117,7 @@ def test_build_route_contract(tmp_path):
     assert "grid_stats" in route
 
 
-def test_equipment_capture_uses_reviewed_door_start(tmp_path):
+def test_equipment_capture_uses_the_reviewed_dock(tmp_path):
     # A floor observed in every cell: a random scatter leaves cells with no
     # ground under them, and those are blocked by the floor rule.
     floor_axis = np.arange(-6.0, 6.0, 0.05)
@@ -503,6 +503,342 @@ def test_the_reachable_ground_fallback_lands_on_a_cell_astar_can_use():
     assert ground is not None
     assert grid.to_cell(ground) == (5, 5)
     assert nav.astar(grid, (0.5, 0.5), ground)["reachable"] is True
+
+
+def _pocket_grid() -> nav.Grid:
+    """A main room on the left and a walled pocket on the right, in 0.1 m cells."""
+    blocked = np.zeros((40, 60), dtype=np.uint8)
+    blocked[0, :] = blocked[-1, :] = 1
+    blocked[:, 0] = blocked[:, -1] = 1
+    blocked[:, 40] = 1
+    return nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 6.0, "z1": 4.0},
+        blocked_mask=blocked,
+        agent_radius_m=0.0,
+        safety_margin_m=0.0,
+    )
+
+
+def test_a_world_point_stays_in_the_cell_the_layers_rasterise_it_into():
+    grid = _pocket_grid()
+    # 0.19 m is inside cell 1 for the floor binning of the layers and the viewer.
+    assert grid.to_cell((0.19, 0.19)) == (1, 1)
+    assert grid.to_world(1, 1) == (0.15, 0.15)
+    for row, column in ((1, 1), (7, 3), (12, 39), (38, 58)):
+        assert grid.to_cell(grid.to_world(row, column)) == (row, column)
+
+
+def test_a_snapped_destination_is_stable_when_it_is_planned_again():
+    grid = _pocket_grid()
+    first = nav._nearest_free(grid, (1.33, 2.33))
+    assert first is not None
+    assert nav._nearest_free(grid, first) == first
+
+
+def test_nearest_free_says_so_when_nothing_is_free():
+    blocked = np.ones((20, 20), dtype=np.uint8)
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 2.0, "z1": 2.0},
+        blocked_mask=blocked,
+        agent_radius_m=0.0,
+        safety_margin_m=0.0,
+    )
+    assert nav._nearest_free(grid, (1.0, 1.0)) is None
+
+
+def _pocket_scene(tmp_path: Path) -> Path:
+    """A capture whose floor is only observed in a room and a detached pocket."""
+    axis_x = np.arange(0.0, 6.0, 0.03)
+    axis_z = np.arange(0.0, 4.0, 0.03)
+    floor_x, floor_z = np.meshgrid(axis_x, axis_z)
+    keep = (floor_x < 3.0) | (floor_x > 4.2)
+    floor = np.stack([floor_x[keep], np.zeros(int(keep.sum())), floor_z[keep]], axis=1)
+    path = tmp_path / "scene.npz"
+    np.savez(
+        path,
+        xyz=floor,
+        meta=np.array(json.dumps({"frame": {"up_axis_index": 1, "up_axis_sign": 1}})),
+    )
+    return path
+
+
+def test_a_destination_in_a_pocket_stops_on_ground_the_robot_can_reach(tmp_path):
+    route = nav.build_route(
+        scene_path=_pocket_scene(tmp_path),
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(1.0, 2.0),
+        goal_override=(4.6, 2.0),
+    )
+    assert route["reachable"] is True
+    assert route["target_waypoint_from"] == "goal_override_reachable"
+    assert route["target_waypoint"][0] < 3.3
+    assert route["goal_snap_m"] == pytest.approx(4.6 - route["target_waypoint"][0], abs=0.1)
+
+
+def test_a_blocker_that_cuts_the_room_is_still_refused_and_named(tmp_path):
+    scene = _pocket_scene(tmp_path)
+    route = nav.build_route(
+        scene_path=scene,
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(0.8, 2.0),
+        goal_override=(2.4, 2.0),
+        blockers=[[1.4, -1.0, 1.6, 5.0]],
+    )
+    assert route["reachable"] is False
+    assert route["reason"] == "no walkable route with this obstruction"
+
+
+@pytest.mark.parametrize("cover_stop", [False, True])
+def test_a_blocker_cannot_move_a_pockets_inspection_stop_before_the_blocker(tmp_path, cover_stop):
+    plan = dict(
+        scene_path=_pocket_scene(tmp_path),
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(0.8, 2.0),
+        goal_override=(4.6, 2.0),
+    )
+    original = nav.build_route(**plan)
+    assert original["reachable"] is True
+    assert original["target_waypoint_from"] == "goal_override_reachable"
+
+    stop_x = original["target_waypoint"][0]
+    blocker = [stop_x - 0.2, -1.0, stop_x + 0.2, 5.0] if cover_stop else [1.4, -1.0, 1.6, 5.0]
+    blocked = nav.build_route(**plan, blockers=[blocker])
+    assert blocked["reachable"] is False
+    assert blocked["reason"] == "no walkable route with this obstruction"
+    assert blocked["path"] == []
+    assert blocked["target_waypoint"] == original["target_waypoint"]
+
+    beside_route = nav.build_route(**plan, blockers=[[0.4, 0.4, 0.6, 0.6]])
+    assert beside_route["reachable"] is True
+    assert beside_route["target_waypoint"] == original["target_waypoint"]
+    assert beside_route["path"][-1] == original["target_waypoint"]
+
+
+def test_a_route_that_fails_with_no_blocker_does_not_blame_an_obstruction():
+    grid = _pocket_grid()
+    plan = nav.astar(grid, (1.0, 2.0), (5.0, 2.0))
+    assert plan["reachable"] is False
+    assert "obstruction" not in plan["reason"]
+
+
+def test_a_start_with_nothing_free_near_it_is_refused_not_passed_through(tmp_path):
+    route = nav.build_route(
+        scene_path=_pocket_scene(tmp_path),
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(1.5, 2.0),
+        blockers=[[0.0, 0.0, 3.0, 4.0]],
+    )
+    assert route["reachable"] is False
+    assert "does not fit" in route["reason"]
+
+
+def test_clearance_is_measured_on_the_driven_line_to_the_uninflated_cells():
+    blocked = np.zeros((40, 40), dtype=np.uint8)
+    blocked[20:22, 10:30] = 1
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 4.0, "z1": 4.0},
+        blocked_mask=blocked,
+        agent_radius_m=0.2,
+        safety_margin_m=0.0,
+    )
+    # A line 0.5 m clear of the bar's near edge at z = 2.0, inside the grid's 4 m.
+    assert nav.path_clearance_m(grid, [(0.5, 1.5), (3.5, 1.5)]) == pytest.approx(0.5)
+    # A blocker is occupied too, and its inflation does not count as occupied.
+    with_blocker = grid.with_blockers([[1.9, 0.9, 2.1, 1.1]])
+    assert nav.path_clearance_m(with_blocker, [(0.5, 1.5), (3.5, 1.5)]) == pytest.approx(0.4)
+
+
+def test_a_route_reports_the_length_and_clearance_of_its_smoothed_line(tmp_path):
+    route = nav.build_route(
+        scene_path=_pocket_scene(tmp_path),
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(0.8, 0.8),
+        goal_override=(2.2, 3.0),
+    )
+    assert route["reachable"] is True
+    drawn = [(p[0], p[2]) for p in route["path"]]
+    assert route["distance_m"] == pytest.approx(
+        sum(math.dist(a, b) for a, b in zip(drawn, drawn[1:])), abs=0.01
+    )
+
+
+def test_smoothing_keeps_the_detour_that_gave_a_stretch_its_clearance():
+    blocked = np.zeros((40, 60), dtype=np.uint8)
+    blocked[:12, 25:35] = 1
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 6.0, "z1": 4.0},
+        blocked_mask=blocked,
+        agent_radius_m=0.1,
+        safety_margin_m=0.0,
+    )
+    # A raw path that swings wide of the obstacle's corner on its way across.
+    raw = [(0.55, 1.55)] + [(0.55 + i * 0.1, 1.55 + min(i, 60 - i) * 0.03) for i in range(1, 49)]
+    raw.append((5.45, 1.55))
+    assert all(grid.walkable(*grid.to_cell(p)) for p in raw)
+    raw_clearance = min(float(grid.clearance_m[grid.to_cell(p)]) for p in raw)
+
+    smoothed = nav.smooth_path(grid, raw)
+
+    assert smoothed[0] == raw[0] and smoothed[-1] == raw[-1]
+    driven = nav.path_clearance_m(grid, smoothed)
+    # The straight chord would pass 0.35 m from the corner and still have sight.
+    assert driven > 0.35
+    assert raw_clearance > 0.0
+
+
+def test_the_service_waypoint_reads_the_box_through_its_own_frame():
+    grid = nav.Grid(
+        area={"x0": -6.0, "z0": -6.0, "x1": 6.0, "z1": 6.0},
+        blocked_mask=np.zeros((120, 120), dtype=np.uint8),
+        agent_radius_m=0.1,
+        safety_margin_m=0.0,
+    )
+    # A 4 m tall column: its long axis is world up, so its footprint is 0.4 m wide.
+    column = {
+        "centre": [0.0, 2.0, 0.0],
+        "axes": [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+        "extents": [4.0, 0.4, 0.4],
+    }
+    waypoint = nav.compute_service_waypoint(column, grid)
+    footprint = nav.object_footprint(column)
+    gap_x = max(footprint.x0 - waypoint[0], 0.0, waypoint[0] - footprint.x1)
+    gap_z = max(footprint.z0 - waypoint[1], 0.0, waypoint[1] - footprint.z1)
+    assert math.hypot(gap_x, gap_z) == pytest.approx(nav.DEFAULT_CLEARANCE_TARGET_M, abs=0.15)
+
+
+def test_nearby_objects_are_measured_to_the_box_like_the_viewer():
+    # A 6 m long skid: its centre is 3.2 m away but its end is 0.2 m away.
+    skid = {
+        "id": "OBJ-LONG",
+        "centre": [3.2, 0.0, 0.0],
+        "axes": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        "extents": [6.0, 1.0, 1.0],
+    }
+    samples = nav.compute_path_proximity([[0.0, 0.0, 0.0]], [skid], radius_m=2.5, step_m=1.0)
+    assert samples[0]["nearby_objects"][0]["object_id"] == "OBJ-LONG"
+    assert samples[0]["nearby_objects"][0]["distance_m"] == pytest.approx(0.2)
+
+
+def test_a_tall_robot_is_not_cut_short_by_a_plane_below_its_height(tmp_path):
+    # Horizontal plane records used to cap the body band at 1.5 m on any capture,
+    # because their offset is a plane constant and not a height above the floor.
+    objects = tmp_path / "objects.json"
+    objects.write_text(json.dumps({
+        "objects": [],
+        "floor": {"height": 0.0},
+        "planes": {"items": [{"horizontal": True, "offset": 0.6}]},
+    }))
+    # Pipework at 1.7 m, which a 1.5 m cap would hide from a 1.9 m body.
+    _pocket_scene(tmp_path)
+    axis = np.arange(0.2, 2.8, 0.02)
+    band_x, band_z = np.meshgrid(axis, axis)
+    points = np.stack([band_x.ravel(), np.full(band_x.size, 1.7), band_z.ravel()], axis=1)
+    floor = np.load(tmp_path / "scene.npz")["xyz"]
+    scene = tmp_path / "pipes.npz"
+    np.savez(
+        scene,
+        xyz=np.concatenate([floor, points]),
+        meta=np.array(json.dumps({"frame": {"up_axis_index": 1, "up_axis_sign": 1}})),
+    )
+    tall = nav.build_route(
+        scene_path=scene,
+        objects_path=objects,
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        agent_height_m=1.9,
+    )
+    assert tall["grid_stats"]["overhead_blocked_cells"] > 0
+
+
+def test_a_reroute_reuses_the_layers_and_sees_a_rebuilt_artifact(tmp_path, monkeypatch):
+    scene = _pocket_scene(tmp_path)
+    built = []
+    original = nav.Grid.from_cloud
+    monkeypatch.setattr(
+        nav.Grid, "from_cloud", lambda *a, **k: built.append(k) or original(*a, **k)
+    )
+    first = nav.build_route(scene_path=scene, manual_floor_y=0.0, agent_radius_m=0.1)
+    wider = nav.build_route(
+        scene_path=scene, manual_floor_y=0.0, agent_radius_m=0.3, start_override=(1.0, 2.0)
+    )
+    assert len(built) == 1
+    assert wider["agent_radius_m"] == 0.3
+    assert wider["grid_stats"]["blocked_cells"] > first["grid_stats"]["blocked_cells"]
+
+    points = np.load(scene)["xyz"]
+    np.savez(
+        scene,
+        xyz=points[::2],
+        meta=np.array(json.dumps({"frame": {"up_axis_index": 1, "up_axis_sign": 1}})),
+    )
+    nav.build_route(scene_path=scene, manual_floor_y=0.0, agent_radius_m=0.1)
+    assert len(built) == 2
+
+
+def test_a_snap_takes_the_nearest_free_cell_not_the_first_ring_with_one():
+    blocked = np.ones((21, 21), dtype=np.uint8)
+    blocked[10, 18] = 0  # 0.8 m along an axis, on square ring 8
+    blocked[3, 3] = 0  # 0.99 m on the diagonal, on square ring 7
+    grid = nav.Grid(
+        area={"x0": 0.0, "z0": 0.0, "x1": 2.1, "z1": 2.1},
+        blocked_mask=blocked,
+        agent_radius_m=0.0,
+        safety_margin_m=0.0,
+    )
+    # A kernel of radius zero still inflates by itself only, so both cells stay free.
+    assert nav._nearest_free(grid, (1.05, 1.05), radius_cells=9) == grid.to_world(10, 18)
+
+
+def test_a_start_may_snap_to_the_limit_and_is_refused_beyond_it(tmp_path):
+    scene = _pocket_scene(tmp_path)
+    plan = dict(
+        scene_path=scene,
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(1.5, 2.0),
+        goal_override=(2.8, 3.8),
+    )
+    # A square blocker round the start: free ground begins 0.85 m away, the door
+    # dock's snap for the Cargo AMR, and past the limit when it is 0.2 m larger.
+    fits = nav.build_route(**plan, blockers=[[0.8, 1.3, 2.2, 2.7]])
+    assert fits["reachable"] is True
+    assert math.dist((fits["start"][0], fits["start"][2]), (1.5, 2.0)) <= nav.START_SNAP_LIMIT_M
+
+    too_far = nav.build_route(**plan, blockers=[[0.6, 1.1, 2.4, 2.9]])
+    assert too_far["reachable"] is False
+    assert "does not fit" in too_far["reason"]
+
+
+def test_the_standoff_of_a_destination_is_measured_to_that_destinations_box(tmp_path):
+    objects = tmp_path / "objects.json"
+    machine = {
+        "id": "OBJ-A",
+        "class": "pump",
+        "centre": [2.0, 0.5, 2.0],
+        "axes": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        "extents": [0.6, 1.0, 0.6],
+    }
+    elsewhere = dict(machine, id="OBJ-B", centre=[0.6, 0.5, 3.4], extents=[0.2, 1.0, 0.2])
+    objects.write_text(json.dumps({"objects": [elsewhere, machine]}))
+    route = nav.build_route(
+        scene_path=_pocket_scene(tmp_path),
+        objects_path=objects,
+        manual_floor_y=0.0,
+        agent_radius_m=0.1,
+        start_override=(0.6, 0.6),
+        goal_override=(2.0, 2.0),
+    )
+    assert route["reachable"] is True
+    stop = (route["target_waypoint"][0], route["target_waypoint"][2])
+    gap_x = max(1.7 - stop[0], 0.0, stop[0] - 2.3)
+    gap_z = max(1.7 - stop[1], 0.0, stop[1] - 2.3)
+    assert route["target_waypoint_standoff_m"] == pytest.approx(math.hypot(gap_x, gap_z), abs=0.01)
+    assert route["target_waypoint_standoff_m"] < 0.5
 
 
 # ---------------------------------------------------------------------------

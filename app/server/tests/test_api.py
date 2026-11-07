@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from plantpilot.main import app
@@ -252,3 +253,34 @@ def test_the_route_endpoint_serves_the_route(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "ROUTE_ARTIFACT", path)
     body = client.get("/api/scene/route").json()
     assert body["reachable"] is True and len(body["path"]) == 2
+
+
+def test_warming_builds_the_layers_of_every_robot_height(tmp_path, monkeypatch):
+    from plantpilot import main as server
+
+    for name in ("scene.npz", "objects.json", "mapped.json"):
+        (tmp_path / name).write_text("")
+    monkeypatch.setattr(server, "SCENE_DIR", tmp_path)
+    monkeypatch.setattr(server, "OBJECTS_FILE", tmp_path / "objects.json")
+    monkeypatch.setattr(server, "MAPPED_FILE", tmp_path / "mapped.json")
+    heights: list[float] = []
+    monkeypatch.setattr(
+        server.nav, "build_route", lambda **kwargs: heights.append(kwargs["agent_height_m"])
+    )
+
+    server.warm_route_layers()
+
+    assert sorted(heights) == [0.55, 0.9, 0.95, 1.35]
+
+
+def test_warming_does_nothing_before_the_pipeline_has_run(tmp_path, monkeypatch):
+    from plantpilot import main as server
+
+    monkeypatch.setattr(server, "SCENE_DIR", tmp_path)
+    monkeypatch.setattr(server, "OBJECTS_FILE", tmp_path / "objects.json")
+    monkeypatch.setattr(server, "MAPPED_FILE", tmp_path / "mapped.json")
+    monkeypatch.setattr(
+        server.nav, "build_route", lambda **kwargs: pytest.fail("built without artifacts")
+    )
+
+    server.warm_route_layers()
