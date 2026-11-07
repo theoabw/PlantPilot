@@ -1159,6 +1159,28 @@ export default function RoomLab({ onLeave }: Props) {
                   Next check: {diagnosis.next_safe_check.action}
                 </p>
               ) : null}
+              {(() => {
+                const refs = (diagnosis?.findings ?? [])
+                  .flatMap((finding) => finding.evidence ?? [])
+                  .map((item) => item.ref)
+                  .filter((ref, index, all) => ref && all.indexOf(ref) === index)
+                  .slice(0, 3)
+                const citation = diagnosis?.citations?.[0]
+                return (
+                  <div className="mt-2 space-y-1">
+                    {refs.length > 0 ? (
+                      <p className="text-[10px] font-semibold leading-snug text-slate-400">
+                        <span className="text-slate-500">Evidence:</span> {refs.join(' · ')}
+                      </p>
+                    ) : null}
+                    {citation ? (
+                      <p className="text-[10px] font-semibold leading-snug text-slate-500">
+                        {citation.doc_id}: {citation.excerpt}
+                      </p>
+                    ) : null}
+                  </div>
+                )
+              })()}
             </>
           ) : (
             <p className="mt-1 text-xs font-semibold text-slate-300">
