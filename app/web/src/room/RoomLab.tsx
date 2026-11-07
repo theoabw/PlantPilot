@@ -673,6 +673,15 @@ export default function RoomLab() {
       })
   }
 
+  // A plan still out when the user takes the robot back must not land afterwards:
+  // its answer would count as the latest and drive the robot off again.
+  const cancelPlan = () => {
+    planRequestRef.current += 1
+    resumeAfterPlanRef.current = false
+    motionPausedRef.current = false
+    pendingPlanRef.current = null
+  }
+
   const obstacleBlockers = () =>
     obstacles.map((item) => [
       item[0] - 0.18,
@@ -1594,6 +1603,7 @@ export default function RoomLab() {
             type="button"
             aria-pressed={manualControl}
             onClick={() => {
+              cancelPlan()
               const next = !manualControl
               setManualControl(next)
               setCameraMove(false)
@@ -1670,6 +1680,7 @@ export default function RoomLab() {
           <button
             type="button"
             onClick={() => {
+              cancelPlan()
               setResetToken((value) => value + 1)
               setCharacterResetToken((value) => value + 1)
               setRobotDeployed(false)
