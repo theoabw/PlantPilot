@@ -1,0 +1,17 @@
+# The image holds code only. Supplied captures, pipeline artifacts and the
+# viewer PLY are mounted at runtime, so they must never enter a layer.
+
+data/
+.venv/
+.git/
+.github/
+.agents/
+.pytest_cache/
+app/web/node_modules/
+app/web/dist/
+**/__pycache__/
+*.pyc
+proof/
+*.ply
+*.npz
+*.png
