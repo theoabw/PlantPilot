@@ -32,6 +32,8 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
+import StartScreen, { shouldShowIntro } from './StartScreen'
+import { nearbyHighlightIds as resolveNearbyHighlightIds, proximityCandidates, syntheticMappedObjects } from './highlightObjects'
 import { destinationTarget, prefersCrouched, routeStatusText, shouldTryCrouched, toggleManualCrouch, transitionDestinationPlan, type DestinationPlanState } from './routeMotion'
 import CharacterSelector, { type CharacterOption } from '../components/CharacterSelector'
 
@@ -130,6 +132,9 @@ export default function RoomLab() {
   // The depth pass redraws half the splats each frame, the price of hiding the
   // robot and route behind the room. ?occlusion=off starts without it.
   const [occlusion, setOcclusion] = useState(() => new URLSearchParams(window.location.search).get('occlusion') !== 'off')
+  // A first visit opens on the start screen; the capture keeps loading behind it.
+  const [introOpen, setIntroOpen] = useState(() => shouldShowIntro(window.location.search))
+  const [splatLoad, setSplatLoad] = useState({ progress: 0, loaded: false })
   const [devMode, setDevMode] = useState(false)
   const [showRawDetections, setShowRawDetections] = useState(false)
   const [layersOpen, setLayersOpen] = useState(false)
@@ -415,6 +420,18 @@ export default function RoomLab() {
     }
     return showOutlines ? reviewed : []
   }, [view, devMode, showRawDetections, data, showOutlines, reviewed])
+  const syntheticObjects = useMemo(
+    () => syntheticMappedObjects(data?.objects ?? [], mapped?.mappings ?? []),
+    [data, mapped],
+  )
+  const enabledSyntheticObjects = useMemo(
+    () => showMappedFrames ? syntheticObjects : [],
+    [showMappedFrames, syntheticObjects],
+  )
+  const nearbyCandidates = useMemo(
+    () => proximityCandidates(displayObjects, enabledSyntheticObjects, showMappedFrames),
+    [displayObjects, enabledSyntheticObjects, showMappedFrames],
+  )
 
   const equipmentRows = useMemo(() => {
     const rows = reviewed.map((record) => ({
@@ -540,7 +557,11 @@ export default function RoomLab() {
   const nearbyEquipment = useMemo(() => {
     const rows: { id: string; key: string; name: string; state: string }[] = []
     const seen = new Set<string>()
+    const displayedIds = new Set(displayObjects.map((object) => object.id))
     for (const id of nearby) {
+      if (!displayedIds.has(id)) {
+        continue
+      }
       const record = anchorById.get(id)
       const mapping = mappedByAnchor.get(id)
       const key = mapping?.tag ?? id
@@ -556,8 +577,11 @@ export default function RoomLab() {
       })
     }
     return rows.slice(0, 5)
-  }, [nearby, anchorById, mappedByAnchor])
-  const nearbyHighlightIds = useMemo(() => nearbyEquipment.map((entry) => entry.id), [nearbyEquipment])
+  }, [nearby, anchorById, mappedByAnchor, displayObjects])
+  const nearbyHighlightIds = useMemo(
+    () => resolveNearbyHighlightIds(nearbyEquipment.map((entry) => entry.id), nearby, enabledSyntheticObjects),
+    [nearbyEquipment, nearby, enabledSyntheticObjects],
+  )
 
   const robot = ROBOTS.find((option) => option.id === robotId) ?? ROBOTS[1]
   const clearanceRadius = customRadius ?? robot.radius
@@ -843,8 +867,12 @@ export default function RoomLab() {
       <div className="absolute inset-0">
         {data ? (
           <SplatRoom
+            onLoadProgress={(progress, loaded) => setSplatLoad({ progress, loaded })}
+            quietLoading={introOpen}
             objects={displayObjects}
             frameObjects={data.objects}
+            nearbyCandidates={nearbyCandidates}
+            syntheticObjects={enabledSyntheticObjects}
             selectedLabel={
               selectedObject
                 ? `${selectedObject.label ?? selectedObject.class}${selectedMapping?.tag ? ` · ${selectedMapping.tag}` : ''}`
@@ -945,9 +973,6 @@ export default function RoomLab() {
           <span className="flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             Live
-          </span>
-          <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-300">
-            Synthetic scenario
           </span>
         </div>
         <div className="pointer-events-auto flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:gap-2">
@@ -1351,7 +1376,9 @@ export default function RoomLab() {
             <button
               type="button"
               onClick={() => setFocusToken((value) => value + 1)}
-              className="flex-1 rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-200 hover:border-slate-400"
+              disabled={firstPerson}
+              title={firstPerson ? 'Switch to third person to focus the camera' : undefined}
+              className="flex-1 rounded-lg border border-slate-600 px-3 py-2 text-xs font-black text-slate-200 hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Focus
             </button>
@@ -1927,6 +1954,8 @@ export default function RoomLab() {
           ) : null}
         </aside>
       ) : null}
+
+      {introOpen ? <StartScreen progress={splatLoad.progress} loaded={splatLoad.loaded} onStart={() => setIntroOpen(false)} /> : null}
     </div>
   )
 }

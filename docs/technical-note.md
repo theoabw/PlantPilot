@@ -53,7 +53,7 @@ The room view is React and Vite in `app/web/src/room/`. One three.js scene with 
 
 `make test` runs the offline pytest suite; `make web-build` runs `tsc --noEmit` and `vite build`; `make check` runs `scripts/sinceai_check.mjs`; `make audit` prints the framing audit for a capture.
 
-Boiler room capture: 1,676,481 sane and none dropped, `-y` up with the floor slab at +1.174, 16 planes (8 horizontal, 8 vertical) removing 42.8 percent of the points, 150 objects from 272 clusters with 122 capped, largest 4.2 percent, median 3,454 points, 22.0 s, 30 proposed and none unresolved with P-005 to OBJ-037, route 0.22 m with 2 path points and 0.79 m minimum clearance, viewer 1,386,351 gaussians and 77,636,108 B.
+Boiler room capture: 1,676,481 sane and none dropped, `-y` up with the ingest floor slab at +1.167 and the fitted floor plane at +1.174 (rms 0.015), 16 planes (8 horizontal, 8 vertical) removing 42.8 percent of the points, 150 objects from 272 clusters with 122 capped, largest 4.2 percent, median 3,454 points, 22.0 s, 30 proposed and none unresolved with P-005 to OBJ-037, route 0.22 m with 2 path points and 0.79 m minimum clearance, viewer 1,386,351 gaussians and 77,636,108 B.
 
 The framing audit: on the boiler room capture 23 of 150 boxes are under 0.40 m tall against 66 of 150 before the change, 65 of 150 float with nothing under them against 85, and 52.4 percent of the capture's points fall inside exactly one box against 49.3 percent. Against the fused instance, the best proposal box in a reviewed anchor's column has a mean height and bottom error of 0.43 m and a median of 0.19 m, against 0.57 m and 0.45 m before.
 

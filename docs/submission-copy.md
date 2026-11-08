@@ -1,13 +1,16 @@
 # Submission copy
 
-The vote card is read in about twenty seconds. This is the text that goes on it. Status: the facts below were corrected against the shipped app; the story rewrite is still due.
+The vote card is read in about twenty seconds. This is the text that goes on it. Status: final for submission; the facts below match the shipped app and the demo video.
 
 ## Tagline, up to 80 characters for the name field, one line for the card
 
-**Chosen:** A work order becomes a mission: find the machine, route to it, explain why.
+**Chosen:** From scan to service: find the machine, route a robot to it, explain why.
 
-Alternates, if the chosen one tests badly with the team:
+The short form, "From scan to service.", is the line on the start screen, the video title card and the thumbnail.
 
+Alternates:
+
+- A work order becomes a mission: find the machine, route to it, explain why.
 - The scan is the easy part. This turns it into an inspection.
 - Point at a plant. Get a route, a reason and a citation.
 
@@ -45,8 +48,9 @@ The first five become chips on the vote card, so the order is deliberate.
 
 ## GenAI disclosure
 
-- Tools used while building: AI coding agents for implementation, review and documentation; a synthesised voice for the demo video.
-- Generative AI in the product: none on the answer path. The explanation is retrieval plus a template, so every sentence has a citation. An optional rewrite is cached and off the demo path.
+- Tools used while building: AI coding agents for implementation, review and documentation. SAM 3 was run offline on posed renders of the capture; its masks were fused across views into the instances that name the eight reviewed objects (`fixtures/scene/instances_equipment.json`).
+- Demo video: synthesised narration (ElevenLabs) and generated music (Suno). Every shot is a recording of the running app.
+- Generative AI in the product: none at runtime. The diagnosis is a deterministic join over the supplied pack plus templates, so every sentence has a citation.
 
 ## Form checklist
 
@@ -57,7 +61,7 @@ The first five become chips on the vote card, so the order is deliberate.
 | About | outline above, fill the numbers from the app on Sunday |
 | Built with | ordered list above |
 | Repository | the repository link, hosted private; a source-code zip travels with the entry |
-| Demo video | YouTube unlisted link, recorded Saturday night |
-| Pitch deck | optional, one page, only if it earns its place |
+| Demo video | YouTube link (2:48, 1440p, captions burned in); the README links it |
+| Pitch deck | the seven-slide PDF from `presentation/` (outside the repository) |
 | MLH questions | technology feedback, GenAI tools, GenAI in the product |
 | IP terms | every member accepts in sinceai.app |

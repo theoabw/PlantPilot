@@ -40,3 +40,36 @@
     outline-offset: 2px;
   }
 }
+
+/* Start screen: the outline draws itself, the mint arrow drops in with a small bounce, the rest rises. */
+@layer components {
+  .pp-intro { animation: pp-intro-in 0.35s ease-out both; }
+  .pp-intro-leave { animation: pp-intro-out 0.42s ease-in both; }
+  .pp-intro-outline { stroke-dasharray: 1; stroke-dashoffset: 1; animation: pp-intro-draw 0.9s 0.15s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+  .pp-intro-arrow { transform-box: fill-box; transform-origin: 50% 100%; opacity: 0; animation: pp-intro-drop 0.75s 0.95s cubic-bezier(0.3, 0, 0.4, 1) forwards, pp-intro-wiggle 0.5s 1.7s ease-out; }
+  .pp-intro-word { clip-path: inset(0 100% 0 0); animation: pp-intro-wipe 0.6s 1.05s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
+  .pp-intro-rise { opacity: 0; animation: pp-intro-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
+  .pp-intro-glow { background: radial-gradient(circle, rgba(38, 214, 188, 0.16) 0%, rgba(38, 214, 188, 0) 65%); animation: pp-intro-breathe 5s 1.2s ease-in-out infinite; }
+  .pp-intro-button { animation: pp-intro-pulse 2.6s 2.6s ease-in-out infinite; }
+}
+
+@keyframes pp-intro-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pp-intro-out { to { opacity: 0; transform: scale(1.03); } }
+@keyframes pp-intro-draw { to { stroke-dashoffset: 0; } }
+@keyframes pp-intro-drop {
+  0% { opacity: 0; transform: translateY(-140px) rotate(-12deg); }
+  55% { opacity: 1; transform: translateY(6px) rotate(0deg) scale(1.05, 0.92); }
+  75% { transform: translateY(-8px) scale(0.98, 1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pp-intro-wiggle { 0%, 100% { rotate: 0deg; } 30% { rotate: -9deg; } 60% { rotate: 6deg; } }
+@keyframes pp-intro-wipe { to { clip-path: inset(0 0 0 0); } }
+@keyframes pp-intro-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pp-intro-breathe { 0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.95); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); } }
+@keyframes pp-intro-pulse { 0%, 100% { box-shadow: 0 10px 40px -8px rgba(38, 214, 188, 0.65); } 50% { box-shadow: 0 10px 56px -4px rgba(38, 214, 188, 0.9); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-intro, .pp-intro-leave, .pp-intro-glow, .pp-intro-button { animation: none; }
+  .pp-intro-outline { animation: none; stroke-dashoffset: 0; }
+  .pp-intro-arrow, .pp-intro-word, .pp-intro-rise { animation: none; opacity: 1; clip-path: none; transform: none; }
+}

@@ -12,8 +12,8 @@ import { nextRenderScale } from './renderScale'
 import { draggedSincePress, splatOcclusionEnabled, isPickable, nestedPick, visiblePick } from './pickObject'
 import { heightSplatFilter } from './heightSplatFilter'
 import { topDownPose } from './topDownPose'
-import { selectionSplatEdit } from './selectionSplatEdit'
-import { highlightObjects } from './highlightObjects'
+import { selectionSplatEdit, syntheticTintSplatEdit } from './selectionSplatEdit'
+import { highlightObjects, syntheticFrameOpacity } from './highlightObjects'
 import { channelLabel } from './splatChannel'
 import { ROBOT_PALETTE, robotLogo } from './robotBrand'
 import { routeCurve } from './routeCurve'
@@ -61,6 +61,8 @@ type WalkMask = {
 type Props = {
   objects: RoomObject[]
   frameObjects: RoomObject[]
+  nearbyCandidates: RoomObject[]
+  syntheticObjects: RoomObject[]
   selectedLabel: string
   frameKey: string
   subtle: boolean
@@ -120,6 +122,10 @@ type Props = {
   onNearby: (ids: string[]) => void
   onTrip: (state: TripState) => void
   onSelect: (id: string) => void
+  /** Reports first-load progress (0 to 100) and when the capture is drawn. */
+  onLoadProgress?: (progress: number, loaded: boolean) => void
+  /** Hides the first-load splash, for example while the start screen covers the room. */
+  quietLoading?: boolean
 }
 
 type BoxView = {
@@ -619,7 +625,7 @@ function buildRobotBody(profile: RobotProfile, logoTexture: THREE.Texture): THRE
 const SHARPEN_AFTER_MS = 400
 const SCALE_WINDOW_MS = 400
 
-export default function SplatRoom({ objects, frameObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, nearbyHighlightIds, showNearbyHighlights, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syntheticObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, nearbyHighlightIds, showNearbyHighlights, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect, onLoadProgress, quietLoading = false }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
@@ -630,8 +636,15 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   // that attach splat edits re-attach them to it.
   const [meshVersion, setMeshVersion] = useState(0)
   const [swap, setSwap] = useState<{ label: string; progress: number } | null>(null)
+  const onLoadProgressRef = useRef(onLoadProgress)
+  onLoadProgressRef.current = onLoadProgress
+  useEffect(() => {
+    onLoadProgressRef.current?.(progress, loaded)
+  }, [progress, loaded])
   const [perf, setPerf] = useState<{ draws: number; ms: number; calls: number; splats: number } | null>(null)
   const perfEnabled = useRef(new URLSearchParams(window.location.search).has('perf')).current
+  // ?sharp=1 keeps full resolution while the view moves, for screen recordings and screenshots.
+  const keepSharp = useRef(new URLSearchParams(window.location.search).has('sharp')).current
   // Effects outside the render effect need a way to say "the scene changed".
   const renderRef = useRef<() => void>(() => undefined)
   const logoTextureRef = useRef<THREE.Texture | null>(null)
@@ -711,6 +724,8 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   selectedRef.current = selectedId
   const objectsRef = useRef(objects)
   objectsRef.current = objects
+  const nearbyCandidatesRef = useRef(nearbyCandidates)
+  nearbyCandidatesRef.current = nearbyCandidates
   const mappedRef = useRef(mappedIds)
   mappedRef.current = mappedIds
   const targetRef = useRef(targetId)
@@ -786,7 +801,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     const clampPixelRatio = () => {
       const pixels = host.clientWidth * host.clientHeight * window.devicePixelRatio ** 2
       const cap = pixels > 3_000_000 ? 1.25 : 1.75
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap) * (drawnSharp ? 1 : movingScale))
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap) * (drawnSharp || keepSharp ? 1 : movingScale))
     }
     clampPixelRatio()
     renderer.setSize(host.clientWidth, host.clientHeight)
@@ -1046,6 +1061,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
     const onPointerDown = (event: PointerEvent) => {
       const current = stateRef.current
+      pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, dragged: false }
       if (current?.manualControl && current.firstPerson) {
         current.pointerLookActive = true
         current.lastPointerX = event.clientX
@@ -1054,7 +1070,6 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         event.preventDefault()
         return
       }
-      pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, dragged: false }
     }
     const onPointerCancel = () => {
       pressed = null
@@ -1721,18 +1736,18 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         }
         const liveState = stateRef.current
         const liveObjects = objectsRef.current
-        // With the frames off there is nothing to measure, and a list left as it
-        // was would keep naming what the robot passed before they went off.
-        if (liveObjects.length === 0 && lastNearbyKey !== '') {
+        const candidates = nearbyCandidatesRef.current
+        // Clear stale proximity when both equipment and synthetic frames are off.
+        if (candidates.length === 0 && lastNearbyKey !== '') {
           lastNearbyKey = ''
           nearbyRef.current([])
         }
-        if (liveState?.motion.robot && liveObjects.length > 0 && now - lastNearby > 500) {
+        if (liveState?.motion.robot && candidates.length > 0 && now - lastNearby > 500) {
           lastNearby = now
           const robot = liveState.motion.robot
           const sceneRobot = robot.position.clone().applyQuaternion(liveState.world.quaternion.clone().invert())
           const nearby: string[] = []
-          for (const object of liveObjects) {
+          for (const object of candidates) {
             if (distanceToBox(sceneRobot, object) <= NEARBY_RADIUS_M) {
               nearby.push(object.id)
             }
@@ -2237,13 +2252,27 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     }
   }, [heightCutoff, floorHeight, upAxis, meshVersion])
 
+  useEffect(() => {
+    const mesh = stateRef.current?.splat
+    if (!mesh || !objectOverlayUrl || syntheticObjects.length === 0) {
+      return
+    }
+    const edit = syntheticTintSplatEdit(syntheticObjects)
+    mesh.add(edit)
+    renderRef.current()
+    return () => {
+      mesh.remove(edit)
+      renderRef.current()
+    }
+  }, [objectOverlayUrl, syntheticObjects, splatUrl, filterUrl, meshVersion])
+
   // Use one union edit so selected and nearby boxes cannot add light twice.
   useEffect(() => {
     const mesh = stateRef.current?.splat
     if (!mesh) {
       return
     }
-    const highlighted = highlightObjects(objects, frameObjects, selectedId, nearbyHighlightIds, showNearbyHighlights)
+    const highlighted = highlightObjects(objects, frameObjects, selectedId, nearbyHighlightIds, showNearbyHighlights, syntheticObjects)
     if (highlighted.length === 0) {
       return
     }
@@ -2254,7 +2283,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
       mesh.remove(edit)
       renderRef.current()
     }
-  }, [selectedId, nearbyHighlightIds, showNearbyHighlights, frameObjects, objects, meshVersion])
+  }, [selectedId, nearbyHighlightIds, showNearbyHighlights, frameObjects, objects, syntheticObjects, meshVersion])
 
   useEffect(() => {
     const state = stateRef.current
@@ -2477,6 +2506,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
         depthWrite: false,
       })
       const lines = new THREE.LineSegments(geometry, material)
+      lines.userData.objectId = frame.id
       lines.scale.set(frame.extents[0], frame.extents[1], frame.extents[2])
       lines.position.copy(new THREE.Vector3(...frame.centre).applyQuaternion(world))
       lines.quaternion.copy(boxQuaternion(frame.axes)).premultiply(world)
@@ -2486,6 +2516,20 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     renderRef.current()
     state.renderer.render(state.scene, state.camera)
   }, [mappedFrames, showMappedFrames, frameKey])
+
+  useEffect(() => {
+    const group = stateRef.current?.mappedGroup
+    if (!group) {
+      return
+    }
+    const nearby = new Set(nearbyHighlightIds)
+    for (const child of group.children) {
+      if (child instanceof THREE.LineSegments && child.material instanceof THREE.LineBasicMaterial) {
+        child.material.opacity = syntheticFrameOpacity(child.userData.objectId, nearby, showNearbyHighlights)
+      }
+    }
+    renderRef.current()
+  }, [mappedFrames, showMappedFrames, frameKey, nearbyHighlightIds, showNearbyHighlights])
 
   // Obstacle markers: a translucent barrier on the floor where the user placed one.
   useEffect(() => {
@@ -2555,7 +2599,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
   // Focus tween: ease the camera to a selected object in the loop.
   useEffect(() => {
     const state = stateRef.current
-    if (!state || !focusTarget || state.follow) {
+    if (!state || !focusTarget || state.follow || firstPerson) {
       return
     }
     const centre = new THREE.Vector3(...focusTarget.centre).applyQuaternion(state.world.quaternion)
@@ -3385,6 +3429,9 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
     state.manualControl = manualControl
     state.firstPerson = firstPerson
     state.pointerLookActive = false
+    if (firstPerson) {
+      state.focusTween = null
+    }
     state.movementKeys.clear()
     if (manualControl) {
       state.motion.active = false
@@ -3453,7 +3500,7 @@ export default function SplatRoom({ objects, frameObjects, selectedLabel, frameK
           <span className="tabular-nums text-slate-400">{swap.progress}%</span>
         </div>
       ) : null}
-      {!loaded ? (
+      {!loaded && !quietLoading ? (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-brand-navy/90">
           <img src="/brand/plantpilot-stacked-on-dark.svg" alt="PlantPilot" className="h-40 w-auto" />
           <p className="text-sm font-semibold text-slate-300">From scan to service.</p>
