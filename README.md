@@ -35,6 +35,7 @@ Open <http://127.0.0.1:8000>. The browser opens the boiler room scene. That targ
 3. Open Mission and press Send robot. The robot follows the planned route; nearby assets within 2.5 m brighten while the trip panel shows progress. Enable Synthetic pack frames to highlight nearby proposed pack mappings as well. In Objects tinted, those proposals also receive an amber box-based tint.
 4. On arrival the diagnosis card opens with the finding, its evidence counts, the next safe check and the document it is grounded in.
 5. `?perf=1` on the URL adds a draw and render-time overlay for performance checks.
+6. `?sharp=1` keeps full resolution while the view moves. By default a slow frame lowers the moving resolution and the still image sharpens again; use the flag for screen recordings and screenshots.
 
 ## What it does
 

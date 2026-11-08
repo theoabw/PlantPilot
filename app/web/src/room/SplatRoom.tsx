@@ -629,6 +629,8 @@ export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syn
   const [loaded, setLoaded] = useState(false)
   const [perf, setPerf] = useState<{ draws: number; ms: number; calls: number; splats: number } | null>(null)
   const perfEnabled = useRef(new URLSearchParams(window.location.search).has('perf')).current
+  // ?sharp=1 keeps full resolution while the view moves, for screen recordings and screenshots.
+  const keepSharp = useRef(new URLSearchParams(window.location.search).has('sharp')).current
   // Effects outside the render effect need a way to say "the scene changed".
   const renderRef = useRef<() => void>(() => undefined)
   const logoTextureRef = useRef<THREE.Texture | null>(null)
@@ -780,7 +782,7 @@ export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syn
     const clampPixelRatio = () => {
       const pixels = host.clientWidth * host.clientHeight * window.devicePixelRatio ** 2
       const cap = pixels > 3_000_000 ? 1.25 : 1.75
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap) * (drawnSharp ? 1 : movingScale))
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap) * (drawnSharp || keepSharp ? 1 : movingScale))
     }
     clampPixelRatio()
     renderer.setSize(host.clientWidth, host.clientHeight)
