@@ -43,5 +43,5 @@ test('steady synthetic tint is gated by Objects tinted and the synthetic layer',
   assert.match(labSource, /objectOverlayUrl=\{view === 'semantics' \? '\/api\/filter\/anchors_overlay' : null\}/)
   assert.match(roomSource, /if \(!mesh \|\| !objectOverlayUrl \|\| syntheticObjects\.length === 0\)/)
   assert.match(roomSource, /syntheticTintSplatEdit\(syntheticObjects\)/)
-  assert.match(roomSource, /\[objectOverlayUrl, syntheticObjects, splatUrl, filterUrl\]/)
+  assert.match(roomSource, /\[objectOverlayUrl, syntheticObjects, splatUrl, filterUrl(, meshVersion)?\]/)
 })
