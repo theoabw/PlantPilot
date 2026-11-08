@@ -32,6 +32,7 @@ import type {
   RoomCamera,
 } from './api'
 import SplatRoom, { type TripState } from './SplatRoom'
+import StartScreen, { shouldShowIntro } from './StartScreen'
 import { nearbyHighlightIds as resolveNearbyHighlightIds, proximityCandidates, syntheticMappedObjects } from './highlightObjects'
 import { destinationTarget, prefersCrouched, routeStatusText, shouldTryCrouched, toggleManualCrouch, transitionDestinationPlan, type DestinationPlanState } from './routeMotion'
 import CharacterSelector, { type CharacterOption } from '../components/CharacterSelector'
@@ -131,6 +132,9 @@ export default function RoomLab() {
   // The depth pass redraws half the splats each frame, the price of hiding the
   // robot and route behind the room. ?occlusion=off starts without it.
   const [occlusion, setOcclusion] = useState(() => new URLSearchParams(window.location.search).get('occlusion') !== 'off')
+  // A first visit opens on the start screen; the capture keeps loading behind it.
+  const [introOpen, setIntroOpen] = useState(() => shouldShowIntro(window.location.search))
+  const [splatLoad, setSplatLoad] = useState({ progress: 0, loaded: false })
   const [devMode, setDevMode] = useState(false)
   const [showRawDetections, setShowRawDetections] = useState(false)
   const [layersOpen, setLayersOpen] = useState(false)
@@ -863,6 +867,8 @@ export default function RoomLab() {
       <div className="absolute inset-0">
         {data ? (
           <SplatRoom
+            onLoadProgress={(progress, loaded) => setSplatLoad({ progress, loaded })}
+            quietLoading={introOpen}
             objects={displayObjects}
             frameObjects={data.objects}
             nearbyCandidates={nearbyCandidates}
@@ -1948,6 +1954,8 @@ export default function RoomLab() {
           ) : null}
         </aside>
       ) : null}
+
+      {introOpen ? <StartScreen progress={splatLoad.progress} loaded={splatLoad.loaded} onStart={() => setIntroOpen(false)} /> : null}
     </div>
   )
 }
