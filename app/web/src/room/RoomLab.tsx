@@ -968,9 +968,6 @@ export default function RoomLab() {
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             Live
           </span>
-          <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-300">
-            Synthetic scenario
-          </span>
         </div>
         <div className="pointer-events-auto flex w-full flex-wrap items-center justify-end gap-1 sm:w-auto sm:gap-2">
           {showMission && mission ? (
