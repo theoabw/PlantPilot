@@ -121,6 +121,10 @@ type Props = {
   onNearby: (ids: string[]) => void
   onTrip: (state: TripState) => void
   onSelect: (id: string) => void
+  /** Reports first-load progress (0 to 100) and when the capture is drawn. */
+  onLoadProgress?: (progress: number, loaded: boolean) => void
+  /** Hides the first-load splash, for example while the start screen covers the room. */
+  quietLoading?: boolean
 }
 
 type BoxView = {
@@ -620,13 +624,18 @@ function buildRobotBody(profile: RobotProfile, logoTexture: THREE.Texture): THRE
 const SHARPEN_AFTER_MS = 400
 const SCALE_WINDOW_MS = 400
 
-export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syntheticObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, nearbyHighlightIds, showNearbyHighlights, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect }: Props) {
+export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syntheticObjects, selectedLabel, frameKey, subtle, upAxis, floorHeight, resetToken, topDownToken, heightCutoff, characterResetToken, characterStart, selectedId, nearbyHighlightIds, showNearbyHighlights, mappedIds, targetId, targetPoint, cameraPose, maxSplats, splatUrl, filterUrl, contourUrl, objectOverlayUrl, showLabels, framesVisible, boxedSplatsOnly, filterBoxes, objectMode, hideSplat, occlusion, explode, objectAssets, mappedFrames, showMappedFrames, obstacleMode, obstacles, robotPositionRef, motionPausedRef, arrivalCentre, onPlaceObstacle, showOccupancy, showRoute, frameOpacity, focusTarget, focusToken, robotProfile, manualControl, manualCrouch, onToggleManualCrouch, firstPerson, crouchSpans, showRobot, route, tripToken, follow, cameraMove, focus, onNearby, onTrip, onSelect, onLoadProgress, quietLoading = false }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const [glError, setGlError] = useState<string | null>(null)
   robotCrouchSpans = crouchSpans
   robotManualCrouch = manualControl && robotProfile === 'humanoid' ? manualCrouch : null
   const [progress, setProgress] = useState(0)
   const [loaded, setLoaded] = useState(false)
+  const onLoadProgressRef = useRef(onLoadProgress)
+  onLoadProgressRef.current = onLoadProgress
+  useEffect(() => {
+    onLoadProgressRef.current?.(progress, loaded)
+  }, [progress, loaded])
   const [perf, setPerf] = useState<{ draws: number; ms: number; calls: number; splats: number } | null>(null)
   const perfEnabled = useRef(new URLSearchParams(window.location.search).has('perf')).current
   // ?sharp=1 keeps full resolution while the view moves, for screen recordings and screenshots.
@@ -3434,7 +3443,7 @@ export default function SplatRoom({ objects, frameObjects, nearbyCandidates, syn
           {perf.draws === 0 ? 'idle' : `${perf.draws} draws/s`} | cpu {perf.ms.toFixed(1)} ms | {perf.calls} calls | {perf.splats.toLocaleString()} splats
         </div>
       ) : null}
-      {!loaded ? (
+      {!loaded && !quietLoading ? (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-brand-navy/90">
           <img src="/brand/plantpilot-stacked-on-dark.svg" alt="PlantPilot" className="h-40 w-auto" />
           <p className="text-sm font-semibold text-slate-300">From scan to service.</p>
