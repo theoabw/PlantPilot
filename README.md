@@ -7,7 +7,7 @@
 
 **From scan to service.** PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival.
 
-- **Demo video:** DEMO_VIDEO_URL
+- **Demo video:** <https://www.youtube.com/watch?v=jJZA6W5SpKY>
 - **Live demo:** <https://plantpilot.tabw.dev> (add `?demo` to skip the start screen)
 - **Technical note:** [docs/technical-note.md](docs/technical-note.md)
 
