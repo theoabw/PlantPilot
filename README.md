@@ -5,7 +5,15 @@
 
 # PlantPilot
 
-PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival.
+**From scan to service.** PlantPilot is an offline semantic scene pipeline for the Valmet challenge. It ingests a supplied 3D Gaussian splat capture, extracts and 3D-frames industrial objects, maps the supplied builder-pack assets onto them, plans a collision-free route to the faulty asset P-005, and serves a browser room view where a robot drives to P-005, highlights nearby assets and opens a grounded diagnosis on arrival.
+
+- **Demo video:** DEMO_VIDEO_URL
+- **Live demo:** <https://plantpilot.tabw.dev> (add `?demo` to skip the start screen)
+- **Technical note:** [docs/technical-note.md](docs/technical-note.md)
+
+## Problem
+
+Field-service teams and inspection robots work in plants where the space, the machine data and the maintenance documents live in separate systems. A work order names a machine, not a place. A raw 3D scan does not close that gap on its own: it has no walkable floor, no equipment instances and no link to the condition data. PlantPilot turns the scan into a plant a robot can work in: framed equipment, a navigable floor, the maintenance records on the objects, a route to the faulty asset and a cited explanation of what to check on arrival.
 
 ## Run it
 
@@ -30,12 +38,13 @@ Open <http://127.0.0.1:8000>. The browser opens the boiler room scene. That targ
 
 ## Demo path
 
-1. The room view opens on the capture, with the extracted 3D frames.
-2. The builder panel lists the supplied pack's assets, with the faulty target P-005 marked.
-3. Open Mission and press Send robot. The robot follows the planned route; nearby assets within 2.5 m brighten while the trip panel shows progress. Enable Synthetic pack frames to highlight nearby proposed pack mappings as well. In Objects tinted, those proposals also receive an amber box-based tint.
+1. A short start screen appears while the 77 MB capture loads behind it; press **Start demo**. `?demo` skips it.
+2. The room view opens on the capture, with the reviewed 3D frames. **Equipment** lists the reviewed objects and the supplied pack's records, with the faulty target P-005 marked.
+3. Open **Mission** and press **Send robot**. The robot follows the planned route; nearby assets within 2.5 m brighten while the trip panel shows progress. Enable Synthetic pack frames to highlight nearby proposed pack mappings as well. In Objects tinted, those proposals also receive an amber box-based tint.
 4. On arrival the diagnosis card opens with the finding, its evidence counts, the next safe check and the document it is grounded in.
-5. `?perf=1` on the URL adds a draw and render-time overlay for performance checks.
-6. `?sharp=1` keeps full resolution while the view moves. By default a slow frame lowers the moving resolution and the still image sharpens again; use the flag for screen recordings and screenshots.
+5. **Layers** switches between Photo, Height, Normals, Contours and the object views, and toggles the occupancy grid and the synthetic pack frames. **Character** swaps between the Humanoid and the Compact AMR; **Manual control** drives the selected character, with a first-person camera.
+6. `?perf=1` on the URL adds a draw and render-time overlay for performance checks.
+7. `?sharp=1` keeps full resolution while the view moves. By default a slow frame lowers the moving resolution and the still image sharpens again; use the flag for screen recordings and screenshots.
 
 ## What it does
 
@@ -63,25 +72,14 @@ builder workbook --> pack ------------------- + --> mapping --> route
 objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
 ```
 
-1. Scene preparation
-  - Determines directions, units, axes
-  - artifact: scene.npz, used for later steps (Scene)
-2. Object extraction
-  - Voxelize the scene in order to create bounding boxes for objects
-  - artifacts: objects.json
-3. Incorporation of object anchors
-  - Use optionally manually reviewed object anchors to map out objects more accurately
-4. Compile assets from builder pack excel file
-  - Turn excel into csv and use this for further processing
-5. Map builder pack assets to segmented objects
-  - Make a best-effort mapping between builder pack assets and objects detected during step 2/3
-6. Diagnose
-  - Aggregate data from the builder pack sheets and produce a textual diagnosis for all objects
-7. Route computing: compute collission-free pathing to targets using rules for proximity to objects
-  - Uses scene geometry, mapped assets, and other objects
-  - Produces a list of rectangles along the floor, indicating geometry that cannot be traversed
-8. Stripped Scene asset creation
-  - Strip the input .ply data to make a smaller file that can be provided to the three.js client app
+1. **Scene preparation** (`splat.py`): reads the 3DGS PLY, detects the up axis and the floor plane, writes `scene.npz` for every later stage.
+2. **Object extraction** (`segment.py`, `classes.py`): removes floors and walls using each gaussian's own surface normal, voxelises and clusters the rest, fits a 3D box to each object and names only what the geometry supports. Writes `objects.json`.
+3. **Reviewed anchors** (`make_anchors.py`): eight objects confirmed by multi-view SAM 3 instance fusion, run offline (see Technology notes), become the bright reviewed layer.
+4. **Builder pack** (`pack.py`): converts the supplied workbook into `pack.json` with the standard library.
+5. **Mapping** (`mapping.py`): proposes each of the 30 pack records onto a distinct object with a class-and-size prior. Every record is marked `proposed` or `unresolved`.
+6. **Diagnosis** (`diagnose.py`): a deterministic join of P-005's state, telemetry, alarms, data-quality cases and documents into a cited diagnosis.
+7. **Route** (`nav.py`): an occupancy grid with four obstacle layers (object boxes, near-vertical surfaces, overhead structure, unobserved floor), inflated for the robot's body and searched with A*. Live reroutes plan from wherever the robot stands.
+8. **Viewer asset** (`make_splat_asset.py`): a slimmed PLY for the browser.
 
 ### Backend
 
@@ -97,7 +95,7 @@ objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
 
 The room view draws the capture with Spark inside three.js, takes the up axis from the artifact, draws the reviewed anchors, the mapped proposal frames and the route, and moves the robot along the planned segments at 0.5 m/s with an obstacle-aware follow camera.
 
-Can perform depth occlusion to hide objects covered other objects from the viewers perspective.
+Depth occlusion hides frames, the route and the robot wherever the capture is in front of them from the viewer's position.
 
 On arrival it fetches `/api/diagnosis`, shows the pack evidence references and a citation, and opens the service panel.
 
@@ -106,37 +104,30 @@ On arrival it fetches `/api/diagnosis`, shows the pack evidence references and a
 - **Pipeline**: Python 3.12 or newer with uv; numpy, OpenCV for geometry and clustering, FastAPI and uvicorn for the local service. The workbook reader uses the standard library.
 - **Viewer**: React 18, Vite 5, TypeScript 5, Tailwind CSS, three.js 0.180 and `@sparkjsdev/spark` 2.4 for the splat renderer. Pre-existing open source, not written for this submission.
 - **Data**: supplied Gaussian splat capture and the supplied synthetic Valmet builder pack (assets, telemetry, alarms, work orders, documents).
-- **AI and models**: none at runtime. Extraction and classification are geometric heuristics with a class-and-size prior. Depth models were evaluated separately and not integrated: Google's ARCore Depth API is a device runtime with no offline path for a trained capture, and the closest downloadable Google model, TIPSv2-B/14 with a DPT depth head. The splat is already the multi-view reconstruction, so the work went into using its depth, not into estimating depth again.
+- **AI and models**: none at runtime. Extraction and classification are geometric heuristics with a class-and-size prior. SAM 3 was used offline: masks from seventeen posed views of the capture were lifted through the splat's own depth and fused into instances (`fixtures/scene/instances_equipment.json`), which name the eight reviewed objects and appear as the "SAM 3 check" on their cards. The diagnosis is a deterministic join, not a model call. Depth models were evaluated and not integrated: Google's ARCore Depth API is a device runtime with no offline path for a trained capture, and the closest downloadable Google model, TIPSv2-B/14 with a DPT depth head, did worse than the splat's own depth at object boundaries. The splat is already the multi-view reconstruction, so the work went into using its depth.
 - **Verification**: pytest with httpx for the API, TypeScript type checking and a Vite production build for the viewer.
 - **Build**: `uv sync`, `pnpm install`, and the `make` targets in this repository.
 
-### Tech not used in final demo
+### Tried and not used at runtime
 
-- Open-vocabulary vision models (Grounding DINO, SAM 2.1, SAM 3) were tried on rendered views during the event.
-- SAM 3 text prompts do not identify pumps and valves reliably enough to place assets, so no vision label is produced at runtime. 
+- Open-vocabulary detection (Grounding DINO, SAM 2.1, SAM 3 text prompts) on rendered views. Text prompts did not identify pumps and valves reliably enough to place assets, so no vision label is produced at runtime; SAM 3 contributes only through the offline instance fusion above.
 
 ## Docs
 
-- `docs/scene-artifacts.md`: the artifact and API contract.
-- `docs/technical-note.md`: the technical note for the submission.
-- `docs/slides.md`: the six-slide deck content and speaker notes.
-- `docs/video-script.md`: the shooting script for the demo video.
-- `docs/acceptance.md`: the checks the pipeline is held to.
-- `docs/brand/README.md`: the logo, colours and the assets for the deck and video.
+Submission documents:
+
+- [`docs/technical-note.md`](docs/technical-note.md): the technical note: models, libraries and components.
+- [`docs/video-script.md`](docs/video-script.md): the script and shot list of the demo video.
+- [`docs/slides.md`](docs/slides.md): deck outline and speaker notes.
+- [`docs/scene-artifacts.md`](docs/scene-artifacts.md): the artifact and API contract.
+- [`docs/acceptance.md`](docs/acceptance.md): the checks the pipeline is held to.
+- [`docs/brand/README.md`](docs/brand/README.md): logo, colours and brand assets.
+
+Working notes from the event, kept for history: `docs/scene-pipeline.md`, `docs/plantpilot-plan.md` (superseded), `docs/roadmap.md`, `docs/features.md`, `docs/workflow.md`, `docs/container-image.md`, `docs/submission-copy.md`.
 
 ## How it works (long)
 
-The pipeline is in `app/server/src/plantpilot/`; the room view is in `app/web/src/room/`.
-
-```
-capture PLY --> ingest --> segment and frame --> objects
-                                              |
-builder workbook --> pack ------------------- + --> mapping --> route
-                                              |
-                                              + --> diagnosis
-
-objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
-```
+The pipeline is in `app/server/src/plantpilot/`; the room view is in `app/web/src/room/`. The data flow is the diagram above.
 
 **Ingest.** `splat.py` reads the 3DGS PLY header, keeps the first contiguous sane run, and writes `scene.npz`, which every later stage reads. `scripts/make_splat_asset.py` writes the core-property PLY the browser loads.
 
@@ -146,7 +137,7 @@ objects, mapping, route, diagnosis, viewer PLY --> FastAPI room view
 
 **Mapping.** `pack.py` converts the workbook into `pack.json`. `mapping.py` assigns the 30 records one-to-one to distinct objects with a class-and-size prior and two hard gates. Every record is `proposed` or `unresolved`, the score is a match score, not a calibrated probability, and no object gets two tags. P-005 maps to OBJ-037 in the boiler room capture. The viewer draws all mapped records as faint proposal frames and lists them with their status under `Synthetic pack records` in the Equipment browser, so the whole proposal set is visible beside the eight brighter reviewed anchors.
 
-**Route planning.** `nav.py` builds an occupancy grid from four independent layers. A cell is walkable ground only when it holds a gaussian near the floor plane, which keeps the planner on observed ground; the object and overhead layers hold the perimeter, and the floor layer changes one reachable cell on the boiler room capture. A cell is blocked when a near-vertical surface crosses the robot's body, which it detects from the gaussians' own normals: a wall runs the height of the room, an overhead pipe does not, and a machine body still blocks. Object boxes block their footprints when the envelope is plausible for one object, overhead structure blocks a taller robot, and the grid is closed by one cell and then inflated once with a 0.20 m agent radius and a 0.02 m margin. A* searches it to a stand-off waypoint beside the target, and the artifact records each layer's cell count and the rule behind it. Reported clearance is the smallest distance from the smoothed path to the uninflated cells, over the whole route. From the doorway, the Compact AMR and the Humanoid reach all 38 mapped assets and anchors; a destination with no ground reachable beside it stops on the nearest ground that is.
+**Route planning.** `nav.py` builds an occupancy grid from four independent layers. A cell is walkable ground only when it holds a gaussian near the floor plane, which keeps the planner on observed ground; the object and overhead layers hold the perimeter, and the floor layer changes one reachable cell on the boiler room capture. A cell is blocked when a near-vertical surface crosses the robot's body, which it detects from the gaussians' own normals: a wall runs the height of the room, an overhead pipe does not, and a machine body still blocks. Object boxes block their footprints when the envelope is plausible for one object, overhead structure blocks a taller robot, and the grid is closed by one cell and then inflated once with a 0.20 m agent radius and a 0.02 m margin. A* searches it to a stand-off waypoint beside the target, and the artifact records each layer's cell count and the rule behind it. Reported clearance is the smallest distance from the smoothed path to the uninflated cells, over the whole route. From the start position, the Compact AMR and the Humanoid reach all 38 mapped assets and anchors; a destination with no ground reachable beside it stops on the nearest ground that is.
 
 The boiler room capture starts inside the room, about one fifth of the capture depth inward from the previous doorway position, using [route_starts.json](./fixtures/scene/route_starts.json). Live reroutes use the robot's current position instead, and the same grid rules apply.
 

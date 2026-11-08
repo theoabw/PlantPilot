@@ -30,7 +30,7 @@ flowchart LR
 The data pipeline processes the 3d gaussian splatting data and the excel builder pack spreadsheet to
 produce derived data like cleaned scene data, object anchors, object-to-asset mapping, etc.
 
-The data pipeline can be ran locally and utilizes standard tools to perform the cleanup and derivations
+The data pipeline runs locally and uses standard tools to perform the cleanup and derivations
 
 
 ```mermaid +render
@@ -74,7 +74,7 @@ flowchart LR
 3. Incorporation of object anchors
   - Use optionally manually reviewed object anchors to map out objects more accurately
 4. Compile assets from builder pack excel file
-  - Turn excel into csv and use this for further processing
+  - Read the workbook with the standard library into pack.json: 30 synthetic asset records
 <!-- end_slide -->
 <!-- font_size: 2 -->
 <!-- incremental_lists: true -->
@@ -83,10 +83,10 @@ flowchart LR
 5. Map builder pack assets to segmented objects
   - Make a best-effort mapping between builder pack assets and objects detected during step 2/3
 6. Diagnose
-  - Aggregate data from the builder pack sheets and produce a textual diagnosis for all objects
-7. Route computing: compute collission-free pathing to targets using rules for proximity to objects
+  - A deterministic join for the faulty target P-005: state, telemetry, alarms, data-quality cases and documents, with every claim citing an evidence id
+7. Route computing: a collision-free path to the target, planned with A*
   - Uses scene geometry, mapped assets, and other objects
-  - Produces a list of rectangles along the floor, indicating geometry that cannot be traversed
+  - An occupancy grid at 0.10 m with four obstacle layers: object boxes, near-vertical surfaces, overhead structure and unobserved floor, inflated for the robot's body
 8. Stripped Scene asset creation
   - Strip the input .ply data to make a smaller file that can be provided to the three.js client app
 <!-- end_slide -->
@@ -97,7 +97,7 @@ flowchart LR
 
 The server consumes the outputs of the data pipeline:
 
-- scene. assets.json, anchors.json, mapped.json, route.json, diagnosis.json
+- the viewer scene PLY, objects.json, assets.json, anchors.json, mapped.json, route.json, diagnosis.json
 
 These files hold the data needed to populate the three.js demo scene
 
